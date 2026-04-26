@@ -20,22 +20,26 @@ pub async fn run() -> anyhow::Result<()> {
     let provider_choice = prompt("Choose provider", Some("1"));
     let provider = match provider_choice.trim() {
         "2" | "anthropic" => "anthropic",
-        "3" | "custom"    => "custom",
-        _                 => "openrouter",
+        "3" | "custom" => "custom",
+        _ => "openrouter",
     };
     println!();
 
     // ── API key ───────────────────────────────────────────────────────────────
     let key_var = match provider {
         "anthropic" => "ANTHROPIC_API_KEY",
-        _           => "OPENROUTER_API_KEY",
+        _ => "OPENROUTER_API_KEY",
     };
-    let api_key = prompt(&format!("{key_var}"), None);
+    let api_key = prompt(key_var, None);
 
     // ── Base URL (custom only) ────────────────────────────────────────────────
     let base_url: Option<String> = if provider == "custom" {
         let url = prompt("Base URL (e.g. http://localhost:8000/v1)", None);
-        if url.is_empty() { None } else { Some(url) }
+        if url.is_empty() {
+            None
+        } else {
+            Some(url)
+        }
     } else {
         None
     };
@@ -43,10 +47,14 @@ pub async fn run() -> anyhow::Result<()> {
     // ── Model ─────────────────────────────────────────────────────────────────
     let default_model = match provider {
         "anthropic" => "claude-sonnet-4-6",
-        _           => "anthropic/claude-sonnet-4-6",
+        _ => "anthropic/claude-sonnet-4-6",
     };
     let model = prompt("Model", Some(default_model));
-    let model = if model.is_empty() { default_model.to_string() } else { model };
+    let model = if model.is_empty() {
+        default_model.to_string()
+    } else {
+        model
+    };
     println!();
 
     // ── Persist ───────────────────────────────────────────────────────────────
@@ -54,11 +62,13 @@ pub async fn run() -> anyhow::Result<()> {
         AgentConfig::set_env_var(&home_dir, key_var, &api_key)?;
     }
 
-    let mut config       = AgentConfig::default();
-    config.home_dir      = home_dir.clone();
-    config.provider      = provider.to_string();
-    config.model         = model;
-    config.base_url      = base_url;
+    let mut config = AgentConfig {
+        home_dir: home_dir.clone(),
+        provider: provider.to_string(),
+        model,
+        base_url,
+        ..AgentConfig::default()
+    };
     config.save_yaml()?;
 
     println!("Configuration saved to {}", home_dir.display());

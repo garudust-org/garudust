@@ -14,7 +14,9 @@ pub struct WebhookAdapter;
 
 #[async_trait]
 impl PlatformAdapter for WebhookAdapter {
-    fn name(&self) -> &'static str { "webhook" }
+    fn name(&self) -> &'static str {
+        "webhook"
+    }
 
     async fn start(&self, _handler: Arc<dyn MessageHandler>) -> Result<(), PlatformError> {
         // TODO: start axum listener

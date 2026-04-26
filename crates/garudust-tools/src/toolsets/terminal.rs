@@ -11,9 +11,15 @@ pub struct Terminal;
 
 #[async_trait]
 impl Tool for Terminal {
-    fn name(&self) -> &'static str { "terminal" }
-    fn description(&self) -> &'static str { "Run a shell command and return the output" }
-    fn toolset(&self) -> &'static str { "terminal" }
+    fn name(&self) -> &'static str {
+        "terminal"
+    }
+    fn description(&self) -> &'static str {
+        "Run a shell command and return the output"
+    }
+    fn toolset(&self) -> &'static str {
+        "terminal"
+    }
 
     fn schema(&self) -> serde_json::Value {
         json!({
@@ -27,8 +33,13 @@ impl Tool for Terminal {
         })
     }
 
-    async fn execute(&self, params: serde_json::Value, ctx: &ToolContext) -> Result<ToolResult, ToolError> {
-        let command = params["command"].as_str()
+    async fn execute(
+        &self,
+        params: serde_json::Value,
+        ctx: &ToolContext,
+    ) -> Result<ToolResult, ToolError> {
+        let command = params["command"]
+            .as_str()
             .ok_or_else(|| ToolError::InvalidArgs("command required".into()))?;
         let description = params["description"].as_str().unwrap_or("run command");
         let timeout_secs = params["timeout_secs"].as_u64().unwrap_or(30);

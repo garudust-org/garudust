@@ -3,21 +3,25 @@ use garudust_core::{
     error::TransportError,
     transport::{ApiMode, ProviderTransport, StreamResult},
     types::{
-        ContentPart, InferenceConfig, Message, Role,
-        StopReason, TokenUsage, ToolCall, ToolSchema, TransportResponse,
+        ContentPart, InferenceConfig, Message, Role, StopReason, TokenUsage, ToolCall, ToolSchema,
+        TransportResponse,
     },
 };
 use serde_json::{json, Value};
 
 pub struct ChatCompletionsTransport {
-    client:   reqwest::Client,
+    client: reqwest::Client,
     base_url: String,
-    api_key:  String,
+    api_key: String,
 }
 
 impl ChatCompletionsTransport {
     pub fn new(base_url: String, api_key: String) -> Self {
-        Self { client: reqwest::Client::new(), base_url, api_key }
+        Self {
+            client: reqwest::Client::new(),
+            base_url,
+            api_key,
+        }
     }
 
     fn endpoint(&self) -> String {
@@ -26,15 +30,17 @@ impl ChatCompletionsTransport {
 }
 
 fn messages_to_json(messages: &[Message]) -> Vec<Value> {
-    messages.iter().flat_map(|m| {
-        let role = match m.role {
-            Role::System    => "system",
-            Role::User      => "user",
-            Role::Assistant => "assistant",
-            Role::Tool      => "tool",
-        };
+    messages
+        .iter()
+        .flat_map(|m| {
+            let role = match m.role {
+                Role::System => "system",
+                Role::User => "user",
+                Role::Assistant => "assistant",
+                Role::Tool => "tool",
+            };
 
-        match m.role {
+            match m.role {
             Role::Tool => m.content.iter().filter_map(|p| {
                 if let ContentPart::ToolResult { tool_use_id, content, .. } = p {
                     Some(json!({ "role": "tool", "tool_call_id": tool_use_id, "content": content }))
@@ -68,25 +74,36 @@ fn messages_to_json(messages: &[Message]) -> Vec<Value> {
                 vec![json!({ "role": role, "content": text })]
             },
         }
-    }).collect()
+        })
+        .collect()
 }
 
 fn tools_to_json(tools: &[ToolSchema]) -> Vec<Value> {
-    tools.iter().map(|t| json!({
-        "type": "function",
-        "function": {
-            "name":        t.name,
-            "description": t.description,
-            "parameters":  t.parameters,
-        }
-    })).collect()
+    tools
+        .iter()
+        .map(|t| {
+            json!({
+                "type": "function",
+                "function": {
+                    "name":        t.name,
+                    "description": t.description,
+                    "parameters":  t.parameters,
+                }
+            })
+        })
+        .collect()
 }
 
 fn classify_error(status: u16, body: &str) -> TransportError {
     match status {
         401 | 403 => TransportError::Auth,
-        429       => TransportError::RateLimit { retry_after_secs: 60 },
-        _         => TransportError::Http { status, body: body.to_string() },
+        429 => TransportError::RateLimit {
+            retry_after_secs: 60,
+        },
+        _ => TransportError::Http {
+            status,
+            body: body.to_string(),
+        },
     }
 }
 
@@ -103,7 +120,7 @@ impl ProviderTransport for ChatCompletionsTransport {
         tools: &[ToolSchema],
     ) -> Result<TransportResponse, TransportError> {
         let oai_messages = messages_to_json(messages);
-        let oai_tools    = tools_to_json(tools);
+        let oai_tools = tools_to_json(tools);
 
         let mut body = json!({
             "model":              config.model,
@@ -117,7 +134,8 @@ impl ProviderTransport for ChatCompletionsTransport {
             body["tools"] = json!(oai_tools);
         }
 
-        let resp = self.client
+        let resp = self
+            .client
             .post(self.endpoint())
             .bearer_auth(&self.api_key)
             .json(&body)
@@ -126,52 +144,74 @@ impl ProviderTransport for ChatCompletionsTransport {
             .map_err(|e| TransportError::Other(anyhow::anyhow!("{e}")))?;
 
         let status = resp.status().as_u16();
-        let text = resp.text().await
+        let text = resp
+            .text()
+            .await
             .map_err(|e| TransportError::Other(anyhow::anyhow!("{e}")))?;
 
         if status != 200 {
             return Err(classify_error(status, &text));
         }
 
-        let data: Value = serde_json::from_str(&text)
-            .map_err(|e| TransportError::Other(anyhow::anyhow!("parse error: {e}\nbody: {text}")))?;
+        let data: Value = serde_json::from_str(&text).map_err(|e| {
+            TransportError::Other(anyhow::anyhow!("parse error: {e}\nbody: {text}"))
+        })?;
 
-        let choice = data["choices"].as_array()
+        let choice = data["choices"]
+            .as_array()
             .and_then(|a| a.first())
             .ok_or_else(|| TransportError::Other(anyhow::anyhow!("no choices in response")))?;
 
         let stop_reason = match choice["finish_reason"].as_str() {
-            Some("stop")        => StopReason::EndTurn,
-            Some("tool_calls")  => StopReason::ToolUse,
-            Some("length")      => StopReason::MaxTokens,
-            Some(other)         => StopReason::Other(other.into()),
-            None                => StopReason::EndTurn,
+            Some("stop") | None => StopReason::EndTurn,
+            Some("tool_calls") => StopReason::ToolUse,
+            Some("length") => StopReason::MaxTokens,
+            Some(other) => StopReason::Other(other.into()),
         };
 
         let msg = &choice["message"];
         let mut content = Vec::new();
         if let Some(t) = msg["content"].as_str() {
-            if !t.is_empty() { content.push(ContentPart::Text(t.into())); }
+            if !t.is_empty() {
+                content.push(ContentPart::Text(t.into()));
+            }
         }
 
-        let tool_calls: Vec<ToolCall> = msg["tool_calls"].as_array()
-            .map(|arr| arr.iter().filter_map(|tc| {
-                let id   = tc["id"].as_str()?;
-                let name = tc["function"]["name"].as_str()?;
-                let args_str = tc["function"]["arguments"].as_str().unwrap_or("{}");
-                let arguments = serde_json::from_str(args_str).unwrap_or(Value::Null);
-                Some(ToolCall { id: id.into(), name: name.into(), arguments })
-            }).collect())
+        let tool_calls: Vec<ToolCall> = msg["tool_calls"]
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|tc| {
+                        let id = tc["id"].as_str()?;
+                        let name = tc["function"]["name"].as_str()?;
+                        let args_str = tc["function"]["arguments"].as_str().unwrap_or("{}");
+                        let arguments = serde_json::from_str(args_str).unwrap_or(Value::Null);
+                        Some(ToolCall {
+                            id: id.into(),
+                            name: name.into(),
+                            arguments,
+                        })
+                    })
+                    .collect()
+            })
             .unwrap_or_default();
 
+        #[allow(clippy::cast_possible_truncation)]
         let usage = TokenUsage {
-            input_tokens:       data["usage"]["prompt_tokens"].as_u64().unwrap_or(0) as u32,
-            output_tokens:      data["usage"]["completion_tokens"].as_u64().unwrap_or(0) as u32,
-            cache_read_tokens:  data["usage"]["prompt_tokens_details"]["cached_tokens"].as_u64().unwrap_or(0) as u32,
+            input_tokens: data["usage"]["prompt_tokens"].as_u64().unwrap_or(0) as u32,
+            output_tokens: data["usage"]["completion_tokens"].as_u64().unwrap_or(0) as u32,
+            cache_read_tokens: data["usage"]["prompt_tokens_details"]["cached_tokens"]
+                .as_u64()
+                .unwrap_or(0) as u32,
             cache_write_tokens: 0,
         };
 
-        Ok(TransportResponse { content, tool_calls, usage, stop_reason })
+        Ok(TransportResponse {
+            content,
+            tool_calls,
+            usage,
+            stop_reason,
+        })
     }
 
     async fn chat_stream(
@@ -179,6 +219,8 @@ impl ProviderTransport for ChatCompletionsTransport {
         _messages: &[Message],
         _config: &InferenceConfig,
     ) -> Result<StreamResult, TransportError> {
-        Err(TransportError::Other(anyhow::anyhow!("streaming not yet implemented")))
+        Err(TransportError::Other(anyhow::anyhow!(
+            "streaming not yet implemented"
+        )))
     }
 }

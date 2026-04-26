@@ -16,13 +16,17 @@ pub struct TelegramAdapter {
 
 impl TelegramAdapter {
     pub fn new(token: String) -> Self {
-        Self { bot: Bot::new(token) }
+        Self {
+            bot: Bot::new(token),
+        }
     }
 }
 
 #[async_trait]
 impl PlatformAdapter for TelegramAdapter {
-    fn name(&self) -> &'static str { "telegram" }
+    fn name(&self) -> &'static str {
+        "telegram"
+    }
 
     async fn start(&self, handler: Arc<dyn MessageHandler>) -> Result<(), PlatformError> {
         let bot = self.bot.clone();
@@ -34,12 +38,20 @@ impl PlatformAdapter for TelegramAdapter {
                         let inbound = InboundMessage {
                             channel: ChannelId {
                                 platform: "telegram".into(),
-                                chat_id:  msg.chat.id.to_string(),
+                                chat_id: msg.chat.id.to_string(),
                                 thread_id: None,
                             },
-                            user_id:     msg.from.as_ref().map(|u| u.id.to_string()).unwrap_or_default(),
-                            user_name:   msg.from.as_ref().and_then(|u| u.username.clone()).unwrap_or_default(),
-                            text:        text.to_string(),
+                            user_id: msg
+                                .from
+                                .as_ref()
+                                .map(|u| u.id.to_string())
+                                .unwrap_or_default(),
+                            user_name: msg
+                                .from
+                                .as_ref()
+                                .and_then(|u| u.username.clone())
+                                .unwrap_or_default(),
+                            text: text.to_string(),
                             session_key: format!("telegram:{}", msg.chat.id),
                         };
                         let _ = handler.handle(inbound).await;
@@ -57,7 +69,9 @@ impl PlatformAdapter for TelegramAdapter {
         channel: &ChannelId,
         message: OutboundMessage,
     ) -> Result<(), PlatformError> {
-        let chat_id: i64 = channel.chat_id.parse()
+        let chat_id: i64 = channel
+            .chat_id
+            .parse()
             .map_err(|_| PlatformError::Send("invalid chat_id".into()))?;
         self.bot
             .send_message(ChatId(chat_id), &message.text)

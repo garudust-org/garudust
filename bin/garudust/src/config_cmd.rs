@@ -31,8 +31,8 @@ pub fn show(config: &AgentConfig) {
     );
     let key_display = match &config.api_key {
         Some(k) if k.len() > 10 => format!("{}…{}", &k[..6], &k[k.len() - 4..]),
-        Some(_)                  => "set".into(),
-        None                     => "not set".into(),
+        Some(_) => "set".into(),
+        None => "not set".into(),
     };
     println!("api_key         : {key_display}");
     println!(
@@ -42,7 +42,7 @@ pub fn show(config: &AgentConfig) {
     println!();
 
     let yaml_path = config.home_dir.join("config.yaml");
-    let env_path  = config.home_dir.join(".env");
+    let env_path = config.home_dir.join(".env");
     println!(
         "config.yaml : {}",
         if yaml_path.exists() {
@@ -74,7 +74,10 @@ pub fn set(key: &str, value: &str, home_dir: &Path) -> anyhow::Result<()> {
 
     if YAML_KEYS.contains(&key) {
         update_yaml(key, value, home_dir)?;
-        println!("[✓] {key} = {value} saved to {}", home_dir.join("config.yaml").display());
+        println!(
+            "[✓] {key} = {value} saved to {}",
+            home_dir.join("config.yaml").display()
+        );
         return Ok(());
     }
 
@@ -96,12 +99,18 @@ fn update_yaml(key: &str, value: &str, home_dir: &Path) -> anyhow::Result<()> {
     config.home_dir = home_dir.to_path_buf();
 
     match key {
-        "model"          => config.model = value.into(),
-        "provider"       => config.provider = value.into(),
-        "base_url"       => config.base_url = if value.is_empty() { None } else { Some(value.into()) },
+        "model" => config.model = value.into(),
+        "provider" => config.provider = value.into(),
+        "base_url" => {
+            config.base_url = if value.is_empty() {
+                None
+            } else {
+                Some(value.into())
+            }
+        }
         "max_iterations" => config.max_iterations = value.parse()?,
-        "tool_delay_ms"  => config.tool_delay_ms  = value.parse()?,
-        _                => unreachable!(),
+        "tool_delay_ms" => config.tool_delay_ms = value.parse()?,
+        _ => unreachable!(),
     }
 
     config.save_yaml()?;

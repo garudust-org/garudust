@@ -21,17 +21,19 @@ struct DiscordHandler {
 #[serenity_async_trait]
 impl EventHandler for DiscordHandler {
     async fn message(&self, _ctx: Context, msg: Message) {
-        if msg.author.bot { return; }
+        if msg.author.bot {
+            return;
+        }
 
         let inbound = InboundMessage {
             channel: ChannelId {
                 platform: "discord".into(),
-                chat_id:  msg.channel_id.to_string(),
+                chat_id: msg.channel_id.to_string(),
                 thread_id: None,
             },
-            user_id:     msg.author.id.to_string(),
-            user_name:   msg.author.name.clone(),
-            text:        msg.content.clone(),
+            user_id: msg.author.id.to_string(),
+            user_name: msg.author.name.clone(),
+            text: msg.content.clone(),
             session_key: format!("discord:{}", msg.channel_id),
         };
         let _ = self.handler.handle(inbound).await;
@@ -54,7 +56,9 @@ impl DiscordAdapter {
 
 #[async_trait]
 impl PlatformAdapter for DiscordAdapter {
-    fn name(&self) -> &'static str { "discord" }
+    fn name(&self) -> &'static str {
+        "discord"
+    }
 
     async fn start(&self, handler: Arc<dyn MessageHandler>) -> Result<(), PlatformError> {
         let token = self.token.clone();
@@ -85,6 +89,8 @@ impl PlatformAdapter for DiscordAdapter {
         _channel: &ChannelId,
         _stream: Pin<Box<dyn Stream<Item = String> + Send>>,
     ) -> Result<(), PlatformError> {
-        Err(PlatformError::Send("stream send not yet implemented".into()))
+        Err(PlatformError::Send(
+            "stream send not yet implemented".into(),
+        ))
     }
 }

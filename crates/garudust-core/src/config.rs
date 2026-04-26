@@ -5,30 +5,30 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentConfig {
     #[serde(skip)]
-    pub home_dir:        PathBuf,
-    pub model:           String,
-    pub max_iterations:  u32,
-    pub tool_delay_ms:   u64,
-    pub provider:        String,
-    pub base_url:        Option<String>,
+    pub home_dir: PathBuf,
+    pub model: String,
+    pub max_iterations: u32,
+    pub tool_delay_ms: u64,
+    pub provider: String,
+    pub base_url: Option<String>,
     #[serde(skip)]
-    pub api_key:         Option<String>,
-    pub compression:     CompressionConfig,
-    pub network:         NetworkConfig,
+    pub api_key: Option<String>,
+    pub compression: CompressionConfig,
+    pub network: NetworkConfig,
 }
 
 impl Default for AgentConfig {
     fn default() -> Self {
         Self {
-            home_dir:       Self::garudust_dir(),
-            model:          "anthropic/claude-sonnet-4-6".into(),
+            home_dir: Self::garudust_dir(),
+            model: "anthropic/claude-sonnet-4-6".into(),
             max_iterations: 90,
-            tool_delay_ms:  0,
-            provider:       "openrouter".into(),
-            base_url:       None,
-            api_key:        None,
-            compression:    CompressionConfig::default(),
-            network:        NetworkConfig::default(),
+            tool_delay_ms: 0,
+            provider: "openrouter".into(),
+            base_url: None,
+            api_key: None,
+            compression: CompressionConfig::default(),
+            network: NetworkConfig::default(),
         }
     }
 }
@@ -69,7 +69,7 @@ impl AgentConfig {
         // Apply env var overrides for secrets / per-session settings
         if let Ok(k) = std::env::var("ANTHROPIC_API_KEY") {
             if !k.is_empty() {
-                config.api_key  = Some(k);
+                config.api_key = Some(k);
                 config.provider = "anthropic".into();
             }
         } else if let Ok(k) = std::env::var("OPENROUTER_API_KEY") {
@@ -78,10 +78,14 @@ impl AgentConfig {
             }
         }
         if let Ok(m) = std::env::var("GARUDUST_MODEL") {
-            if !m.is_empty() { config.model = m; }
+            if !m.is_empty() {
+                config.model = m;
+            }
         }
         if let Ok(u) = std::env::var("GARUDUST_BASE_URL") {
-            if !u.is_empty() { config.base_url = Some(u); }
+            if !u.is_empty() {
+                config.base_url = Some(u);
+            }
         }
 
         config
@@ -90,8 +94,7 @@ impl AgentConfig {
     /// Save non-secret settings to ~/.garudust/config.yaml.
     pub fn save_yaml(&self) -> std::io::Result<()> {
         std::fs::create_dir_all(&self.home_dir)?;
-        let yaml = serde_yaml::to_string(self)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        let yaml = serde_yaml::to_string(self).map_err(std::io::Error::other)?;
         std::fs::write(self.home_dir.join("config.yaml"), yaml)
     }
 
@@ -120,16 +123,22 @@ impl AgentConfig {
 /// Parse KEY=VALUE pairs from a .env file and set them as env vars
 /// only if the key is not already present in the environment.
 fn apply_dotenv(path: &Path) {
-    let Ok(content) = std::fs::read_to_string(path) else { return };
+    let Ok(content) = std::fs::read_to_string(path) else {
+        return;
+    };
     for line in content.lines() {
         let line = line.trim();
-        if line.is_empty() || line.starts_with('#') { continue; }
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
         if let Some((k, v)) = line.split_once('=') {
             let k = k.trim();
             let v = v.trim().trim_matches('"').trim_matches('\'');
             if std::env::var(k).is_err() {
                 // SAFETY: single-threaded at startup
-                unsafe { std::env::set_var(k, v); }
+                unsafe {
+                    std::env::set_var(k, v);
+                }
             }
         }
     }
@@ -139,19 +148,23 @@ fn apply_dotenv(path: &Path) {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompressionConfig {
-    pub enabled:            bool,
+    pub enabled: bool,
     pub threshold_fraction: f32,
-    pub model:              Option<String>,
+    pub model: Option<String>,
 }
 
 impl Default for CompressionConfig {
     fn default() -> Self {
-        Self { enabled: true, threshold_fraction: 0.8, model: None }
+        Self {
+            enabled: true,
+            threshold_fraction: 0.8,
+            model: None,
+        }
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct NetworkConfig {
     pub force_ipv4: bool,
-    pub proxy:      Option<String>,
+    pub proxy: Option<String>,
 }

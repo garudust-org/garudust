@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 use garudust_core::{
@@ -7,22 +7,22 @@ use garudust_core::{
 };
 
 pub struct FileMemoryStore {
-    memory_path:  PathBuf,
+    memory_path: PathBuf,
     profile_path: PathBuf,
 }
 
 impl FileMemoryStore {
-    pub fn new(home_dir: &PathBuf) -> Self {
+    pub fn new(home_dir: &Path) -> Self {
         let memories = home_dir.join("memories");
         Self {
-            memory_path:  memories.join("MEMORY.md"),
+            memory_path: memories.join("MEMORY.md"),
             profile_path: memories.join("USER.md"),
         }
     }
 
     async fn read_file(&self, path: &PathBuf) -> Result<String, AgentError> {
         match tokio::fs::read_to_string(path).await {
-            Ok(s)  => Ok(s),
+            Ok(s) => Ok(s),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
             Err(e) => Err(AgentError::Other(anyhow::anyhow!("{e}"))),
         }
@@ -30,10 +30,12 @@ impl FileMemoryStore {
 
     async fn write_file(&self, path: &PathBuf, content: &str) -> Result<(), AgentError> {
         if let Some(parent) = path.parent() {
-            tokio::fs::create_dir_all(parent).await
+            tokio::fs::create_dir_all(parent)
+                .await
                 .map_err(|e| AgentError::Other(anyhow::anyhow!("{e}")))?;
         }
-        tokio::fs::write(path, content).await
+        tokio::fs::write(path, content)
+            .await
             .map_err(|e| AgentError::Other(anyhow::anyhow!("{e}")))
     }
 }
@@ -46,7 +48,8 @@ impl MemoryStore for FileMemoryStore {
     }
 
     async fn write_memory(&self, content: &MemoryContent) -> Result<(), AgentError> {
-        self.write_file(&self.memory_path, &content.serialize()).await
+        self.write_file(&self.memory_path, &content.serialize())
+            .await
     }
 
     async fn read_user_profile(&self) -> Result<String, AgentError> {

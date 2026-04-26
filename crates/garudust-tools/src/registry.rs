@@ -1,7 +1,11 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use garudust_core::{error::ToolError, tool::{Tool, ToolContext}, types::{ToolResult, ToolSchema}};
+use garudust_core::{
+    error::ToolError,
+    tool::{Tool, ToolContext},
+    types::{ToolResult, ToolSchema},
+};
 
 pub struct ToolRegistry {
     tools: HashMap<&'static str, Arc<dyn Tool>>,
@@ -9,7 +13,9 @@ pub struct ToolRegistry {
 
 impl ToolRegistry {
     pub fn new() -> Self {
-        Self { tools: HashMap::new() }
+        Self {
+            tools: HashMap::new(),
+        }
     }
 
     pub fn register(&mut self, tool: impl Tool + 'static) {
@@ -17,7 +23,8 @@ impl ToolRegistry {
     }
 
     pub fn schemas(&self, toolsets: &[&str]) -> Vec<ToolSchema> {
-        self.tools.values()
+        self.tools
+            .values()
             .filter(|t| toolsets.is_empty() || toolsets.contains(&t.toolset()))
             .map(|t| t.to_schema())
             .collect()
@@ -33,7 +40,9 @@ impl ToolRegistry {
         params: serde_json::Value,
         ctx: &ToolContext,
     ) -> Result<ToolResult, ToolError> {
-        let tool = self.tools.get(name)
+        let tool = self
+            .tools
+            .get(name)
             .ok_or_else(|| ToolError::NotFound(name.into()))?;
         tool.execute(params, ctx).await
     }

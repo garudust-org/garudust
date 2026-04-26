@@ -3,32 +3,50 @@ use std::time::Instant;
 use garudust_core::config::AgentConfig;
 
 struct Check {
-    label:  String,
+    label: String,
     status: Status,
     detail: String,
 }
 
-enum Status { Ok, Warn, Fail }
+enum Status {
+    Ok,
+    Warn,
+    Fail,
+}
 
 impl Check {
     fn ok(label: impl Into<String>, detail: impl Into<String>) -> Self {
-        Self { label: label.into(), status: Status::Ok, detail: detail.into() }
+        Self {
+            label: label.into(),
+            status: Status::Ok,
+            detail: detail.into(),
+        }
     }
     fn warn(label: impl Into<String>, detail: impl Into<String>) -> Self {
-        Self { label: label.into(), status: Status::Warn, detail: detail.into() }
+        Self {
+            label: label.into(),
+            status: Status::Warn,
+            detail: detail.into(),
+        }
     }
     fn fail(label: impl Into<String>, detail: impl Into<String>) -> Self {
-        Self { label: label.into(), status: Status::Fail, detail: detail.into() }
+        Self {
+            label: label.into(),
+            status: Status::Fail,
+            detail: detail.into(),
+        }
     }
     fn print(&self) {
         let icon = match self.status {
-            Status::Ok   => "✓",
+            Status::Ok => "✓",
             Status::Warn => "!",
             Status::Fail => "✗",
         };
         println!("[{icon}] {}: {}", self.label, self.detail);
     }
-    fn is_fail(&self) -> bool { matches!(self.status, Status::Fail) }
+    fn is_fail(&self) -> bool {
+        matches!(self.status, Status::Fail)
+    }
 }
 
 pub async fn run(config: &AgentConfig) {
@@ -42,18 +60,15 @@ pub async fn run(config: &AgentConfig) {
     checks.push(Check::ok("Model", &config.model));
 
     // ── API Key ──────────────────────────────────────────────────────────────
-    match &config.api_key {
-        Some(k) => {
-            checks.push(Check::ok("API key", redact(k)));
-        }
-        None => {
-            let hint = if config.provider == "anthropic" {
-                "ANTHROPIC_API_KEY"
-            } else {
-                "OPENROUTER_API_KEY"
-            };
-            checks.push(Check::fail("API key", format!("not set — export {hint}")));
-        }
+    if let Some(k) = &config.api_key {
+        checks.push(Check::ok("API key", redact(k)));
+    } else {
+        let hint = if config.provider == "anthropic" {
+            "ANTHROPIC_API_KEY"
+        } else {
+            "OPENROUTER_API_KEY"
+        };
+        checks.push(Check::fail("API key", format!("not set — export {hint}")));
     }
 
     // ── Connectivity ─────────────────────────────────────────────────────────
@@ -83,7 +98,9 @@ pub async fn run(config: &AgentConfig) {
     if mem_dir.exists() {
         let probe = mem_dir.join(".doctor_probe");
         let writable = std::fs::write(&probe, b"").is_ok();
-        if writable { let _ = std::fs::remove_file(&probe); }
+        if writable {
+            let _ = std::fs::remove_file(&probe);
+        }
         let detail = format!(
             "{} ({})",
             mem_dir.display(),
@@ -104,10 +121,16 @@ pub async fn run(config: &AgentConfig) {
     // ── Skills dir ───────────────────────────────────────────────────────────
     let skills_dir = config.home_dir.join("skills");
     if skills_dir.exists() {
-        let n = garudust_tools::toolsets::skills::load_skills_from_dir(&skills_dir).await.len();
+        let n = garudust_tools::toolsets::skills::load_skills_from_dir(&skills_dir)
+            .await
+            .len();
         checks.push(Check::ok(
             "Skills dir",
-            format!("{} ({n} skill{} found)", skills_dir.display(), if n == 1 { "" } else { "s" }),
+            format!(
+                "{} ({n} skill{} found)",
+                skills_dir.display(),
+                if n == 1 { "" } else { "s" }
+            ),
         ));
     } else {
         checks.push(Check::warn(
@@ -119,7 +142,10 @@ pub async fn run(config: &AgentConfig) {
     // ── Session DB ───────────────────────────────────────────────────────────
     let db_path = config.home_dir.join("state.db");
     match garudust_memory::SessionDb::open(&config.home_dir) {
-        Ok(_) => checks.push(Check::ok("Session DB", format!("{} (OK)", db_path.display()))),
+        Ok(_) => checks.push(Check::ok(
+            "Session DB",
+            format!("{} (OK)", db_path.display()),
+        )),
         Err(e) => checks.push(Check::fail("Session DB", format!("failed — {e}"))),
     }
 

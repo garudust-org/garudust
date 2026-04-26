@@ -3,20 +3,23 @@ use garudust_core::{
     error::TransportError,
     transport::{ApiMode, ProviderTransport, StreamResult},
     types::{
-        ContentPart, InferenceConfig, Message, Role,
-        StopReason, TokenUsage, ToolCall, ToolSchema, TransportResponse,
+        ContentPart, InferenceConfig, Message, Role, StopReason, TokenUsage, ToolCall, ToolSchema,
+        TransportResponse,
     },
 };
 use serde_json::json;
 
 pub struct AnthropicTransport {
-    client:  reqwest::Client,
+    client: reqwest::Client,
     api_key: String,
 }
 
 impl AnthropicTransport {
     pub fn new(api_key: String) -> Self {
-        Self { client: reqwest::Client::new(), api_key }
+        Self {
+            client: reqwest::Client::new(),
+            api_key,
+        }
     }
 }
 
@@ -32,21 +35,24 @@ impl ProviderTransport for AnthropicTransport {
         config: &InferenceConfig,
         tools: &[ToolSchema],
     ) -> Result<TransportResponse, TransportError> {
-        let system = messages.iter()
+        let system = messages
+            .iter()
             .filter(|m| m.role == Role::System)
             .filter_map(|m| m.text())
             .collect::<Vec<_>>()
             .join("\n");
 
-        let msgs: Vec<_> = messages.iter()
-            .filter(|m| m.role != Role::System)
-            .map(|m| {
-                let role = match m.role {
-                    Role::User | Role::Tool => "user",
-                    Role::Assistant => "assistant",
-                    Role::System => unreachable!(),
-                };
-                let content: Vec<_> = m.content.iter().map(|p| match p {
+        let msgs: Vec<_> =
+            messages
+                .iter()
+                .filter(|m| m.role != Role::System)
+                .map(|m| {
+                    let role = match m.role {
+                        Role::User | Role::Tool => "user",
+                        Role::Assistant => "assistant",
+                        Role::System => unreachable!(),
+                    };
+                    let content: Vec<_> = m.content.iter().map(|p| match p {
                     ContentPart::Text(t) => json!({ "type": "text", "text": t }),
                     ContentPart::ToolUse { id, name, input } => json!({
                         "type": "tool_use", "id": id, "name": name, "input": input
@@ -62,15 +68,20 @@ impl ProviderTransport for AnthropicTransport {
                         "source": { "type": "base64", "media_type": mime_type, "data": data }
                     }),
                 }).collect();
-                json!({ "role": role, "content": content })
+                    json!({ "role": role, "content": content })
+                })
+                .collect();
+
+        let anthropic_tools: Vec<_> = tools
+            .iter()
+            .map(|t| {
+                json!({
+                    "name": t.name,
+                    "description": t.description,
+                    "input_schema": t.parameters,
+                })
             })
             .collect();
-
-        let anthropic_tools: Vec<_> = tools.iter().map(|t| json!({
-            "name": t.name,
-            "description": t.description,
-            "input_schema": t.parameters,
-        })).collect();
 
         let mut body = json!({
             "model":      config.model,
@@ -84,7 +95,8 @@ impl ProviderTransport for AnthropicTransport {
             body["tools"] = json!(anthropic_tools);
         }
 
-        let resp = self.client
+        let resp = self
+            .client
             .post("https://api.anthropic.com/v1/messages")
             .header("x-api-key", &self.api_key)
             .header("anthropic-version", "2023-06-01")
@@ -99,15 +111,16 @@ impl ProviderTransport for AnthropicTransport {
             return Err(TransportError::Http { status, body });
         }
 
-        let data: serde_json::Value = resp.json().await
+        let data: serde_json::Value = resp
+            .json()
+            .await
             .map_err(|e| TransportError::Other(anyhow::anyhow!("{e}")))?;
 
         let stop_reason = match data["stop_reason"].as_str() {
-            Some("end_turn")   => StopReason::EndTurn,
-            Some("tool_use")   => StopReason::ToolUse,
+            Some("end_turn") | None => StopReason::EndTurn,
+            Some("tool_use") => StopReason::ToolUse,
             Some("max_tokens") => StopReason::MaxTokens,
-            Some(other)        => StopReason::Other(other.into()),
-            None               => StopReason::EndTurn,
+            Some(other) => StopReason::Other(other.into()),
         };
 
         let mut content = Vec::new();
@@ -123,8 +136,8 @@ impl ProviderTransport for AnthropicTransport {
                     }
                     Some("tool_use") => {
                         tool_calls.push(ToolCall {
-                            id:        block["id"].as_str().unwrap_or("").into(),
-                            name:      block["name"].as_str().unwrap_or("").into(),
+                            id: block["id"].as_str().unwrap_or("").into(),
+                            name: block["name"].as_str().unwrap_or("").into(),
                             arguments: block["input"].clone(),
                         });
                     }
@@ -133,14 +146,24 @@ impl ProviderTransport for AnthropicTransport {
             }
         }
 
+        #[allow(clippy::cast_possible_truncation)]
         let usage = TokenUsage {
-            input_tokens:       data["usage"]["input_tokens"].as_u64().unwrap_or(0) as u32,
-            output_tokens:      data["usage"]["output_tokens"].as_u64().unwrap_or(0) as u32,
-            cache_read_tokens:  data["usage"]["cache_read_input_tokens"].as_u64().unwrap_or(0) as u32,
-            cache_write_tokens: data["usage"]["cache_creation_input_tokens"].as_u64().unwrap_or(0) as u32,
+            input_tokens: data["usage"]["input_tokens"].as_u64().unwrap_or(0) as u32,
+            output_tokens: data["usage"]["output_tokens"].as_u64().unwrap_or(0) as u32,
+            cache_read_tokens: data["usage"]["cache_read_input_tokens"]
+                .as_u64()
+                .unwrap_or(0) as u32,
+            cache_write_tokens: data["usage"]["cache_creation_input_tokens"]
+                .as_u64()
+                .unwrap_or(0) as u32,
         };
 
-        Ok(TransportResponse { content, tool_calls, usage, stop_reason })
+        Ok(TransportResponse {
+            content,
+            tool_calls,
+            usage,
+            stop_reason,
+        })
     }
 
     async fn chat_stream(
@@ -148,7 +171,8 @@ impl ProviderTransport for AnthropicTransport {
         _messages: &[Message],
         _config: &InferenceConfig,
     ) -> Result<StreamResult, TransportError> {
-        Err(TransportError::Other(anyhow::anyhow!("streaming not yet implemented")))
+        Err(TransportError::Other(anyhow::anyhow!(
+            "streaming not yet implemented"
+        )))
     }
 }
-

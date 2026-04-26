@@ -25,50 +25,58 @@ pub enum TuiEvent {
 pub enum AgentEvent {
     Output(String),
     Thinking,
-    Done { iterations: u32, input_tokens: u32, output_tokens: u32 },
+    Done {
+        iterations: u32,
+        input_tokens: u32,
+        output_tokens: u32,
+    },
     Error(String),
 }
 
 pub struct Tui {
-    input:       String,
-    messages:    Vec<(Role, String)>,
-    status:      String,
-    scroll:      u16,
+    input: String,
+    messages: Vec<(Role, String)>,
+    status: String,
+    scroll: u16,
 }
 
 #[derive(Clone)]
-enum Role { User, Assistant, Error }
+enum Role {
+    User,
+    Assistant,
+    Error,
+}
 
 impl Tui {
     pub fn new() -> Self {
         Self {
-            input:    String::new(),
+            input: String::new(),
             messages: Vec::new(),
-            status:   "Ready — press Enter to send, Ctrl+C to quit".into(),
-            scroll:   0,
+            status: "Ready — press Enter to send, Ctrl+C to quit".into(),
+            scroll: 0,
         }
     }
 
     pub async fn run(
-        tx_event:  mpsc::Sender<TuiEvent>,
+        tx_event: mpsc::Sender<TuiEvent>,
         mut rx_agent: mpsc::Receiver<AgentEvent>,
     ) -> io::Result<()> {
         enable_raw_mode()?;
         let mut stdout = io::stdout();
         execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
-        let backend  = CrosstermBackend::new(stdout);
+        let backend = CrosstermBackend::new(stdout);
         let mut term = Terminal::new(backend)?;
 
         let mut tui = Tui::new();
-        tui.messages.push((Role::Assistant, "Garudust — type your task and press Enter.".into()));
+        tui.messages.push((
+            Role::Assistant,
+            "Garudust — type your task and press Enter.".into(),
+        ));
 
         loop {
             // Drain agent events (non-blocking)
-            loop {
-                match rx_agent.try_recv() {
-                    Ok(ev) => tui.handle_agent_event(ev),
-                    Err(_) => break,
-                }
+            while let Ok(ev) = rx_agent.try_recv() {
+                tui.handle_agent_event(ev);
             }
 
             term.draw(|f| tui.render(f))?;
@@ -77,8 +85,7 @@ impl Tui {
             if event::poll(std::time::Duration::from_millis(50))? {
                 if let Event::Key(key) = event::read()? {
                     match (key.code, key.modifiers) {
-                        (KeyCode::Char('c'), KeyModifiers::CONTROL)
-                        | (KeyCode::Char('q'), KeyModifiers::CONTROL) => {
+                        (KeyCode::Char('c' | 'q'), KeyModifiers::CONTROL) => {
                             let _ = tx_event.send(TuiEvent::Quit).await;
                             break;
                         }
@@ -91,8 +98,10 @@ impl Tui {
                                 let _ = tx_event.send(TuiEvent::Submit(text)).await;
                             }
                         }
-                        (KeyCode::Backspace, _) => { tui.input.pop(); }
-                        (KeyCode::Up, _)   => tui.scroll = tui.scroll.saturating_sub(1),
+                        (KeyCode::Backspace, _) => {
+                            tui.input.pop();
+                        }
+                        (KeyCode::Up, _) => tui.scroll = tui.scroll.saturating_sub(1),
                         (KeyCode::Down, _) => tui.scroll = tui.scroll.saturating_add(1),
                         (KeyCode::Char(c), _) => tui.input.push(c),
                         _ => {}
@@ -102,7 +111,11 @@ impl Tui {
         }
 
         disable_raw_mode()?;
-        execute!(term.backend_mut(), LeaveAlternateScreen, DisableMouseCapture)?;
+        execute!(
+            term.backend_mut(),
+            LeaveAlternateScreen,
+            DisableMouseCapture
+        )?;
         Ok(())
     }
 
@@ -117,7 +130,11 @@ impl Tui {
             AgentEvent::Thinking => {
                 self.status = "Thinking…".into();
             }
-            AgentEvent::Done { iterations, input_tokens, output_tokens } => {
+            AgentEvent::Done {
+                iterations,
+                input_tokens,
+                output_tokens,
+            } => {
                 self.status = format!(
                     "Done — {iterations} iterations | {input_tokens} in / {output_tokens} out tokens"
                 );
@@ -140,30 +157,39 @@ impl Tui {
             .split(f.area());
 
         // ── Messages pane ──
-        let lines: Vec<Line> = self.messages.iter().flat_map(|(role, text)| {
-            let (prefix, style) = match role {
-                Role::User      => ("You  › ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-                Role::Assistant => ("  AI › ", Style::default().fg(Color::Green)),
-                Role::Error     => ("  !! › ", Style::default().fg(Color::Red)),
-            };
-            text.lines().enumerate().map(move |(i, line)| {
-                if i == 0 {
-                    Line::from(vec![
-                        Span::styled(prefix, style),
-                        Span::raw(line.to_string()),
-                    ])
-                } else {
-                    Line::from(vec![
-                        Span::raw("       "),
-                        Span::raw(line.to_string()),
-                    ])
-                }
-            }).collect::<Vec<_>>()
-        }).collect();
+        let lines: Vec<Line> = self
+            .messages
+            .iter()
+            .flat_map(|(role, text)| {
+                let (prefix, style) = match role {
+                    Role::User => (
+                        "You  › ",
+                        Style::default()
+                            .fg(Color::Cyan)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Role::Assistant => ("  AI › ", Style::default().fg(Color::Green)),
+                    Role::Error => ("  !! › ", Style::default().fg(Color::Red)),
+                };
+                text.lines()
+                    .enumerate()
+                    .map(move |(i, line)| {
+                        if i == 0 {
+                            Line::from(vec![
+                                Span::styled(prefix, style),
+                                Span::raw(line.to_string()),
+                            ])
+                        } else {
+                            Line::from(vec![Span::raw("       "), Span::raw(line.to_string())])
+                        }
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect();
 
-        let total_lines = lines.len() as u16;
-        let visible     = chunks[0].height.saturating_sub(2);
-        let scroll      = if self.scroll == u16::MAX {
+        let total_lines = u16::try_from(lines.len()).unwrap_or(u16::MAX);
+        let visible = chunks[0].height.saturating_sub(2);
+        let scroll = if self.scroll == u16::MAX {
             total_lines.saturating_sub(visible)
         } else {
             self.scroll.min(total_lines.saturating_sub(visible))
@@ -176,8 +202,8 @@ impl Tui {
         f.render_widget(messages, chunks[0]);
 
         // ── Status bar ──
-        let status = Paragraph::new(self.status.as_str())
-            .style(Style::default().fg(Color::DarkGray));
+        let status =
+            Paragraph::new(self.status.as_str()).style(Style::default().fg(Color::DarkGray));
         f.render_widget(status, chunks[1]);
 
         // ── Input box ──
@@ -187,9 +213,7 @@ impl Tui {
         f.render_widget(input, chunks[2]);
 
         // Show cursor inside input box
-        f.set_cursor_position((
-            chunks[2].x + self.input.len() as u16 + 1,
-            chunks[2].y + 1,
-        ));
+        let input_len = u16::try_from(self.input.len()).unwrap_or(u16::MAX);
+        f.set_cursor_position((chunks[2].x + input_len + 1, chunks[2].y + 1));
     }
 }
