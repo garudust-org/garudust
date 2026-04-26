@@ -13,9 +13,11 @@ use serenity::{
     model::{channel::Message, gateway::Ready},
     prelude::*,
 };
+use tokio::sync::Mutex;
 
 struct DiscordHandler {
     handler: Arc<dyn MessageHandler>,
+    ctx_store: Arc<Mutex<Option<Context>>>,
 }
 
 #[serenity_async_trait]
@@ -39,18 +41,23 @@ impl EventHandler for DiscordHandler {
         let _ = self.handler.handle(inbound).await;
     }
 
-    async fn ready(&self, _ctx: Context, ready: Ready) {
+    async fn ready(&self, ctx: Context, ready: Ready) {
+        *self.ctx_store.lock().await = Some(ctx);
         tracing::info!("Discord bot connected as {}", ready.user.name);
     }
 }
 
 pub struct DiscordAdapter {
     token: String,
+    ctx_store: Arc<Mutex<Option<Context>>>,
 }
 
 impl DiscordAdapter {
     pub fn new(token: String) -> Self {
-        Self { token }
+        Self {
+            token,
+            ctx_store: Arc::new(Mutex::new(None)),
+        }
     }
 }
 
@@ -62,12 +69,13 @@ impl PlatformAdapter for DiscordAdapter {
 
     async fn start(&self, handler: Arc<dyn MessageHandler>) -> Result<(), PlatformError> {
         let token = self.token.clone();
+        let ctx_store = self.ctx_store.clone();
         tokio::spawn(async move {
             let intents = GatewayIntents::GUILD_MESSAGES
                 | GatewayIntents::DIRECT_MESSAGES
                 | GatewayIntents::MESSAGE_CONTENT;
             let mut client = Client::builder(&token, intents)
-                .event_handler(DiscordHandler { handler })
+                .event_handler(DiscordHandler { handler, ctx_store })
                 .await
                 .expect("Discord client failed");
             client.start().await.expect("Discord start failed");
@@ -77,20 +85,36 @@ impl PlatformAdapter for DiscordAdapter {
 
     async fn send_message(
         &self,
-        _channel: &ChannelId,
-        _message: OutboundMessage,
+        channel: &ChannelId,
+        message: OutboundMessage,
     ) -> Result<(), PlatformError> {
-        // Sending requires ctx from serenity — wired up properly in Phase 6
-        Err(PlatformError::Send("send not yet implemented".into()))
+        let guard = self.ctx_store.lock().await;
+        let ctx = guard
+            .as_ref()
+            .ok_or_else(|| PlatformError::Send("Discord not connected yet".into()))?;
+
+        let channel_id: u64 = channel
+            .chat_id
+            .parse()
+            .map_err(|_| PlatformError::Send("invalid channel_id".into()))?;
+
+        serenity::model::id::ChannelId::new(channel_id)
+            .say(&ctx.http, &message.text)
+            .await
+            .map_err(|e| PlatformError::Send(e.to_string()))?;
+        Ok(())
     }
 
     async fn send_stream(
         &self,
-        _channel: &ChannelId,
-        _stream: Pin<Box<dyn Stream<Item = String> + Send>>,
+        channel: &ChannelId,
+        mut stream: Pin<Box<dyn Stream<Item = String> + Send>>,
     ) -> Result<(), PlatformError> {
-        Err(PlatformError::Send(
-            "stream send not yet implemented".into(),
-        ))
+        use futures::StreamExt;
+        let mut buf = String::new();
+        while let Some(chunk) = stream.next().await {
+            buf.push_str(&chunk);
+        }
+        self.send_message(channel, OutboundMessage::text(buf)).await
     }
 }
