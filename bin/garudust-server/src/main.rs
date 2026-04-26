@@ -8,14 +8,14 @@ use garudust_gateway::{create_router, AppState, GatewayHandler, SessionRegistry}
 use garudust_memory::{FileMemoryStore, SessionDb};
 use garudust_platforms::{discord::DiscordAdapter, telegram::TelegramAdapter};
 use garudust_tools::{
-    ToolRegistry,
     toolsets::{
         files::{ReadFile, WriteFile},
         memory::MemoryTool,
-        skills::{SkillsList, SkillView},
+        skills::{SkillView, SkillsList},
         terminal::Terminal,
-        web::WebFetch,
+        web::{WebFetch, WebSearch},
     },
+    ToolRegistry,
 };
 use garudust_transport::build_transport;
 
@@ -25,12 +25,15 @@ struct Cli {
     #[arg(long, env = "GARUDUST_PORT", default_value = "3000")]
     port: u16,
 
-    #[arg(long, env = "GARUDUST_MODEL", default_value = "anthropic/claude-sonnet-4-6")]
-    model: String,
+    /// Override model (env: GARUDUST_MODEL)
+    #[arg(long, env = "GARUDUST_MODEL")]
+    model: Option<String>,
 
+    /// Override OpenRouter API key (env: OPENROUTER_API_KEY)
     #[arg(long, env = "OPENROUTER_API_KEY")]
     api_key: Option<String>,
 
+    /// Override Anthropic API key — sets provider=anthropic (env: ANTHROPIC_API_KEY)
     #[arg(long, env = "ANTHROPIC_API_KEY")]
     anthropic_key: Option<String>,
 
@@ -41,12 +44,27 @@ struct Cli {
     discord_token: Option<String>,
 }
 
-fn build_agent(config: Arc<AgentConfig>) -> Arc<Agent> {
-    let memory    = Arc::new(FileMemoryStore::new(&config.home_dir));
+fn build_config(cli: &Cli) -> Arc<AgentConfig> {
+    let mut config = AgentConfig::load();
+    if let Some(m) = &cli.model {
+        config.model.clone_from(m);
+    }
+    if let Some(k) = &cli.anthropic_key {
+        config.api_key = Some(k.clone());
+        config.provider = "anthropic".into();
+    } else if let Some(k) = &cli.api_key {
+        config.api_key = Some(k.clone());
+    }
+    Arc::new(config)
+}
+
+fn build_agent(config: Arc<AgentConfig>, db: Arc<SessionDb>) -> Arc<Agent> {
+    let memory = Arc::new(FileMemoryStore::new(&config.home_dir));
     let transport = build_transport(&config);
 
     let mut registry = ToolRegistry::new();
     registry.register(WebFetch);
+    registry.register(WebSearch);
     registry.register(ReadFile);
     registry.register(WriteFile);
     registry.register(Terminal);
@@ -54,15 +72,15 @@ fn build_agent(config: Arc<AgentConfig>) -> Arc<Agent> {
     registry.register(SkillsList);
     registry.register(SkillView);
 
-    Arc::new(Agent::new(transport, Arc::new(registry), memory, config))
+    Arc::new(Agent::new(transport, Arc::new(registry), memory, config).with_session_db(db))
 }
 
 async fn start_platform(
     platform: Arc<dyn PlatformAdapter>,
-    agent:    Arc<Agent>,
+    agent: Arc<Agent>,
     sessions: Arc<SessionRegistry>,
 ) -> Result<()> {
-    let name    = platform.name();
+    let name = platform.name();
     let handler = Arc::new(GatewayHandler::new(agent, platform.clone(), sessions));
     platform.start(handler).await?;
     tracing::info!("{name} adapter started");
@@ -78,18 +96,10 @@ async fn main() -> Result<()> {
 
     let cli = Cli::parse();
 
-    let mut config  = AgentConfig::default();
-    config.model    = cli.model.clone();
-    if let Some(k) = &cli.anthropic_key {
-        config.api_key  = Some(k.clone());
-        config.provider = "anthropic".into();
-    } else {
-        config.api_key = cli.api_key.clone();
-    }
-    let config   = Arc::new(config);
-    let agent    = build_agent(config.clone());
+    let config = build_config(&cli);
+    let db = Arc::new(SessionDb::open(&config.home_dir)?);
+    let agent = build_agent(config.clone(), db.clone());
     let sessions = SessionRegistry::new();
-    let db       = Arc::new(SessionDb::open(&config.home_dir)?);
 
     // ── Platform adapters ────────────────────────────────────────────────────
     if let Some(token) = &cli.telegram_token {
@@ -103,9 +113,12 @@ async fn main() -> Result<()> {
     }
 
     // ── HTTP gateway ─────────────────────────────────────────────────────────
-    let state    = AppState { config, session_db: db };
-    let router   = create_router(state);
-    let addr     = format!("0.0.0.0:{}", cli.port);
+    let state = AppState {
+        config,
+        session_db: db,
+    };
+    let router = create_router(state);
+    let addr = format!("0.0.0.0:{}", cli.port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     tracing::info!("garudust-server listening on {addr}");
     axum::serve(listener, router).await?;

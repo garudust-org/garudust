@@ -10,11 +10,15 @@ pub struct MemoryTool;
 
 #[async_trait]
 impl Tool for MemoryTool {
-    fn name(&self) -> &'static str { "memory" }
+    fn name(&self) -> &'static str {
+        "memory"
+    }
     fn description(&self) -> &'static str {
         "Manage persistent memory. Actions: add, read, remove, replace"
     }
-    fn toolset(&self) -> &'static str { "memory" }
+    fn toolset(&self) -> &'static str {
+        "memory"
+    }
 
     fn schema(&self) -> serde_json::Value {
         json!({
@@ -28,40 +32,63 @@ impl Tool for MemoryTool {
         })
     }
 
-    async fn execute(&self, params: serde_json::Value, ctx: &ToolContext) -> Result<ToolResult, ToolError> {
-        let action = params["action"].as_str()
+    async fn execute(
+        &self,
+        params: serde_json::Value,
+        ctx: &ToolContext,
+    ) -> Result<ToolResult, ToolError> {
+        let action = params["action"]
+            .as_str()
             .ok_or_else(|| ToolError::InvalidArgs("action required".into()))?;
 
-        let mut mem = ctx.memory.read_memory().await
+        let mut mem = ctx
+            .memory
+            .read_memory()
+            .await
             .map_err(|e| ToolError::Execution(e.to_string()))?;
 
         match action {
             "read" => {
                 let output = mem.serialize();
-                Ok(ToolResult::ok("", if output.is_empty() { "(empty)".into() } else { output }))
+                Ok(ToolResult::ok(
+                    "",
+                    if output.is_empty() {
+                        "(empty)".into()
+                    } else {
+                        output
+                    },
+                ))
             }
             "add" => {
-                let content = params["content"].as_str()
+                let content = params["content"]
+                    .as_str()
                     .ok_or_else(|| ToolError::InvalidArgs("content required".into()))?;
                 mem.entries.push(content.trim().to_string());
-                ctx.memory.write_memory(&mem).await
+                ctx.memory
+                    .write_memory(&mem)
+                    .await
                     .map_err(|e| ToolError::Execution(e.to_string()))?;
                 Ok(ToolResult::ok("", "Entry added"))
             }
             "remove" => {
-                let m = params["match"].as_str()
+                let m = params["match"]
+                    .as_str()
                     .ok_or_else(|| ToolError::InvalidArgs("match required".into()))?;
                 let before = mem.entries.len();
                 mem.entries.retain(|e| !e.contains(m));
                 let removed = before - mem.entries.len();
-                ctx.memory.write_memory(&mem).await
+                ctx.memory
+                    .write_memory(&mem)
+                    .await
                     .map_err(|e| ToolError::Execution(e.to_string()))?;
                 Ok(ToolResult::ok("", format!("Removed {removed} entries")))
             }
             "replace" => {
-                let m = params["match"].as_str()
+                let m = params["match"]
+                    .as_str()
                     .ok_or_else(|| ToolError::InvalidArgs("match required".into()))?;
-                let content = params["content"].as_str()
+                let content = params["content"]
+                    .as_str()
                     .ok_or_else(|| ToolError::InvalidArgs("content required".into()))?;
                 let mut replaced = 0;
                 for entry in &mut mem.entries {
@@ -70,11 +97,13 @@ impl Tool for MemoryTool {
                         replaced += 1;
                     }
                 }
-                ctx.memory.write_memory(&mem).await
+                ctx.memory
+                    .write_memory(&mem)
+                    .await
                     .map_err(|e| ToolError::Execution(e.to_string()))?;
                 Ok(ToolResult::ok("", format!("Replaced {replaced} entries")))
             }
-            other => Err(ToolError::InvalidArgs(format!("unknown action: {other}")))
+            other => Err(ToolError::InvalidArgs(format!("unknown action: {other}"))),
         }
     }
 }

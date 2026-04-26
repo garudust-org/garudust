@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  check:
+    name: Check & Clippy
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache cargo registry & build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: cargo check
+        run: cargo check --workspace --all-targets
+
+      - name: cargo clippy
+        run: |
+          cargo clippy --workspace --all-targets -- \
+            -W clippy::all \
+            -W clippy::pedantic \
+            -A clippy::module_name_repetitions \
+            -A clippy::must_use_candidate \
+            -A clippy::missing_errors_doc \
+            -A clippy::missing_panics_doc \
+            -A clippy::return_self_not_must_use \
+            -A clippy::too_many_arguments \
+            -A clippy::large_futures \
+            -A clippy::doc_markdown \
+            -A clippy::field_reassign_with_default \
+            -A clippy::too_many_lines
+
+  fmt:
+    name: Rustfmt
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: cargo fmt
+        run: cargo fmt --all -- --check

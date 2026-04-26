@@ -16,8 +16,7 @@ pub enum ApiMode {
     BedrockConverse,
 }
 
-pub type StreamResult =
-    Pin<Box<dyn Stream<Item = Result<StreamChunk, TransportError>> + Send>>;
+pub type StreamResult = Pin<Box<dyn Stream<Item = Result<StreamChunk, TransportError>> + Send>>;
 
 #[async_trait]
 pub trait ProviderTransport: Send + Sync + 'static {

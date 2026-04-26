@@ -6,7 +6,9 @@ pub struct CronScheduler {
 
 impl CronScheduler {
     pub async fn new() -> anyhow::Result<Self> {
-        Ok(Self { inner: JobScheduler::new().await? })
+        Ok(Self {
+            inner: JobScheduler::new().await?,
+        })
     }
 
     pub async fn add_job(&self, cron_expr: &str, task: String) -> anyhow::Result<()> {
