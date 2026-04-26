@@ -13,7 +13,6 @@ use crate::sessions::SessionRegistry;
 pub struct GatewayHandler {
     agent: Arc<Agent>,
     platform: Arc<dyn PlatformAdapter>,
-    #[allow(dead_code)]
     sessions: Arc<SessionRegistry>,
     approver: Arc<AutoApprover>,
 }
@@ -36,15 +35,19 @@ impl GatewayHandler {
 #[async_trait]
 impl MessageHandler for GatewayHandler {
     async fn handle(&self, msg: InboundMessage) -> Result<(), anyhow::Error> {
-        let platform_name = self.platform.name().to_string();
-        let channel = msg.channel.clone();
+        // Track session activity
+        self.sessions
+            .touch(&msg.session_key, &msg.channel.platform, &msg.user_id)
+            .await;
 
-        // Spawn in background so we don't block the platform receive loop
+        let channel = msg.channel.clone();
         let agent = self.agent.clone();
         let platform = self.platform.clone();
         let approver = self.approver.clone();
         let task = msg.text.clone();
+        let platform_name = msg.channel.platform.clone();
 
+        // Spawn in background so we don't block the platform receive loop
         tokio::spawn(async move {
             match agent.run(&task, approver, &platform_name).await {
                 Ok(result) => {

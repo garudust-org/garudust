@@ -2,11 +2,14 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use clap::Parser;
-use garudust_agent::Agent;
+use garudust_agent::{Agent, AutoApprover};
 use garudust_core::{config::AgentConfig, platform::PlatformAdapter};
+use garudust_cron::CronScheduler;
 use garudust_gateway::{create_router, AppState, GatewayHandler, SessionRegistry};
 use garudust_memory::{FileMemoryStore, SessionDb};
-use garudust_platforms::{discord::DiscordAdapter, telegram::TelegramAdapter};
+use garudust_platforms::{
+    discord::DiscordAdapter, telegram::TelegramAdapter, webhook::WebhookAdapter,
+};
 use garudust_tools::{
     toolsets::{
         files::{ReadFile, WriteFile},
@@ -25,15 +28,18 @@ struct Cli {
     #[arg(long, env = "GARUDUST_PORT", default_value = "3000")]
     port: u16,
 
-    /// Override model (env: GARUDUST_MODEL)
+    /// Port for the webhook adapter (0 = disabled)
+    #[arg(long, env = "GARUDUST_WEBHOOK_PORT", default_value = "3001")]
+    webhook_port: u16,
+
+    /// Override model
     #[arg(long, env = "GARUDUST_MODEL")]
     model: Option<String>,
 
-    /// Override OpenRouter API key (env: OPENROUTER_API_KEY)
     #[arg(long, env = "OPENROUTER_API_KEY")]
     api_key: Option<String>,
 
-    /// Override Anthropic API key — sets provider=anthropic (env: ANTHROPIC_API_KEY)
+    /// Sets provider=anthropic when provided
     #[arg(long, env = "ANTHROPIC_API_KEY")]
     anthropic_key: Option<String>,
 
@@ -42,6 +48,11 @@ struct Cli {
 
     #[arg(long, env = "DISCORD_TOKEN")]
     discord_token: Option<String>,
+
+    /// Comma-separated list of cron jobs: "cron_expr=task" pairs
+    /// e.g. "0 9 * * *=Good morning report"
+    #[arg(long, env = "GARUDUST_CRON_JOBS")]
+    cron_jobs: Option<String>,
 }
 
 fn build_config(cli: &Cli) -> Arc<AgentConfig> {
@@ -95,13 +106,12 @@ async fn main() -> Result<()> {
     dotenvy::dotenv().ok();
 
     let cli = Cli::parse();
-
     let config = build_config(&cli);
     let db = Arc::new(SessionDb::open(&config.home_dir)?);
     let agent = build_agent(config.clone(), db.clone());
     let sessions = SessionRegistry::new();
 
-    // ── Platform adapters ────────────────────────────────────────────────────
+    // ── Platform adapters ─────────────────────────────────────────────────────
     if let Some(token) = &cli.telegram_token {
         let platform: Arc<dyn PlatformAdapter> = Arc::new(TelegramAdapter::new(token.clone()));
         start_platform(platform, agent.clone(), sessions.clone()).await?;
@@ -112,10 +122,30 @@ async fn main() -> Result<()> {
         start_platform(platform, agent.clone(), sessions.clone()).await?;
     }
 
-    // ── HTTP gateway ─────────────────────────────────────────────────────────
+    if cli.webhook_port > 0 {
+        let platform: Arc<dyn PlatformAdapter> = Arc::new(WebhookAdapter::new(cli.webhook_port));
+        start_platform(platform, agent.clone(), sessions.clone()).await?;
+    }
+
+    // ── Cron scheduler ────────────────────────────────────────────────────────
+    if let Some(jobs_str) = &cli.cron_jobs {
+        let scheduler = CronScheduler::new(agent.clone(), Arc::new(AutoApprover)).await?;
+        for entry in jobs_str.split(',') {
+            if let Some((expr, task)) = entry.trim().split_once('=') {
+                scheduler
+                    .add_job(expr.trim(), task.trim().to_string())
+                    .await?;
+                tracing::info!(cron = %expr.trim(), task = %task.trim(), "cron job registered");
+            }
+        }
+        scheduler.start().await?;
+    }
+
+    // ── HTTP gateway ──────────────────────────────────────────────────────────
     let state = AppState {
         config,
         session_db: db,
+        agent,
     };
     let router = create_router(state);
     let addr = format!("0.0.0.0:{}", cli.port);
