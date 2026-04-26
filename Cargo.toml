@@ -76,4 +76,4 @@ teloxide  = { version = "0.13", features = ["macros"] }
 serenity  = { version = "0.12", features = ["client", "gateway", "model"] }
 
 # MCP
-rmcp = { version = "0.1", features = ["client"] }
+rmcp = { version = "1", features = ["client", "transport-child-process"] }

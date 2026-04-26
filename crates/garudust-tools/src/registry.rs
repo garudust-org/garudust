@@ -8,7 +8,7 @@ use garudust_core::{
 };
 
 pub struct ToolRegistry {
-    tools: HashMap<&'static str, Arc<dyn Tool>>,
+    tools: HashMap<String, Arc<dyn Tool>>,
 }
 
 impl ToolRegistry {
@@ -19,7 +19,11 @@ impl ToolRegistry {
     }
 
     pub fn register(&mut self, tool: impl Tool + 'static) {
-        self.tools.insert(tool.name(), Arc::new(tool));
+        self.tools.insert(tool.name().to_string(), Arc::new(tool));
+    }
+
+    pub fn register_arc(&mut self, tool: Arc<dyn Tool>) {
+        self.tools.insert(tool.name().to_string(), tool);
     }
 
     pub fn schemas(&self, toolsets: &[&str]) -> Vec<ToolSchema> {
@@ -48,7 +52,7 @@ impl ToolRegistry {
     }
 
     pub fn names(&self) -> Vec<&str> {
-        self.tools.keys().copied().collect()
+        self.tools.keys().map(String::as_str).collect()
     }
 }
 

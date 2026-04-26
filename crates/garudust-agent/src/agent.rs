@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use chrono::Utc;
+use futures::StreamExt;
 use garudust_core::{
     budget::IterationBudget,
     config::AgentConfig,
@@ -8,15 +9,92 @@ use garudust_core::{
     memory::MemoryStore,
     tool::ToolContext,
     transport::ProviderTransport,
-    types::{AgentResult, ContentPart, InferenceConfig, Message, Role, StopReason, ToolResult},
+    types::{
+        AgentResult, ContentPart, InferenceConfig, Message, Role, StopReason, StreamChunk,
+        TokenUsage, ToolCall, ToolResult, TransportResponse,
+    },
 };
 use garudust_memory::SessionDb;
 use garudust_tools::ToolRegistry;
+use serde_json::Value;
+use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use crate::compressor::ContextCompressor;
 use crate::prompt_builder::build_system_prompt;
+
+async fn stream_turn(
+    transport: &dyn ProviderTransport,
+    history: &[Message],
+    config: &InferenceConfig,
+    schemas: &[garudust_core::types::ToolSchema],
+    chunk_tx: &mpsc::UnboundedSender<String>,
+) -> Result<TransportResponse, AgentError> {
+    let mut stream = transport.chat_stream(history, config, schemas).await?;
+
+    let mut text = String::new();
+    let mut tc_acc: Vec<(String, String, String)> = Vec::new();
+    let mut usage = TokenUsage::default();
+
+    while let Some(result) = stream.next().await {
+        match result? {
+            StreamChunk::TextDelta(delta) => {
+                let _ = chunk_tx.send(delta.clone());
+                text.push_str(&delta);
+            }
+            StreamChunk::ToolCallDelta {
+                index,
+                id,
+                name,
+                args_delta,
+            } => {
+                while tc_acc.len() <= index {
+                    tc_acc.push((String::new(), String::new(), String::new()));
+                }
+                if let Some(v) = id {
+                    tc_acc[index].0 = v;
+                }
+                if let Some(v) = name {
+                    tc_acc[index].1 = v;
+                }
+                tc_acc[index].2.push_str(&args_delta);
+            }
+            StreamChunk::Done { usage: u } => {
+                usage = u;
+            }
+        }
+    }
+
+    let content = if text.is_empty() {
+        vec![]
+    } else {
+        vec![ContentPart::Text(text)]
+    };
+
+    let tool_calls: Vec<ToolCall> = tc_acc
+        .into_iter()
+        .filter(|(id, ..)| !id.is_empty())
+        .map(|(id, name, args)| ToolCall {
+            id,
+            name,
+            arguments: serde_json::from_str(&args).unwrap_or(Value::Null),
+        })
+        .collect();
+
+    let stop_reason = if tool_calls.is_empty() {
+        StopReason::EndTurn
+    } else {
+        StopReason::ToolUse
+    };
+
+    Ok(TransportResponse {
+        content,
+        tool_calls,
+        usage,
+        stop_reason,
+    })
+}
 
 pub struct Agent {
     id: String,
@@ -85,6 +163,27 @@ impl Agent {
         approver: Arc<dyn garudust_core::tool::CommandApprover>,
         platform: &str,
     ) -> Result<AgentResult, AgentError> {
+        self.run_inner(task, approver, platform, None).await
+    }
+
+    pub async fn run_streaming(
+        &self,
+        task: &str,
+        approver: Arc<dyn garudust_core::tool::CommandApprover>,
+        platform: &str,
+        chunk_tx: mpsc::UnboundedSender<String>,
+    ) -> Result<AgentResult, AgentError> {
+        self.run_inner(task, approver, platform, Some(chunk_tx))
+            .await
+    }
+
+    async fn run_inner(
+        &self,
+        task: &str,
+        approver: Arc<dyn garudust_core::tool::CommandApprover>,
+        platform: &str,
+        chunk_tx: Option<mpsc::UnboundedSender<String>>,
+    ) -> Result<AgentResult, AgentError> {
         let session_id = Uuid::new_v4().to_string();
         #[allow(clippy::cast_precision_loss)]
         let started_at = Utc::now().timestamp_millis() as f64 / 1000.0;
@@ -117,7 +216,11 @@ impl Agent {
             iters += 1;
             info!(agent_id = %self.id, iteration = iters, "agent turn");
 
-            let resp = self.transport.chat(&history, &inf_config, &schemas).await?;
+            let resp = if let Some(tx) = &chunk_tx {
+                stream_turn(self.transport.as_ref(), &history, &inf_config, &schemas, tx).await?
+            } else {
+                self.transport.chat(&history, &inf_config, &schemas).await?
+            };
             total_in += resp.usage.input_tokens;
             total_out += resp.usage.output_tokens;
 

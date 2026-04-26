@@ -1,10 +1,12 @@
+use async_stream::try_stream;
 use async_trait::async_trait;
+use futures::StreamExt;
 use garudust_core::{
     error::TransportError,
     transport::{ApiMode, ProviderTransport, StreamResult},
     types::{
-        ContentPart, InferenceConfig, Message, Role, StopReason, TokenUsage, ToolCall, ToolSchema,
-        TransportResponse,
+        ContentPart, InferenceConfig, Message, Role, StopReason, StreamChunk, TokenUsage, ToolCall,
+        ToolSchema, TransportResponse,
     },
 };
 use serde_json::{json, Value};
@@ -216,11 +218,135 @@ impl ProviderTransport for ChatCompletionsTransport {
 
     async fn chat_stream(
         &self,
-        _messages: &[Message],
-        _config: &InferenceConfig,
+        messages: &[Message],
+        config: &InferenceConfig,
+        tools: &[ToolSchema],
     ) -> Result<StreamResult, TransportError> {
-        Err(TransportError::Other(anyhow::anyhow!(
-            "streaming not yet implemented"
-        )))
+        let oai_messages = messages_to_json(messages);
+        let oai_tools = tools_to_json(tools);
+
+        let mut body = json!({
+            "model":                 config.model,
+            "messages":              oai_messages,
+            "max_completion_tokens": config.max_tokens.unwrap_or(8192),
+            "stream":                true,
+            "stream_options":        { "include_usage": true },
+        });
+        if let Some(t) = config.temperature {
+            body["temperature"] = json!(t);
+        }
+        if !oai_tools.is_empty() {
+            body["tools"] = json!(oai_tools);
+        }
+
+        let resp = self
+            .client
+            .post(self.endpoint())
+            .bearer_auth(&self.api_key)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| TransportError::Other(anyhow::anyhow!("{e}")))?;
+
+        let status = resp.status().as_u16();
+        if status != 200 {
+            let text = resp.text().await.unwrap_or_default();
+            return Err(classify_error(status, &text));
+        }
+
+        let mut byte_stream = resp.bytes_stream();
+
+        let stream = try_stream! {
+            let mut buf = String::new();
+            // tool call accumulator: index → (id, name, args)
+            let mut tc_acc: Vec<(String, String, String)> = Vec::new();
+
+            while let Some(chunk) = byte_stream.next().await {
+                let bytes = chunk.map_err(|e| TransportError::Stream(e.to_string()))?;
+                buf.push_str(&String::from_utf8_lossy(&bytes));
+
+                while let Some(pos) = buf.find('\n') {
+                    let line = buf[..pos].trim().to_string();
+                    buf = buf[pos + 1..].to_string();
+
+                    let Some(d) = line.strip_prefix("data: ") else {
+                        continue;
+                    };
+                    let data = d.to_string();
+                    if data == "[DONE]" {
+                        break;
+                    }
+
+                    let Ok(event) = serde_json::from_str::<Value>(&data) else {
+                        continue;
+                    };
+                    let Some(choice_ref) =
+                        event["choices"].as_array().and_then(|a| a.first())
+                    else {
+                        // usage-only chunk
+                        #[allow(clippy::cast_possible_truncation)]
+                        if let (Some(p), Some(c)) = (
+                            event["usage"]["prompt_tokens"].as_u64(),
+                            event["usage"]["completion_tokens"].as_u64(),
+                        ) {
+                            yield StreamChunk::Done {
+                                usage: TokenUsage {
+                                    input_tokens: p as u32,
+                                    output_tokens: c as u32,
+                                    ..Default::default()
+                                },
+                            };
+                        }
+                        continue;
+                    };
+                    let choice = choice_ref.clone();
+
+                    let delta = &choice["delta"];
+
+                    if let Some(text) = delta["content"].as_str() {
+                        if !text.is_empty() {
+                            yield StreamChunk::TextDelta(text.to_string());
+                        }
+                    }
+
+                    if let Some(tcs) = delta["tool_calls"].as_array() {
+                        for tc in tcs {
+                            #[allow(clippy::cast_possible_truncation)]
+                            let index = tc["index"].as_u64().unwrap_or(0) as usize;
+                            while tc_acc.len() <= index {
+                                tc_acc.push((String::new(), String::new(), String::new()));
+                            }
+                            if let Some(id) = tc["id"].as_str() {
+                                tc_acc[index].0 = id.to_string();
+                            }
+                            if let Some(name) = tc["function"]["name"].as_str() {
+                                tc_acc[index].1 = name.to_string();
+                            }
+                            if let Some(args) = tc["function"]["arguments"].as_str() {
+                                let entry = &mut tc_acc[index];
+                                let is_first = entry.0.is_empty() && entry.1.is_empty();
+                                yield StreamChunk::ToolCallDelta {
+                                    index,
+                                    id: if is_first {
+                                        tc["id"].as_str().map(str::to_string)
+                                    } else {
+                                        None
+                                    },
+                                    name: if is_first {
+                                        tc["function"]["name"].as_str().map(str::to_string)
+                                    } else {
+                                        None
+                                    },
+                                    args_delta: args.to_string(),
+                                };
+                                entry.2.push_str(args);
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        Ok(Box::pin(stream))
     }
 }

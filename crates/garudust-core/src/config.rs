@@ -15,6 +15,16 @@ pub struct AgentConfig {
     pub api_key: Option<String>,
     pub compression: CompressionConfig,
     pub network: NetworkConfig,
+    #[serde(default)]
+    pub mcp_servers: Vec<McpServerConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpServerConfig {
+    pub name: String,
+    pub command: String,
+    #[serde(default)]
+    pub args: Vec<String>,
 }
 
 impl Default for AgentConfig {
@@ -29,6 +39,7 @@ impl Default for AgentConfig {
             api_key: None,
             compression: CompressionConfig::default(),
             network: NetworkConfig::default(),
+            mcp_servers: Vec::new(),
         }
     }
 }

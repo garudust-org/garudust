@@ -9,11 +9,14 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use garudust_agent::{Agent, AutoApprover};
 use garudust_core::config::AgentConfig;
+use garudust_core::config::McpServerConfig;
 use garudust_memory::{FileMemoryStore, SessionDb};
 use garudust_tools::{
     toolsets::{
         files::{ReadFile, WriteFile},
+        mcp::connect_mcp_server,
         memory::MemoryTool,
+        search::SessionSearch,
         skills::{SkillView, SkillsList},
         terminal::Terminal,
         web::{WebFetch, WebSearch},
@@ -23,6 +26,7 @@ use garudust_tools::{
 use garudust_transport::build_transport;
 use tokio::sync::mpsc;
 
+use tokio::sync::RwLock;
 use tui::{AgentEvent, TuiEvent};
 
 #[derive(Subcommand)]
@@ -108,6 +112,7 @@ fn build_agent(config: Arc<AgentConfig>) -> Arc<Agent> {
     registry.register(WriteFile);
     registry.register(Terminal);
     registry.register(MemoryTool);
+    registry.register(SessionSearch);
     registry.register(SkillsList);
     registry.register(SkillView);
 
@@ -118,6 +123,28 @@ fn build_agent(config: Arc<AgentConfig>) -> Arc<Agent> {
         None => agent,
     };
     Arc::new(agent)
+}
+
+async fn attach_mcp_servers(
+    registry: &mut ToolRegistry,
+    servers: &[McpServerConfig],
+) -> Vec<Box<dyn std::any::Any + Send>> {
+    let mut handles: Vec<Box<dyn std::any::Any + Send>> = Vec::new();
+    for srv in servers {
+        match connect_mcp_server(&srv.command, &srv.args).await {
+            Ok((tools, handle)) => {
+                tracing::info!(server = %srv.name, tools = tools.len(), "MCP server connected");
+                for t in tools {
+                    registry.register_arc(t);
+                }
+                handles.push(handle);
+            }
+            Err(e) => {
+                tracing::warn!(server = %srv.name, "failed to connect MCP server: {e}");
+            }
+        }
+    }
+    handles
 }
 
 #[tokio::main]
@@ -162,7 +189,30 @@ async fn main() -> Result<()> {
 
     // ── Agent modes ───────────────────────────────────────────────────────────
     let config = build_config(&cli);
-    let agent = build_agent(config);
+    let agent = {
+        let memory = Arc::new(FileMemoryStore::new(&config.home_dir));
+        let transport = build_transport(&config);
+        let mut registry = ToolRegistry::new();
+        registry.register(WebFetch);
+        registry.register(WebSearch);
+        registry.register(ReadFile);
+        registry.register(WriteFile);
+        registry.register(Terminal);
+        registry.register(MemoryTool);
+        registry.register(SessionSearch);
+        registry.register(SkillsList);
+        registry.register(SkillView);
+        let mcp_handles = attach_mcp_servers(&mut registry, &config.mcp_servers).await;
+        let db = SessionDb::open(&config.home_dir).ok().map(Arc::new);
+        let a = Agent::new(transport, Arc::new(registry), memory, config.clone());
+        let a = match db {
+            Some(db) => a.with_session_db(db),
+            None => a,
+        };
+        // leak mcp_handles so the MCP processes stay alive for the entire run
+        std::mem::forget(mcp_handles);
+        Arc::new(a)
+    };
 
     if let Some(task) = &cli.task {
         // One-shot mode
@@ -180,18 +230,39 @@ async fn main() -> Result<()> {
         let (tx_event, mut rx_event) = mpsc::channel::<TuiEvent>(32);
         let (tx_agent, rx_agent) = mpsc::channel::<AgentEvent>(64);
 
-        let agent2 = agent.clone();
+        let shared_agent = Arc::new(RwLock::new(agent.clone()));
+        let shared_config = config.clone();
         let approver2 = approver.clone();
         let tx_agent2 = tx_agent.clone();
+
         tokio::spawn(async move {
             while let Some(ev) = rx_event.recv().await {
                 match ev {
                     TuiEvent::Quit => break,
+                    TuiEvent::NewSession => {} // agent is stateless per-call; UI already cleared
+                    TuiEvent::ChangeModel(model) => {
+                        let mut new_cfg = (*shared_config).clone();
+                        new_cfg.model = model;
+                        let new_agent = build_agent(Arc::new(new_cfg));
+                        *shared_agent.write().await = new_agent;
+                    }
                     TuiEvent::Submit(task) => {
                         let _ = tx_agent2.send(AgentEvent::Thinking).await;
-                        match agent2.run(&task, approver2.clone(), "cli").await {
+                        let current_agent = shared_agent.read().await.clone();
+
+                        let (chunk_tx, mut chunk_rx) = mpsc::unbounded_channel::<String>();
+                        let tx_agent3 = tx_agent2.clone();
+                        tokio::spawn(async move {
+                            while let Some(delta) = chunk_rx.recv().await {
+                                let _ = tx_agent3.send(AgentEvent::OutputChunk(delta)).await;
+                            }
+                        });
+
+                        match current_agent
+                            .run_streaming(&task, approver2.clone(), "cli", chunk_tx)
+                            .await
+                        {
                             Ok(r) => {
-                                let _ = tx_agent2.send(AgentEvent::Output(r.output)).await;
                                 let _ = tx_agent2
                                     .send(AgentEvent::Done {
                                         iterations: r.iterations,

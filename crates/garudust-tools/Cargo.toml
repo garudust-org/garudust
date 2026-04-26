@@ -16,3 +16,4 @@ thiserror       = { workspace = true }
 reqwest         = { workspace = true }
 futures         = { workspace = true }
 serde_yaml      = { workspace = true }
+rmcp            = { workspace = true }

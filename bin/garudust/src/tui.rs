@@ -15,15 +15,11 @@ use ratatui::{
 };
 use tokio::sync::mpsc;
 
-#[derive(Debug)]
-pub enum TuiEvent {
-    Submit(String),
-    Quit,
-}
-
 #[derive(Debug, Clone)]
 pub enum AgentEvent {
+    #[allow(dead_code)]
     Output(String),
+    OutputChunk(String),
     Thinking,
     Done {
         iterations: u32,
@@ -33,11 +29,20 @@ pub enum AgentEvent {
     Error(String),
 }
 
+#[derive(Debug, Clone)]
+pub enum TuiEvent {
+    Submit(String),
+    Quit,
+    NewSession,
+    ChangeModel(String),
+}
+
 pub struct Tui {
     input: String,
     messages: Vec<(Role, String)>,
     status: String,
     scroll: u16,
+    streaming: bool,
 }
 
 #[derive(Clone)]
@@ -54,6 +59,7 @@ impl Tui {
             messages: Vec::new(),
             status: "Ready — press Enter to send, Ctrl+C to quit".into(),
             scroll: 0,
+            streaming: false,
         }
     }
 
@@ -92,10 +98,58 @@ impl Tui {
                         (KeyCode::Enter, _) => {
                             let text = tui.input.trim().to_string();
                             if !text.is_empty() {
-                                tui.messages.push((Role::User, text.clone()));
-                                tui.status = "Thinking…".into();
                                 tui.input.clear();
-                                let _ = tx_event.send(TuiEvent::Submit(text)).await;
+                                if let Some(rest) = text.strip_prefix('/') {
+                                    let (cmd, args) = rest
+                                        .split_once(' ')
+                                        .map_or((rest, None), |(c, a)| (c, Some(a.trim())));
+                                    match cmd {
+                                        "new" => {
+                                            tui.messages.clear();
+                                            tui.messages.push((
+                                                Role::Assistant,
+                                                "New session started.".into(),
+                                            ));
+                                            let _ = tx_event.send(TuiEvent::NewSession).await;
+                                        }
+                                        "model" => match args {
+                                            Some(m) if !m.is_empty() => {
+                                                tui.messages.push((
+                                                    Role::Assistant,
+                                                    format!("Model → {m}"),
+                                                ));
+                                                let _ = tx_event
+                                                    .send(TuiEvent::ChangeModel(m.to_string()))
+                                                    .await;
+                                            }
+                                            _ => tui.messages.push((
+                                                Role::Error,
+                                                "Usage: /model <model-name>".into(),
+                                            )),
+                                        },
+                                        "help" => {
+                                            tui.messages.push((
+                                                Role::Assistant,
+                                                "/new       — clear history and start fresh\n\
+                                                 /model <n> — switch to a different model\n\
+                                                 /help      — show this help"
+                                                    .into(),
+                                            ));
+                                        }
+                                        _ => {
+                                            tui.messages.push((
+                                                Role::Error,
+                                                format!(
+                                                    "Unknown command /{cmd}. Type /help for help."
+                                                ),
+                                            ));
+                                        }
+                                    }
+                                } else {
+                                    tui.messages.push((Role::User, text.clone()));
+                                    tui.status = "Thinking…".into();
+                                    let _ = tx_event.send(TuiEvent::Submit(text)).await;
+                                }
                             }
                         }
                         (KeyCode::Backspace, _) => {
@@ -122,12 +176,24 @@ impl Tui {
     fn handle_agent_event(&mut self, ev: AgentEvent) {
         match ev {
             AgentEvent::Output(text) => {
+                self.streaming = false;
                 self.messages.push((Role::Assistant, text));
                 self.status = "Ready".into();
-                // auto-scroll to bottom
+                self.scroll = u16::MAX;
+            }
+            AgentEvent::OutputChunk(delta) => {
+                if self.streaming {
+                    if let Some((Role::Assistant, buf)) = self.messages.last_mut() {
+                        buf.push_str(&delta);
+                    }
+                } else {
+                    self.streaming = true;
+                    self.messages.push((Role::Assistant, delta));
+                }
                 self.scroll = u16::MAX;
             }
             AgentEvent::Thinking => {
+                self.streaming = false;
                 self.status = "Thinking…".into();
             }
             AgentEvent::Done {
@@ -135,11 +201,13 @@ impl Tui {
                 input_tokens,
                 output_tokens,
             } => {
+                self.streaming = false;
                 self.status = format!(
                     "Done — {iterations} iterations | {input_tokens} in / {output_tokens} out tokens"
                 );
             }
             AgentEvent::Error(e) => {
+                self.streaming = false;
                 self.messages.push((Role::Error, format!("Error: {e}")));
                 self.status = "Error — ready for next task".into();
             }

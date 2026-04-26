@@ -33,5 +33,6 @@ pub trait ProviderTransport: Send + Sync + 'static {
         &self,
         messages: &[Message],
         config: &InferenceConfig,
+        tools: &[ToolSchema],
     ) -> Result<StreamResult, TransportError>;
 }

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use clap::Parser;
 use garudust_agent::{Agent, AutoApprover};
+use garudust_core::config::McpServerConfig;
 use garudust_core::{config::AgentConfig, platform::PlatformAdapter};
 use garudust_cron::CronScheduler;
 use garudust_gateway::{create_router, AppState, GatewayHandler, SessionRegistry};
@@ -13,7 +14,9 @@ use garudust_platforms::{
 use garudust_tools::{
     toolsets::{
         files::{ReadFile, WriteFile},
+        mcp::connect_mcp_server,
         memory::MemoryTool,
+        search::SessionSearch,
         skills::{SkillView, SkillsList},
         terminal::Terminal,
         web::{WebFetch, WebSearch},
@@ -69,7 +72,7 @@ fn build_config(cli: &Cli) -> Arc<AgentConfig> {
     Arc::new(config)
 }
 
-fn build_agent(config: Arc<AgentConfig>, db: Arc<SessionDb>) -> Arc<Agent> {
+async fn build_agent(config: Arc<AgentConfig>, db: Arc<SessionDb>) -> Arc<Agent> {
     let memory = Arc::new(FileMemoryStore::new(&config.home_dir));
     let transport = build_transport(&config);
 
@@ -80,10 +83,36 @@ fn build_agent(config: Arc<AgentConfig>, db: Arc<SessionDb>) -> Arc<Agent> {
     registry.register(WriteFile);
     registry.register(Terminal);
     registry.register(MemoryTool);
+    registry.register(SessionSearch);
     registry.register(SkillsList);
     registry.register(SkillView);
 
+    let mcp_handles = attach_mcp_servers(&mut registry, &config.mcp_servers).await;
+    std::mem::forget(mcp_handles);
+
     Arc::new(Agent::new(transport, Arc::new(registry), memory, config).with_session_db(db))
+}
+
+async fn attach_mcp_servers(
+    registry: &mut ToolRegistry,
+    servers: &[McpServerConfig],
+) -> Vec<Box<dyn std::any::Any + Send>> {
+    let mut handles: Vec<Box<dyn std::any::Any + Send>> = Vec::new();
+    for srv in servers {
+        match connect_mcp_server(&srv.command, &srv.args).await {
+            Ok((tools, handle)) => {
+                tracing::info!(server = %srv.name, tools = tools.len(), "MCP server connected");
+                for t in tools {
+                    registry.register_arc(t);
+                }
+                handles.push(handle);
+            }
+            Err(e) => {
+                tracing::warn!(server = %srv.name, "failed to connect MCP server: {e}");
+            }
+        }
+    }
+    handles
 }
 
 async fn start_platform(
@@ -108,7 +137,7 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     let config = build_config(&cli);
     let db = Arc::new(SessionDb::open(&config.home_dir)?);
-    let agent = build_agent(config.clone(), db.clone());
+    let agent = build_agent(config.clone(), db.clone()).await;
     let sessions = SessionRegistry::new();
 
     // ── Platform adapters ─────────────────────────────────────────────────────

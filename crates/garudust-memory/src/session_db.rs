@@ -22,6 +22,7 @@ impl SessionDb {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn save_session(
         &self,
         id: &str,
