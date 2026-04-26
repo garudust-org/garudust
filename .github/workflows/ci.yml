@@ -43,19 +43,20 @@ jobs:
         run: cargo check --workspace --all-targets
 
       - name: cargo clippy
-        run: cargo clippy --workspace --all-targets -- \
-               -W clippy::all \
-               -W clippy::pedantic \
-               -A clippy::module_name_repetitions \
-               -A clippy::must_use_candidate \
-               -A clippy::missing_errors_doc \
-               -A clippy::missing_panics_doc \
-               -A clippy::return_self_not_must_use \
-               -A clippy::too_many_arguments \
-               -A clippy::large_futures \
-               -A clippy::doc_markdown \
-               -A clippy::field_reassign_with_default \
-               -A clippy::too_many_lines
+        run: |
+          cargo clippy --workspace --all-targets -- \
+            -W clippy::all \
+            -W clippy::pedantic \
+            -A clippy::module_name_repetitions \
+            -A clippy::must_use_candidate \
+            -A clippy::missing_errors_doc \
+            -A clippy::missing_panics_doc \
+            -A clippy::return_self_not_must_use \
+            -A clippy::too_many_arguments \
+            -A clippy::large_futures \
+            -A clippy::doc_markdown \
+            -A clippy::field_reassign_with_default \
+            -A clippy::too_many_lines
 
   fmt:
     name: Rustfmt
