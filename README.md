@@ -4,193 +4,219 @@ A self-improving AI agent written in Rust — inspired by [Hermes Agent](https:/
 
 ## Features
 
-- **Multi-provider LLM support** — OpenAI-compatible endpoints (OpenRouter, LM Studio, Ollama, …) and Anthropic direct, switchable via env var, no code changes
-- **Tool system** — extensible registry; built-in tools for file I/O, terminal execution, web fetch, memory, and skills
-- **Skills** — load SKILL.md files from `~/.garudust/skills/`; index injected into every system prompt automatically
-- **Persistent memory** — `MEMORY.md` and `USER.md` under `~/.garudust/memories/`, updated by the agent via the `memory` tool
-- **Context compressor** — automatically summarizes old conversation turns before the context window fills up
+- **Multi-provider LLM** — Anthropic direct or any OpenAI-compatible endpoint (OpenRouter, LM Studio, Ollama, …); switch via config, no code changes
+- **Tool system** — extensible registry; built-in tools for file I/O, terminal execution, web fetch, web search, memory, and skills
+- **Skills** — load `SKILL.md` files from `~/.garudust/skills/`; index injected into every system prompt automatically
+- **Persistent memory** — `MEMORY.md` and `USER.md` under `~/.garudust/memories/`, updated mid-session by the agent via the `memory` tool
+- **Session persistence** — every run saved to `~/.garudust/state.db` (SQLite WAL + FTS5 full-text search)
+- **Context compressor** — automatically summarises old turns before the context window fills up
 - **Parallel tool dispatch** — multiple tool calls in one turn run concurrently via `tokio::join_all`
-- **Interactive TUI** — `ratatui`-based terminal UI with message history, status bar, and input box
-- **Messaging platforms** — Telegram and Discord adapters (feature-gated); more can be added by implementing `PlatformAdapter`
-- **Cron scheduler** — `tokio-cron-scheduler` wrapper for unattended recurring tasks
-- **HTTP gateway** — `axum` server with `/health` endpoint; session store backed by SQLite WAL + FTS5
+- **Interactive TUI** — `ratatui`-based terminal UI with message history, status bar, and scrolling
+- **Messaging platforms** — Telegram, Discord, and HTTP Webhook adapters (feature-gated)
+- **Cron scheduler** — schedule recurring agent tasks via `GARUDUST_CRON_JOBS`
+- **HTTP API** — `axum` server with `GET /health` and `POST /chat`
+
+---
+
+## Quick Install
+
+### Prerequisites
+
+- Rust 1.75+
+- An API key from [OpenRouter](https://openrouter.ai) or [Anthropic](https://console.anthropic.com)
+
+### Build from source
+
+```bash
+git clone https://github.com/ninenox/garudust
+cd garudust
+cargo build --release
+```
+
+Add the binaries to your PATH:
+
+```bash
+export PATH="$PATH:$(pwd)/target/release"
+```
+
+### First-time setup
+
+```bash
+garudust setup
+```
+
+The wizard picks your provider, stores the API key in `~/.garudust/.env`, and runs `garudust doctor` to confirm everything is wired correctly.
+
+---
+
+## Usage
+
+### Interactive TUI
+
+```bash
+garudust
+```
+
+`Enter` — send · `↑ ↓` — scroll · `Ctrl+C` — quit
+
+### One-shot task
+
+```bash
+garudust "list all Rust files changed in the last 7 days"
+```
+
+### Subcommands
+
+| Command | Description |
+|---------|-------------|
+| `garudust setup` | Interactive first-time wizard |
+| `garudust doctor` | Check provider, API key, connectivity, memory dir, session DB |
+| `garudust config show` | Show active config and file paths |
+| `garudust config set KEY VAL` | Set a config value or secret |
+
+#### `config set` examples
+
+```bash
+garudust config set model anthropic/claude-opus-4-7
+garudust config set OPENROUTER_API_KEY sk-or-...
+garudust config set ANTHROPIC_API_KEY sk-ant-...
+```
+
+Secrets (`*_API_KEY`, `*_TOKEN`) go to `~/.garudust/.env`; settings go to `~/.garudust/config.yaml`.
+
+---
+
+## Headless Server
+
+```bash
+garudust-server \
+  --telegram-token 123456:ABC... \
+  --discord-token  Bot_...
+```
+
+The server starts all configured platform adapters, the webhook listener, the cron scheduler, and the HTTP gateway simultaneously.
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OPENROUTER_API_KEY` | — | OpenRouter (or any OpenAI-compat) key |
+| `ANTHROPIC_API_KEY` | — | Anthropic key (auto-selects Anthropic transport) |
+| `BRAVE_SEARCH_API_KEY` | — | Brave Search API key (enables `web_search` tool) |
+| `GARUDUST_MODEL` | `anthropic/claude-sonnet-4-6` | Model identifier |
+| `GARUDUST_PORT` | `3000` | HTTP gateway port |
+| `GARUDUST_WEBHOOK_PORT` | `3001` | Webhook adapter port (`0` = disabled) |
+| `TELEGRAM_TOKEN` | — | Telegram bot token |
+| `DISCORD_TOKEN` | — | Discord bot token |
+| `GARUDUST_CRON_JOBS` | — | Comma-separated `"cron_expr=task"` pairs |
+| `RUST_LOG` | `info` | Log level |
+
+#### Cron example
+
+```bash
+GARUDUST_CRON_JOBS="0 9 * * *=Write a morning briefing and save it to ~/briefing.md" \
+garudust-server
+```
+
+#### Webhook example
+
+```bash
+# Server receives POST /webhook and POSTs the agent reply back to callback_url
+curl -X POST http://localhost:3001/webhook \
+  -H "Content-Type: application/json" \
+  -d '{"text":"summarise today","callback_url":"https://your-app/reply"}'
+```
+
+#### HTTP chat example
+
+```bash
+curl -X POST http://localhost:3000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message":"what time is it in Tokyo?"}'
+# → {"output":"...","session_id":"...","iterations":1,"input_tokens":120,"output_tokens":30}
+```
+
+---
+
+## Built-in Tools
+
+| Tool | Description |
+|------|-------------|
+| `web_fetch` | Fetch content from a URL |
+| `web_search` | Search the web via Brave Search API |
+| `read_file` | Read a file from the filesystem |
+| `write_file` | Write content to a file |
+| `terminal` | Run a shell command (requires approval by default) |
+| `memory` | Add / read / replace / remove memory entries |
+| `skills_list` | List all available skills |
+| `skill_view` | Load a skill's full instructions by name |
+
+---
+
+## Skills
+
+Place a `SKILL.md` anywhere under `~/.garudust/skills/`:
+
+```
+~/.garudust/skills/
+  git-workflow/SKILL.md
+  daily-standup/SKILL.md
+```
+
+Minimal `SKILL.md`:
+
+```markdown
+---
+name: git-workflow
+description: Opinionated Git commit and PR workflow
+version: 1.0.0
+platforms: [macos, linux]   # omit to load on all platforms
+---
+
+Full instructions here…
+```
+
+The agent sees the skills index in every system prompt and loads individual skills with `skill_view`.
+
+---
 
 ## Crate Layout
 
 ```
 crates/
-  garudust-core        traits, types, errors — no I/O, depended on by everything
-  garudust-transport   LLM adapters (OpenAI-compat, Anthropic)
-  garudust-tools       tool registry + built-in toolsets
-  garudust-memory      file-backed memory store + SQLite session DB
-  garudust-agent       agent loop, context compressor, prompt builder
-  garudust-platforms   platform adapters (Telegram, Discord)
-  garudust-cron        cron scheduler
-  garudust-gateway     axum HTTP gateway, session registry, platform handler
+  garudust-core        Traits, types, errors — no I/O; depended on by everything
+  garudust-transport   LLM adapters: Anthropic, OpenAI-compatible
+  garudust-tools       Tool registry + built-in toolsets
+  garudust-memory      FileMemoryStore (markdown) + SessionDb (SQLite + FTS5)
+  garudust-agent       Agent run loop, context compressor, prompt builder
+  garudust-platforms   Platform adapters: Telegram, Discord, Webhook
+  garudust-cron        Cron scheduler — spawns agent.run() on schedule
+  garudust-gateway     axum HTTP gateway, SessionRegistry, /health + /chat
 
 bin/
-  garudust             CLI binary — one-shot and interactive TUI
-  garudust-server      headless server — starts platform adapters + HTTP gateway
+  garudust             CLI binary — TUI, one-shot, setup, doctor, config
+  garudust-server      Headless server — platforms + HTTP + cron
 ```
 
-## Quick Start
-
-### Prerequisites
-
-- Rust 1.75+
-- An API key from [OpenRouter](https://openrouter.ai) (or any OpenAI-compatible provider) or Anthropic
-
-### Install
-
-```bash
-git clone https://github.com/yourname/garudust
-cd garudust
-cargo build --release
-```
-
-### Run
-
-**One-shot task**
-
-```bash
-OPENROUTER_API_KEY=sk-or-... cargo run -p garudust -- "list the files in the current directory"
-```
-
-**Interactive TUI**
-
-```bash
-OPENROUTER_API_KEY=sk-or-... cargo run -p garudust
-```
-
-Keys: `Enter` to send · `↑ ↓` to scroll · `Ctrl+C` to quit
-
-**Use Anthropic directly**
-
-```bash
-ANTHROPIC_API_KEY=sk-ant-... cargo run -p garudust -- --model claude-sonnet-4-6 "hello"
-```
-
-**Headless server with Telegram**
-
-```bash
-OPENROUTER_API_KEY=sk-or-... \
-TELEGRAM_TOKEN=123456:ABC... \
-cargo run -p garudust-server
-```
-
-### Environment Variables
-
-| Variable | Default | Description |
-|---|---|---|
-| `OPENROUTER_API_KEY` | — | OpenRouter API key (or any OpenAI-compat key) |
-| `ANTHROPIC_API_KEY` | — | Anthropic API key (auto-selects Anthropic transport) |
-| `GARUDUST_MODEL` | `anthropic/claude-sonnet-4-6` | Model identifier |
-| `GARUDUST_BASE_URL` | `https://openrouter.ai/api/v1` | Override API base URL |
-| `GARUDUST_PORT` | `3000` | HTTP gateway port |
-| `TELEGRAM_TOKEN` | — | Telegram bot token |
-| `DISCORD_TOKEN` | — | Discord bot token |
-| `RUST_LOG` | `warn` | Log level (`info`, `debug`, …) |
-
-## Built-in Tools
-
-| Tool | Toolset | Description |
-|---|---|---|
-| `web_fetch` | web | Fetch content from a URL |
-| `read_file` | files | Read a file from the filesystem |
-| `write_file` | files | Write content to a file |
-| `terminal` | terminal | Run a shell command (with approval) |
-| `memory` | memory | Add / read / replace / remove memory entries |
-| `skills_list` | skills | List all available skills |
-| `skill_view` | skills | Load a skill's full instructions by name |
-
-## Skills
-
-Place a `SKILL.md` file anywhere under `~/.garudust/skills/`:
-
-```
-~/.garudust/skills/
-  my-skill/
-    SKILL.md
-  another-skill/
-    SKILL.md
-```
-
-Minimal `SKILL.md` format:
-
-```markdown
 ---
-name: my-skill
-description: Does something useful
-version: 1.0.0
-platforms: [macos, linux]   # omit to load on all platforms
----
-
-# My Skill
-
-Full instructions here…
-```
-
-The agent sees the skills index in every system prompt and can load individual skills with `skill_view`.
-
-## Memory
-
-The agent persists knowledge across sessions in two files:
-
-- `~/.garudust/memories/MEMORY.md` — facts, conventions, tool quirks
-- `~/.garudust/memories/USER.md` — user preferences and profile
-
-Both are injected into the system prompt as a frozen snapshot at session start. The agent updates them mid-session via the `memory` tool; changes take effect next session.
-
-## Adding a Platform
-
-Implement the `PlatformAdapter` trait from `garudust-core`:
-
-```rust
-#[async_trait]
-impl PlatformAdapter for MyPlatform {
-    fn name(&self) -> &'static str { "myplatform" }
-    async fn start(&self, handler: Arc<dyn MessageHandler>) -> Result<(), PlatformError> { … }
-    async fn send_message(&self, channel: &ChannelId, message: OutboundMessage) -> Result<(), PlatformError> { … }
-    async fn send_stream(&self, channel: &ChannelId, stream: Pin<Box<dyn Stream<Item = String> + Send>>) -> Result<(), PlatformError> { … }
-}
-```
-
-Register it in `garudust-server/src/main.rs` alongside the existing Telegram/Discord adapters.
-
-## Adding a Tool
-
-Implement the `Tool` trait from `garudust-core`:
-
-```rust
-pub struct MyTool;
-
-#[async_trait]
-impl Tool for MyTool {
-    fn name(&self) -> &'static str { "my_tool" }
-    fn description(&self) -> &'static str { "Does something" }
-    fn toolset(&self) -> &'static str { "mytoolset" }
-    fn schema(&self) -> serde_json::Value { json!({ "type": "object", "properties": {} }) }
-
-    async fn execute(&self, params: serde_json::Value, ctx: &ToolContext) -> Result<ToolResult, ToolError> {
-        Ok(ToolResult::ok("", "result"))
-    }
-}
-```
-
-Register it with `registry.register(MyTool)` before creating the agent.
 
 ## What's Next
 
-- [ ] Streaming output (SSE in gateway + TUI delta rendering)
-- [ ] Session persistence to SQLite
-- [ ] `delegate_task` — spawn parallel subagents
-- [ ] `session_search` — FTS5 search across past conversations
-- [ ] `web_search` — Exa / SearXNG integration
-- [ ] Bedrock and Codex transport adapters
-- [ ] Browser tool (CDP via `chromiumoxide`)
-- [ ] TTS / STT voice mode
+- [ ] Streaming output — SSE in HTTP gateway + delta rendering in TUI
+- [ ] `delegate_task` tool — spawn parallel sub-agents for decomposed work
+- [ ] `session_search` tool — FTS5 search across past conversations
+- [ ] MCP client — connect to external tool servers via `rmcp`
+- [ ] Additional transports — Ollama, AWS Bedrock
+- [ ] Additional platforms — Slack, Matrix, Signal
+- [ ] Browser tool — CDP via `chromiumoxide`
 - [ ] `/model`, `/new`, `/memory` slash commands in TUI
-- [ ] Slack, Matrix, Signal platform adapters
+- [ ] Docker image + `docker-compose` for one-command server deploy
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
