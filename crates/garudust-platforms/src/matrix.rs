@@ -66,7 +66,7 @@ impl PlatformAdapter for MatrixAdapter {
         let _ = self.client.set(client.clone());
 
         // Filter out our own messages
-        let bot_user_id = client.user_id().map(|id| id.to_owned());
+        let bot_user_id = client.user_id().map(std::borrow::ToOwned::to_owned);
 
         client.add_event_handler(move |ev: OriginalSyncRoomMessageEvent, _room: Room| {
             let handler = handler.clone();

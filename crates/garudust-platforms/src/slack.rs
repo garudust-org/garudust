@@ -27,7 +27,7 @@ impl SlackAdapter {
 }
 
 #[derive(Deserialize)]
-struct Envelope {
+struct SlackEnvelope {
     envelope_id: Option<String>,
     #[serde(rename = "type")]
     kind: String,
@@ -105,14 +105,14 @@ async fn socket_loop(wss_url: &str, handler: Arc<dyn MessageHandler>) {
             _ => continue,
         };
 
-        let Ok(env) = serde_json::from_str::<Envelope>(&text) else {
+        let Ok(env) = serde_json::from_str::<SlackEnvelope>(&text) else {
             continue;
         };
 
         // Acknowledge every envelope immediately
         if let Some(eid) = &env.envelope_id {
             let ack = format!(r#"{{"envelope_id":"{eid}"}}"#);
-            let _ = write.send(Message::Text(ack.into())).await;
+            let _ = write.send(Message::Text(ack)).await;
         }
 
         if env.kind != "events_api" {
