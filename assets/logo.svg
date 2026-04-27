@@ -1,109 +1,245 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="400" height="300">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 540 490" width="540" height="490">
   <defs>
-    <linearGradient id="wingGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#F5A623;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#E8630A;stop-opacity:1" />
+    <linearGradient id="wG" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFC044"/>
+      <stop offset="100%" stop-color="#D4500A"/>
     </linearGradient>
-    <linearGradient id="bodyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" style="stop-color:#FFC044;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#D4500A;stop-opacity:1" />
+    <linearGradient id="bG" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFD070"/>
+      <stop offset="100%" stop-color="#E06010"/>
+    </linearGradient>
+    <linearGradient id="crownG" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#FFE566"/>
+      <stop offset="100%" stop-color="#F5A623"/>
     </linearGradient>
   </defs>
 
-  <!-- ── Background ── -->
-  <rect width="400" height="300" fill="#0F1117" rx="16"/>
+  <!-- Background -->
+  <rect width="540" height="490" fill="#0D0F18" rx="18"/>
 
-  <!-- ══════════════════════════════════════
-       GARUDA SILHOUETTE  (symmetric, flat)
-       centre-x = 200, crown top ≈ y=28
-  ══════════════════════════════════════ -->
+  <!-- ═══════════════════════════════════
+       LEFT WING  (arcs upward from shoulder)
+  ═══════════════════════════════════ -->
 
-  <!-- Left outer wing — large sweeping feather group -->
-  <polygon points="200,120 80,40  30,90  70,130 130,145" fill="url(#wingGrad)"/>
-  <!-- Left inner wing fill -->
-  <polygon points="200,120 100,70 75,115 130,145" fill="#E8820A"/>
+  <!-- Main left wing body -->
+  <path d="M 228,178
+           C 195,155 115,108 18,72
+           L 25,105
+           C 75,135 148,162 205,178 Z"
+        fill="url(#wG)"/>
 
-  <!-- Right outer wing (mirror) -->
-  <polygon points="200,120 320,40 370,90 330,130 270,145" fill="url(#wingGrad)"/>
-  <!-- Right inner wing fill -->
-  <polygon points="200,120 300,70 325,115 270,145" fill="#E8820A"/>
+  <!-- Left wing — lower feather tier -->
+  <path d="M 205,178
+           C 165,185 115,200 72,225
+           L 80,232
+           C 120,210 168,195 210,186 Z"
+        fill="#E8820A"/>
 
-  <!-- Wing feather tips — left -->
-  <polygon points="80,40  50,30  55,60  80,50"  fill="#FFC044"/>
-  <polygon points="55,65  30,60  38,88  62,80"  fill="#FFC044"/>
-  <polygon points="40,95  18,98  28,122 52,112" fill="#FFC044"/>
+  <!-- Left wing — feather tips (top edge) -->
+  <polygon points="18,72  5,68  10,92  28,88"  fill="#FFD070"/>
+  <polygon points="42,82  28,76  30,100 46,96"  fill="#FFD070"/>
+  <polygon points="66,92  52,88  52,112 68,108" fill="#FFD070"/>
 
-  <!-- Wing feather tips — right -->
-  <polygon points="320,40 350,30 345,60 320,50" fill="#FFC044"/>
-  <polygon points="345,65 370,60 362,88 338,80" fill="#FFC044"/>
-  <polygon points="360,95 382,98 372,122 348,112" fill="#FFC044"/>
+  <!-- Left wing — feather tips (bottom row) -->
+  <polygon points="72,225  55,230  62,245  78,240" fill="#FFC044"/>
+  <polygon points="95,235  80,238  84,254  98,250" fill="#FFC044"/>
+  <polygon points="118,242 104,244 106,260 120,256" fill="#FFC044"/>
+  <polygon points="142,246 128,247 130,263 144,259" fill="#FFC044"/>
 
-  <!-- Body -->
-  <polygon points="200,100 175,145 175,200 200,215 225,200 225,145" fill="url(#bodyGrad)"/>
+  <!-- ═══════════════════════════════════
+       RIGHT WING (mirror)
+  ═══════════════════════════════════ -->
 
-  <!-- Chest shield detail -->
-  <polygon points="200,120 185,150 200,165 215,150" fill="#FFC044" opacity="0.6"/>
+  <!-- Main right wing body -->
+  <path d="M 312,178
+           C 345,155 425,108 522,72
+           L 515,105
+           C 465,135 392,162 335,178 Z"
+        fill="url(#wG)"/>
 
-  <!-- Tail feathers -->
-  <polygon points="175,200 155,230 170,235 200,215 230,235 245,230 225,200" fill="url(#wingGrad)"/>
-  <line x1="200" y1="215" x2="200" y2="238" stroke="#FFC044" stroke-width="2"/>
-  <line x1="185" y1="218" x2="178" y2="237" stroke="#FFC044" stroke-width="1.5"/>
-  <line x1="215" y1="218" x2="222" y2="237" stroke="#FFC044" stroke-width="1.5"/>
+  <!-- Right wing — lower feather tier -->
+  <path d="M 335,178
+           C 375,185 425,200 468,225
+           L 460,232
+           C 420,210 372,195 330,186 Z"
+        fill="#E8820A"/>
 
-  <!-- Legs & talons -->
-  <!-- Left leg -->
-  <rect x="183" y="200" width="9" height="22" rx="3" fill="#D4500A"/>
-  <polygon points="192,222 172,232 176,238 192,228" fill="#E8630A"/>
-  <polygon points="192,222 184,235 189,239 194,227" fill="#E8630A"/>
-  <polygon points="188,226 182,238 187,241 192,229" fill="#FFC044" opacity="0.7"/>
-  <!-- Right leg -->
-  <rect x="208" y="200" width="9" height="22" rx="3" fill="#D4500A"/>
-  <polygon points="208,222 228,232 224,238 208,228" fill="#E8630A"/>
-  <polygon points="208,222 216,235 211,239 206,227" fill="#E8630A"/>
-  <polygon points="212,226 218,238 213,241 208,229" fill="#FFC044" opacity="0.7"/>
+  <!-- Right wing — feather tips (top) -->
+  <polygon points="522,72  535,68  530,92  512,88" fill="#FFD070"/>
+  <polygon points="498,82  512,76  510,100 494,96" fill="#FFD070"/>
+  <polygon points="474,92  488,88  488,112 472,108" fill="#FFD070"/>
+
+  <!-- Right wing — feather tips (bottom row) -->
+  <polygon points="468,225 485,230 478,245 462,240" fill="#FFC044"/>
+  <polygon points="445,235 460,238 456,254 442,250" fill="#FFC044"/>
+  <polygon points="422,242 436,244 434,260 420,256" fill="#FFC044"/>
+  <polygon points="398,246 412,247 410,263 396,259" fill="#FFC044"/>
+
+  <!-- ═══════════════════════════════════
+       BODY
+  ═══════════════════════════════════ -->
 
   <!-- Neck -->
-  <polygon points="190,100 210,100 212,120 188,120" fill="#E8820A"/>
+  <rect x="255" y="150" width="30" height="30" rx="6" fill="#E8820A"/>
 
-  <!-- Head -->
-  <ellipse cx="200" cy="88" rx="22" ry="24" fill="url(#bodyGrad)"/>
+  <!-- Torso -->
+  <path d="M 222,178 L 318,178 L 308,272 L 232,272 Z" fill="url(#bG)"/>
 
-  <!-- Beak (eagle) -->
-  <polygon points="200,82 222,90 218,100 200,96" fill="#FFC044"/>
-  <polygon points="200,88 220,93 216,100 200,96" fill="#D4500A"/>
+  <!-- Collar / necklace -->
+  <path d="M 222,178 C 236,171 248,168 270,168 C 292,168 304,171 318,178
+           L 312,190 C 300,183 287,180 270,180 C 253,180 240,183 228,190 Z"
+        fill="#FFD070"/>
+  <!-- Collar gem dots -->
+  <circle cx="248" cy="180" r="4" fill="#FFA000"/>
+  <circle cx="270" cy="176" r="5" fill="#FFD070"/>
+  <circle cx="292" cy="180" r="4" fill="#FFA000"/>
 
-  <!-- Eye -->
-  <circle cx="208" cy="82" r="5" fill="#0F1117"/>
-  <circle cx="209" cy="81" r="2" fill="#FFC044"/>
-  <circle cx="210" cy="80" r="1" fill="white"/>
+  <!-- Chest ornament -->
+  <circle cx="270" cy="215" r="24" fill="#FFD070" stroke="#D4500A" stroke-width="2"/>
+  <polygon points="270,194 286,215 270,236 254,215" fill="#E8630A"/>
+  <circle cx="270" cy="215" r="9"  fill="#FFD070"/>
+  <circle cx="270" cy="215" r="5"  fill="#E8630A"/>
 
-  <!-- Crown / crest feathers -->
-  <polygon points="200,64 193,44 198,66"  fill="#FFC044"/>
-  <polygon points="200,64 200,42 203,66"  fill="#FFD570"/>
-  <polygon points="200,64 207,44 202,66"  fill="#FFC044"/>
-  <polygon points="200,66 186,50 192,68"  fill="#E8820A" opacity="0.8"/>
-  <polygon points="200,66 214,50 208,68"  fill="#E8820A" opacity="0.8"/>
+  <!-- Waist belt (deep blue, like Thai Garuda) -->
+  <path d="M 234,268 C 246,273 258,275 270,275 C 282,275 294,273 306,268
+           L 308,288 C 296,293 283,295 270,295 C 257,295 244,293 232,288 Z"
+        fill="#1a3a6e"/>
+  <!-- Belt centrepiece -->
+  <polygon points="270,270 282,280 270,290 258,280" fill="#FFD070"/>
+  <circle cx="270" cy="280" r="5" fill="#1a3a6e"/>
 
-  <!-- ══════════════════════
+  <!-- ═══════════════════════════════════
+       TAIL FEATHERS
+  ═══════════════════════════════════ -->
+  <path d="M 234,288 C 244,308 256,338 258,368 L 270,376 L 282,368
+           C 284,338 296,308 306,288 Z"
+        fill="url(#wG)"/>
+  <line x1="270" y1="295" x2="270" y2="374" stroke="#FFD070" stroke-width="1.5"/>
+  <line x1="258" y1="295" x2="250" y2="370" stroke="#FFC044" stroke-width="1"/>
+  <line x1="282" y1="295" x2="290" y2="370" stroke="#FFC044" stroke-width="1"/>
+  <line x1="247" y1="300" x2="238" y2="365" stroke="#E8820A" stroke-width="1"/>
+  <line x1="293" y1="300" x2="302" y2="365" stroke="#E8820A" stroke-width="1"/>
+
+  <!-- ═══════════════════════════════════
+       LEGS — spread wide to sides (Thai style)
+  ═══════════════════════════════════ -->
+
+  <!-- Left leg -->
+  <path d="M 245,283 C 230,298 200,325 155,358 L 135,372 L 112,382"
+        stroke="#D4500A" stroke-width="13" fill="none" stroke-linecap="round"/>
+  <path d="M 245,283 C 228,305 210,330 175,360"
+        stroke="#FFC044" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.4"/>
+  <!-- Left talons -->
+  <path d="M 112,382 C  92,372  76,380  62,390" stroke="#D4500A" stroke-width="8"  fill="none" stroke-linecap="round"/>
+  <path d="M 112,382 C 105,398 102,414  98,425" stroke="#D4500A" stroke-width="7"  fill="none" stroke-linecap="round"/>
+  <path d="M 112,382 C 122,396 125,412 122,423" stroke="#D4500A" stroke-width="7"  fill="none" stroke-linecap="round"/>
+  <!-- Talon highlights -->
+  <path d="M 112,382 C  92,372  76,380  62,390" stroke="#FFC044" stroke-width="2"  fill="none" stroke-linecap="round" opacity="0.5"/>
+  <path d="M 112,382 C 105,398 102,414  98,425" stroke="#FFC044" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.5"/>
+  <path d="M 112,382 C 122,396 125,412 122,423" stroke="#FFC044" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.5"/>
+
+  <!-- Right leg (mirror) -->
+  <path d="M 295,283 C 310,298 340,325 385,358 L 405,372 L 428,382"
+        stroke="#D4500A" stroke-width="13" fill="none" stroke-linecap="round"/>
+  <path d="M 295,283 C 312,305 330,330 365,360"
+        stroke="#FFC044" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.4"/>
+  <!-- Right talons -->
+  <path d="M 428,382 C 448,372 464,380 478,390" stroke="#D4500A" stroke-width="8"  fill="none" stroke-linecap="round"/>
+  <path d="M 428,382 C 435,398 438,414 442,425" stroke="#D4500A" stroke-width="7"  fill="none" stroke-linecap="round"/>
+  <path d="M 428,382 C 418,396 415,412 418,423" stroke="#D4500A" stroke-width="7"  fill="none" stroke-linecap="round"/>
+  <!-- Talon highlights -->
+  <path d="M 428,382 C 448,372 464,380 478,390" stroke="#FFC044" stroke-width="2"  fill="none" stroke-linecap="round" opacity="0.5"/>
+  <path d="M 428,382 C 435,398 438,414 442,425" stroke="#FFC044" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.5"/>
+  <path d="M 428,382 C 418,396 415,412 418,423" stroke="#FFC044" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.5"/>
+
+  <!-- ═══════════════════════════════════
+       HEAD — forward-facing, round
+  ═══════════════════════════════════ -->
+
+  <!-- Head base -->
+  <ellipse cx="270" cy="110" rx="50" ry="52" fill="url(#bG)"/>
+
+  <!-- Face border -->
+  <ellipse cx="270" cy="110" rx="50" ry="52" fill="none" stroke="#FFD070" stroke-width="1.5" opacity="0.5"/>
+
+  <!-- LEFT EYE -->
+  <ellipse cx="251" cy="102" rx="12" ry="13" fill="white"/>
+  <ellipse cx="251" cy="103" rx="8"  ry="9"  fill="#0D0F18"/>
+  <circle  cx="254" cy="100" r="3"   fill="white"/>
+  <!-- Left eyebrow (fierce, angled inward) -->
+  <path d="M 238,90 C 244,85 252,86 258,90" stroke="#7a1500" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+
+  <!-- RIGHT EYE -->
+  <ellipse cx="289" cy="102" rx="12" ry="13" fill="white"/>
+  <ellipse cx="289" cy="103" rx="8"  ry="9"  fill="#0D0F18"/>
+  <circle  cx="292" cy="100" r="3"   fill="white"/>
+  <!-- Right eyebrow -->
+  <path d="M 302,90 C 296,85 288,86 282,90" stroke="#7a1500" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+
+  <!-- Nose / beak bridge -->
+  <path d="M 263,108 C 267,118 273,118 277,108" stroke="#7a1500" stroke-width="2.5" fill="none"/>
+
+  <!-- Mouth (slight fierce curl) -->
+  <path d="M 255,128 C 262,133 278,133 285,128" stroke="#7a1500" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+
+  <!-- Fangs / teeth hint -->
+  <line x1="264" y1="130" x2="263" y2="137" stroke="#FFD070" stroke-width="2"/>
+  <line x1="270" y1="132" x2="270" y2="139" stroke="#FFD070" stroke-width="2"/>
+  <line x1="276" y1="130" x2="277" y2="137" stroke="#FFD070" stroke-width="2"/>
+
+  <!-- Mustache (iconic Thai Garuda curling whiskers) -->
+  <path d="M 260,120 C 250,116 238,120 230,128" stroke="#D4500A" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  <path d="M 280,120 C 290,116 302,120 310,128" stroke="#D4500A" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+
+  <!-- Ear ornaments -->
+  <ellipse cx="220" cy="112" rx="8" ry="12" fill="#E8820A"/>
+  <ellipse cx="220" cy="112" rx="5" ry="8"  fill="#FFD070"/>
+  <ellipse cx="320" cy="112" rx="8" ry="12" fill="#E8820A"/>
+  <ellipse cx="320" cy="112" rx="5" ry="8"  fill="#FFD070"/>
+
+  <!-- ═══════════════════════════════════
+       CROWN (MUKUT) — layered Thai style
+  ═══════════════════════════════════ -->
+
+  <!-- Tier 1 base — widest -->
+  <path d="M 235,62 L 305,62 L 300,72 L 240,72 Z" fill="url(#crownG)"/>
+  <rect x="234" y="68" width="72" height="5" rx="2" fill="#FFD070"/>
+
+  <!-- Tier 2 -->
+  <path d="M 243,52 L 297,52 L 293,62 L 247,62 Z" fill="url(#crownG)"/>
+  <rect x="242" y="58" width="56" height="5" rx="2" fill="#FFE566"/>
+
+  <!-- Tier 3 -->
+  <path d="M 251,42 L 289,42 L 286,52 L 254,52 Z" fill="url(#crownG)"/>
+  <rect x="250" y="48" width="40" height="5" rx="2" fill="#FFD070"/>
+
+  <!-- Tier 4 -->
+  <path d="M 259,32 L 281,32 L 279,42 L 261,42 Z" fill="url(#crownG)"/>
+
+  <!-- Central spire -->
+  <polygon points="270,14 264,32 276,32" fill="url(#crownG)"/>
+  <!-- Spire highlight -->
+  <polygon points="270,14 268,26 272,26" fill="#FFF8C0" opacity="0.7"/>
+  <!-- Spire tip glow -->
+  <circle cx="270" cy="14" r="3" fill="#FFE566" opacity="0.9"/>
+
+  <!-- Crown gems -->
+  <circle cx="253" cy="65" r="3.5" fill="#FF6B00"/>
+  <circle cx="270" cy="60" r="4"   fill="#FFD700"/>
+  <circle cx="287" cy="65" r="3.5" fill="#FF6B00"/>
+  <circle cx="263" cy="55" r="2.5" fill="#FFE566"/>
+  <circle cx="277" cy="55" r="2.5" fill="#FFE566"/>
+
+  <!-- ═══════════════════════════════════
        WORDMARK
-  ══════════════════════ -->
-  <text
-    x="200" y="270"
-    font-family="'SF Mono', 'Fira Code', 'Courier New', monospace"
-    font-size="28"
-    font-weight="700"
-    letter-spacing="6"
-    text-anchor="middle"
-    fill="#F5A623">GARUDUST</text>
-
-  <!-- Thin rule under wordmark -->
-  <line x1="100" y1="278" x2="300" y2="278" stroke="#F5A623" stroke-width="1" opacity="0.4"/>
-  <text
-    x="200" y="292"
-    font-family="'SF Mono', 'Fira Code', monospace"
-    font-size="10"
-    letter-spacing="3"
-    text-anchor="middle"
-    fill="#F5A623"
-    opacity="0.5">AI AGENT RUNTIME</text>
+  ═══════════════════════════════════ -->
+  <text x="270" y="462"
+    font-family="'SF Mono','Fira Code','Courier New',monospace"
+    font-size="30" font-weight="700" letter-spacing="7"
+    text-anchor="middle" fill="#F5A623">GARUDUST</text>
+  <line x1="105" y1="470" x2="435" y2="470" stroke="#F5A623" stroke-width="1" opacity="0.35"/>
+  <text x="270" y="484"
+    font-family="'SF Mono',monospace"
+    font-size="10" letter-spacing="4"
+    text-anchor="middle" fill="#F5A623" opacity="0.45">AI AGENT RUNTIME</text>
 </svg>
