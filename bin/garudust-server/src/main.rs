@@ -10,7 +10,8 @@ use garudust_cron::CronScheduler;
 use garudust_gateway::{create_router, AppState, GatewayHandler, Metrics, SessionRegistry};
 use garudust_memory::{FileMemoryStore, SessionDb};
 use garudust_platforms::{
-    discord::DiscordAdapter, telegram::TelegramAdapter, webhook::WebhookAdapter,
+    discord::DiscordAdapter, matrix::MatrixAdapter, slack::SlackAdapter, telegram::TelegramAdapter,
+    webhook::WebhookAdapter,
 };
 use garudust_tools::{
     toolsets::{
@@ -59,6 +60,21 @@ struct Cli {
 
     #[arg(long, env = "DISCORD_TOKEN")]
     discord_token: Option<String>,
+
+    #[arg(long, env = "SLACK_BOT_TOKEN")]
+    slack_bot_token: Option<String>,
+
+    #[arg(long, env = "SLACK_APP_TOKEN")]
+    slack_app_token: Option<String>,
+
+    #[arg(long, env = "MATRIX_HOMESERVER")]
+    matrix_homeserver: Option<String>,
+
+    #[arg(long, env = "MATRIX_USER")]
+    matrix_user: Option<String>,
+
+    #[arg(long, env = "MATRIX_PASSWORD")]
+    matrix_password: Option<String>,
 
     /// Comma-separated list of cron jobs: "cron_expr=task" pairs
     /// e.g. "0 9 * * *=Good morning report"
@@ -225,6 +241,25 @@ async fn main() -> Result<()> {
 
     if cli.webhook_port > 0 {
         let platform: Arc<dyn PlatformAdapter> = Arc::new(WebhookAdapter::new(cli.webhook_port));
+        start_platform(platform, agent.load_full(), sessions.clone()).await?;
+    }
+
+    if let (Some(bot_token), Some(app_token)) = (&cli.slack_bot_token, &cli.slack_app_token) {
+        let platform: Arc<dyn PlatformAdapter> =
+            Arc::new(SlackAdapter::new(bot_token.clone(), app_token.clone()));
+        start_platform(platform, agent.load_full(), sessions.clone()).await?;
+    }
+
+    if let (Some(homeserver), Some(user), Some(password)) = (
+        &cli.matrix_homeserver,
+        &cli.matrix_user,
+        &cli.matrix_password,
+    ) {
+        let platform: Arc<dyn PlatformAdapter> = Arc::new(MatrixAdapter::new(
+            homeserver.clone(),
+            user.clone(),
+            password.clone(),
+        ));
         start_platform(platform, agent.load_full(), sessions.clone()).await?;
     }
 

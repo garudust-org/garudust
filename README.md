@@ -157,6 +157,11 @@ curl -X POST http://localhost:3000/chat/stream \
 | `GARUDUST_WEBHOOK_PORT` | `3001` | Webhook adapter port (`0` = disabled) |
 | `TELEGRAM_TOKEN` | — | Telegram bot token |
 | `DISCORD_TOKEN` | — | Discord bot token |
+| `SLACK_BOT_TOKEN` | — | Slack bot token (`xoxb-…`) |
+| `SLACK_APP_TOKEN` | — | Slack app-level token for Socket Mode (`xapp-…`) |
+| `MATRIX_HOMESERVER` | — | Matrix homeserver URL (e.g. `https://matrix.org`) |
+| `MATRIX_USER` | — | Matrix username (e.g. `@bot:matrix.org`) |
+| `MATRIX_PASSWORD` | — | Matrix password |
 | `GARUDUST_CRON_JOBS` | — | Comma-separated `"cron_expr=task"` pairs |
 | `RUST_LOG` | `info` | Log level (`debug` for verbose) |
 
@@ -314,7 +319,9 @@ Shipped:
 - [x] Browser tool — CDP via `chromiumoxide`
 
 Up next:
-- [ ] Slack and Matrix platform adapters
+- [x] Slack and Matrix platform adapters
+
+> All roadmap items shipped. See [issues](https://github.com/ninenox/garudust/issues) for what's next.
 
 ---
 

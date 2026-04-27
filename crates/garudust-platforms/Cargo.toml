@@ -8,7 +8,9 @@ default  = ["telegram", "webhook"]
 telegram = ["dep:teloxide"]
 discord  = ["dep:serenity"]
 webhook  = ["dep:axum"]
-all      = ["telegram", "discord", "webhook"]
+slack    = ["dep:tokio-tungstenite"]
+matrix   = ["dep:matrix-sdk"]
+all      = ["telegram", "discord", "webhook", "slack", "matrix"]
 
 [dependencies]
 garudust-core  = { path = "../garudust-core" }
@@ -22,6 +24,8 @@ anyhow         = { workspace = true }
 thiserror      = { workspace = true }
 futures        = { workspace = true }
 reqwest        = { workspace = true }
-axum           = { workspace = true, optional = true }
-teloxide       = { workspace = true, optional = true }
-serenity       = { workspace = true, optional = true }
+axum              = { workspace = true, optional = true }
+teloxide          = { workspace = true, optional = true }
+serenity          = { workspace = true, optional = true }
+tokio-tungstenite = { workspace = true, optional = true }
+matrix-sdk        = { workspace = true, optional = true }
