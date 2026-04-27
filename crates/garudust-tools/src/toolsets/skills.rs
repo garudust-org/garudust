@@ -261,10 +261,11 @@ impl Tool for WriteSkill {
         let name = params["name"]
             .as_str()
             .ok_or_else(|| ToolError::InvalidArgs("name required".into()))?;
-        let name = sanitize_skill_name(name)
-            .ok_or_else(|| ToolError::InvalidArgs(
+        let name = sanitize_skill_name(name).ok_or_else(|| {
+            ToolError::InvalidArgs(
                 "name must be alphanumeric/hyphens/underscores only, max 64 chars".into(),
-            ))?;
+            )
+        })?;
 
         let description = params["description"]
             .as_str()
@@ -288,6 +289,9 @@ impl Tool for WriteSkill {
             .await
             .map_err(|e| ToolError::Execution(format!("failed to write skill: {e}")))?;
 
-        Ok(ToolResult::ok("", format!("Skill '{name}' saved to {}", skill_path.display())))
+        Ok(ToolResult::ok(
+            "",
+            format!("Skill '{name}' saved to {}", skill_path.display()),
+        ))
     }
 }
