@@ -168,6 +168,15 @@ impl AgentConfig {
             config.provider = "anthropic".into();
         } else if let Some(k) = env_or_dotenv("OPENROUTER_API_KEY", dotenv) {
             config.api_key = Some(k);
+        } else if let Some(url) = env_or_dotenv("OLLAMA_BASE_URL", dotenv) {
+            config.provider = "ollama".into();
+            config.base_url = Some(url);
+        } else if let Some(url) = env_or_dotenv("VLLM_BASE_URL", dotenv) {
+            config.provider = "vllm".into();
+            config.base_url = Some(url);
+            if let Some(k) = env_or_dotenv("VLLM_API_KEY", dotenv) {
+                config.api_key = Some(k);
+            }
         }
         if let Some(m) = env_or_dotenv("GARUDUST_MODEL", dotenv) {
             config.model = m;

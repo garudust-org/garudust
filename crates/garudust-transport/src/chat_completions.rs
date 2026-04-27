@@ -15,6 +15,9 @@ pub struct ChatCompletionsTransport {
     client: reqwest::Client,
     base_url: String,
     api_key: String,
+    /// JSON field name for the max-tokens limit. OpenAI uses "max_completion_tokens";
+    /// Ollama and some local servers expect "max_tokens".
+    tokens_param: &'static str,
 }
 
 impl ChatCompletionsTransport {
@@ -23,11 +26,25 @@ impl ChatCompletionsTransport {
             client: reqwest::Client::new(),
             base_url,
             api_key,
+            tokens_param: "max_completion_tokens",
         }
+    }
+
+    pub fn with_tokens_param(mut self, param: &'static str) -> Self {
+        self.tokens_param = param;
+        self
     }
 
     fn endpoint(&self) -> String {
         format!("{}/chat/completions", self.base_url.trim_end_matches('/'))
+    }
+
+    fn authorized(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        if self.api_key.is_empty() {
+            req
+        } else {
+            req.bearer_auth(&self.api_key)
+        }
     }
 }
 
@@ -125,9 +142,9 @@ impl ProviderTransport for ChatCompletionsTransport {
         let oai_tools = tools_to_json(tools);
 
         let mut body = json!({
-            "model":              config.model,
-            "messages":           oai_messages,
-            "max_completion_tokens": config.max_tokens.unwrap_or(8192),
+            "model":    config.model,
+            "messages": oai_messages,
+            self.tokens_param: config.max_tokens.unwrap_or(8192),
         });
         if let Some(t) = config.temperature {
             body["temperature"] = json!(t);
@@ -137,9 +154,7 @@ impl ProviderTransport for ChatCompletionsTransport {
         }
 
         let resp = self
-            .client
-            .post(self.endpoint())
-            .bearer_auth(&self.api_key)
+            .authorized(self.client.post(self.endpoint()))
             .json(&body)
             .send()
             .await
@@ -226,11 +241,11 @@ impl ProviderTransport for ChatCompletionsTransport {
         let oai_tools = tools_to_json(tools);
 
         let mut body = json!({
-            "model":                 config.model,
-            "messages":              oai_messages,
-            "max_completion_tokens": config.max_tokens.unwrap_or(8192),
-            "stream":                true,
-            "stream_options":        { "include_usage": true },
+            "model":    config.model,
+            "messages": oai_messages,
+            self.tokens_param: config.max_tokens.unwrap_or(8192),
+            "stream":   true,
+            "stream_options": { "include_usage": true },
         });
         if let Some(t) = config.temperature {
             body["temperature"] = json!(t);
@@ -240,9 +255,7 @@ impl ProviderTransport for ChatCompletionsTransport {
         }
 
         let resp = self
-            .client
-            .post(self.endpoint())
-            .bearer_auth(&self.api_key)
+            .authorized(self.client.post(self.endpoint()))
             .json(&body)
             .send()
             .await

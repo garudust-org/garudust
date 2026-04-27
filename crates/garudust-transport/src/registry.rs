@@ -7,6 +7,7 @@ use crate::anthropic::AnthropicTransport;
 use crate::bedrock::BedrockTransport;
 use crate::chat_completions::ChatCompletionsTransport;
 use crate::codex::CodexTransport;
+use crate::ollama;
 
 pub fn build_transport(config: &AgentConfig) -> Arc<dyn ProviderTransport> {
     let base_url = config.base_url.clone();
@@ -33,6 +34,13 @@ pub fn build_transport(config: &AgentConfig) -> Arc<dyn ProviderTransport> {
                 ))
             }
         },
+        "ollama" => Arc::new(ollama::new(
+            base_url.unwrap_or_else(|| ollama::DEFAULT_BASE_URL.into()),
+        )),
+        "vllm" => Arc::new(ChatCompletionsTransport::new(
+            base_url.unwrap_or_else(|| "http://localhost:8000/v1".into()),
+            api_key,
+        )),
         _ => Arc::new(ChatCompletionsTransport::new(
             base_url.unwrap_or_else(|| "https://openrouter.ai/api/v1".into()),
             api_key,
