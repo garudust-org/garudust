@@ -68,13 +68,9 @@
   <!-- Head -->
   <ellipse cx="200" cy="88" rx="22" ry="24" fill="url(#bodyGrad)"/>
 
-  <!-- Beak (centered, pointing down) -->
-  <polygon points="196,84 204,84 200,95" fill="#FFC044"/>
-  <polygon points="197,88 203,88 200,95" fill="#D4500A"/>
-
-  <!-- Mouth (centered) -->
-  <path d="M 194,97 C 197,101 203,101 206,97"
-        stroke="#D4500A" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+  <!-- Beak (centered, larger triangle pointing down) -->
+  <polygon points="193,82 207,82 200,98" fill="#FFC044"/>
+  <polygon points="194,86 206,86 200,98" fill="#D4500A"/>
 
   <!-- Left eye -->
   <circle cx="191" cy="81" r="5"   fill="#0F1117"/>
