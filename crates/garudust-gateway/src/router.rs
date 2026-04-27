@@ -2,7 +2,10 @@ use std::convert::Infallible;
 use std::sync::Arc;
 
 use axum::{
-    extract::State,
+    extract::{
+        ws::{Message, WebSocket, WebSocketUpgrade},
+        State,
+    },
     http::StatusCode,
     response::{
         sse::{Event, Sse},
@@ -96,6 +99,42 @@ async fn chat_stream(
     Sse::new(stream)
 }
 
+async fn chat_ws(ws: WebSocketUpgrade, State(state): State<AppState>) -> Response {
+    ws.on_upgrade(|socket| handle_ws(socket, state))
+}
+
+async fn handle_ws(mut socket: WebSocket, state: AppState) {
+    let Some(Ok(Message::Text(task))) = socket.recv().await else {
+        return;
+    };
+
+    let message = serde_json::from_str::<serde_json::Value>(&task)
+        .ok()
+        .and_then(|v| v["message"].as_str().map(String::from))
+        .unwrap_or_else(|| task.to_string());
+
+    state.metrics.inc_request();
+    let (chunk_tx, mut chunk_rx) = mpsc::unbounded_channel::<String>();
+    let state2 = state.clone();
+
+    tokio::spawn(async move {
+        let approver = Arc::new(AutoApprover);
+        let _ = state2
+            .agent
+            .run_streaming(&message, approver, "ws", chunk_tx)
+            .await;
+    });
+
+    while let Some(chunk) = chunk_rx.recv().await {
+        if socket.send(Message::Text(chunk.into())).await.is_err() {
+            break;
+        }
+    }
+
+    state.metrics.dec_active();
+    let _ = socket.send(Message::Text(r#"{"done":true}"#.into())).await;
+}
+
 pub fn create_router(state: AppState) -> Router {
     let concurrency_limit = state.config.max_concurrent_requests.unwrap_or(64);
     Router::new()
@@ -103,6 +142,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/metrics", get(metrics))
         .route("/chat", post(chat))
         .route("/chat/stream", post(chat_stream))
+        .route("/chat/ws", get(chat_ws))
         .layer(ConcurrencyLimitLayer::new(concurrency_limit))
         .with_state(state)
 }

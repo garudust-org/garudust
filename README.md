@@ -137,6 +137,11 @@ curl -X POST http://localhost:3000/chat \
 curl -X POST http://localhost:3000/chat/stream \
   -H "Content-Type: application/json" \
   -d '{"message": "explain async/await in 3 sentences"}'
+
+# WebSocket — persistent connection, send JSON receive text chunks
+# Connect: ws://localhost:3000/chat/ws
+# Send:    {"message": "your task"}
+# Receive: text chunks … then {"done":true}
 ```
 
 ### Environment variables
@@ -304,7 +309,7 @@ Up next:
 - [x] `delegate_task` tool — spawn parallel sub-agents for decomposed work
 - [ ] Browser tool — CDP via `chromiumoxide`
 - [ ] Slack and Matrix platform adapters
-- [ ] WebSocket transport (alternative to SSE)
+- [x] WebSocket transport (alternative to SSE)
 - [x] Metrics endpoint (`/metrics`, Prometheus-compatible)
 - [x] Rate limiting and request queuing in the HTTP gateway
 - [ ] Hot-reload skills and config without restart
