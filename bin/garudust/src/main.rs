@@ -17,9 +17,9 @@ use garudust_tools::{
         delegate::DelegateTask,
         files::{ReadFile, WriteFile},
         mcp::connect_mcp_server,
-        memory::MemoryTool,
+        memory::{MemoryTool, UserProfileTool},
         search::SessionSearch,
-        skills::{SkillView, SkillsList},
+        skills::{SkillView, SkillsList, WriteSkill},
         terminal::Terminal,
         web::{WebFetch, WebSearch},
     },
@@ -114,9 +114,11 @@ fn build_agent(config: Arc<AgentConfig>) -> Arc<Agent> {
     registry.register(WriteFile);
     registry.register(Terminal);
     registry.register(MemoryTool);
+    registry.register(UserProfileTool);
     registry.register(SessionSearch);
     registry.register(SkillsList);
     registry.register(SkillView);
+    registry.register(WriteSkill);
     registry.register(DelegateTask);
     registry.register(BrowserTool::new());
 

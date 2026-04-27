@@ -113,6 +113,22 @@ pub async fn build_skills_index(skills_dir: &Path, platform: &str) -> String {
     )
 }
 
+// ─── Name sanitizer ──────────────────────────────────────────────────────────
+
+/// Allow only alphanumeric, hyphens, and underscores to prevent path traversal.
+fn sanitize_skill_name(name: &str) -> Option<&str> {
+    if name.is_empty()
+        || name.len() > 64
+        || !name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        None
+    } else {
+        Some(name)
+    }
+}
+
 // ─── Tools ───────────────────────────────────────────────────────────────────
 
 pub struct SkillsList;
@@ -206,5 +222,72 @@ impl Tool for SkillView {
             "",
             format!("# {}\n\n{}", skill.name, skill.body),
         ))
+    }
+}
+
+pub struct WriteSkill;
+
+#[async_trait]
+impl Tool for WriteSkill {
+    fn name(&self) -> &'static str {
+        "write_skill"
+    }
+    fn description(&self) -> &'static str {
+        "Create or update a skill in ~/.garudust/skills/<name>/SKILL.md. \
+         Use this to save reusable instruction sets the agent should be able to invoke later."
+    }
+    fn toolset(&self) -> &'static str {
+        "skills"
+    }
+
+    fn schema(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "name":        { "type": "string", "description": "Skill identifier (alphanumeric, hyphens, underscores only)" },
+                "description": { "type": "string", "description": "One-line description shown in skills_list" },
+                "body":        { "type": "string", "description": "Full Markdown instructions for the skill" },
+                "version":     { "type": "string", "description": "Optional semver version string (e.g. '1.0.0')" }
+            },
+            "required": ["name", "description", "body"]
+        })
+    }
+
+    async fn execute(
+        &self,
+        params: serde_json::Value,
+        ctx: &ToolContext,
+    ) -> Result<ToolResult, ToolError> {
+        let name = params["name"]
+            .as_str()
+            .ok_or_else(|| ToolError::InvalidArgs("name required".into()))?;
+        let name = sanitize_skill_name(name)
+            .ok_or_else(|| ToolError::InvalidArgs(
+                "name must be alphanumeric/hyphens/underscores only, max 64 chars".into(),
+            ))?;
+
+        let description = params["description"]
+            .as_str()
+            .ok_or_else(|| ToolError::InvalidArgs("description required".into()))?;
+        let body = params["body"]
+            .as_str()
+            .ok_or_else(|| ToolError::InvalidArgs("body required".into()))?;
+        let version = params["version"].as_str().unwrap_or("1.0.0");
+
+        let skill_dir = ctx.config.home_dir.join("skills").join(name);
+        tokio::fs::create_dir_all(&skill_dir)
+            .await
+            .map_err(|e| ToolError::Execution(format!("failed to create skill dir: {e}")))?;
+
+        let content = format!(
+            "---\nname: {name}\ndescription: {description}\nversion: {version}\n---\n\n{body}\n"
+        );
+
+        let skill_path = skill_dir.join("SKILL.md");
+        tokio::fs::write(&skill_path, &content)
+            .await
+            .map_err(|e| ToolError::Execution(format!("failed to write skill: {e}")))?;
+
+        Ok(ToolResult::ok("", format!("Skill '{name}' saved to {}", skill_path.display())))
     }
 }

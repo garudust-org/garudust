@@ -19,9 +19,9 @@ use garudust_tools::{
         delegate::DelegateTask,
         files::{ReadFile, WriteFile},
         mcp::connect_mcp_server,
-        memory::MemoryTool,
+        memory::{MemoryTool, UserProfileTool},
         search::SessionSearch,
-        skills::{SkillView, SkillsList},
+        skills::{SkillView, SkillsList, WriteSkill},
         terminal::Terminal,
         web::{WebFetch, WebSearch},
     },
@@ -81,6 +81,11 @@ struct Cli {
     #[arg(long, env = "GARUDUST_CRON_JOBS")]
     cron_jobs: Option<String>,
 
+    /// Cron expression for automatic memory consolidation (default disabled).
+    /// Example: "0 3 * * *" runs daily at 03:00.
+    #[arg(long, env = "GARUDUST_MEMORY_CRON")]
+    memory_cron: Option<String>,
+
     /// Command approval mode for tool execution
     #[arg(long, env = "GARUDUST_APPROVAL_MODE", default_value = "smart")]
     approval_mode: ApprovalMode,
@@ -129,9 +134,11 @@ async fn build_agent(config: Arc<AgentConfig>, db: Arc<SessionDb>) -> Arc<Agent>
     registry.register(WriteFile);
     registry.register(Terminal);
     registry.register(MemoryTool);
+    registry.register(UserProfileTool);
     registry.register(SessionSearch);
     registry.register(SkillsList);
     registry.register(SkillView);
+    registry.register(WriteSkill);
     registry.register(DelegateTask);
     registry.register(BrowserTool::new());
 
@@ -330,16 +337,35 @@ async fn main() -> Result<()> {
     }
 
     // ── Cron scheduler ────────────────────────────────────────────────────────
-    if let Some(jobs_str) = &cli.cron_jobs {
+    let needs_cron = cli.cron_jobs.is_some() || cli.memory_cron.is_some();
+    if needs_cron {
         let scheduler = CronScheduler::new(agent.load_full(), approver.clone()).await?;
-        for entry in jobs_str.split(',') {
-            if let Some((expr, task)) = entry.trim().split_once('=') {
-                scheduler
-                    .add_job(expr.trim(), task.trim().to_string())
-                    .await?;
-                tracing::info!(cron = %expr.trim(), task = %task.trim(), "cron job registered");
+
+        if let Some(jobs_str) = &cli.cron_jobs {
+            for entry in jobs_str.split(',') {
+                if let Some((expr, task)) = entry.trim().split_once('=') {
+                    scheduler
+                        .add_job(expr.trim(), task.trim().to_string())
+                        .await?;
+                    tracing::info!(cron = %expr.trim(), task = %task.trim(), "cron job registered");
+                }
             }
         }
+
+        if let Some(expr) = &cli.memory_cron {
+            const CONSOLIDATION_TASK: &str =
+                "Review and consolidate your memory. Use the `memory` tool to read all current \
+                 entries. Then rewrite them: remove exact duplicates, merge entries that say the \
+                 same thing, discard facts that are clearly outdated or no longer relevant, and \
+                 keep the result to 50 entries or fewer. Write the consolidated entries back \
+                 using `memory` tool with 'replace' or 'remove' + 'add' actions. \
+                 Do not add any new information — only reorganise what is already there.";
+            scheduler
+                .add_job(expr.trim(), CONSOLIDATION_TASK.to_string())
+                .await?;
+            tracing::info!(cron = %expr.trim(), "memory consolidation cron registered");
+        }
+
         scheduler.start().await?;
     }
 
