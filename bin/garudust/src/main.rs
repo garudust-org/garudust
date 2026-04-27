@@ -147,25 +147,6 @@ async fn attach_mcp_servers(
     handles
 }
 
-fn print_banner() {
-    const G: &str = "\x1b[38;2;245;166;35m";
-    const R: &str = "\x1b[0m";
-    let v = env!("CARGO_PKG_VERSION");
-    println!(
-        "\n\
-{G}        ★
-       /|\\
-   \\\\ (◉ ◉) //
-    \\\\  ▼  //
-     \\\\ | //
-      \\|||/
-       |||
-      /   \\
-{R}
-  {G}G A R U D U S T{R}   v{v}
-  \x1b[38;2;180;90;10mAI Agent Runtime{R}\n"
-    );
-}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -245,7 +226,6 @@ async fn main() -> Result<()> {
         );
     } else {
         // Interactive TUI mode
-        print_banner();
         let approver = Arc::new(AutoApprover);
 
         let (tx_event, mut rx_event) = mpsc::channel::<TuiEvent>(32);
