@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="400" height="300">
+  <defs>
+    <linearGradient id="wingGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#F5A623;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#E8630A;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="bodyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFC044;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#D4500A;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- ── Background ── -->
+  <rect width="400" height="300" fill="#0F1117" rx="16"/>
+
+  <!-- ══════════════════════════════════════
+       GARUDA SILHOUETTE  (symmetric, flat)
+       centre-x = 200, crown top ≈ y=28
+  ══════════════════════════════════════ -->
+
+  <!-- Left outer wing — large sweeping feather group -->
+  <polygon points="200,120 80,40  30,90  70,130 130,145" fill="url(#wingGrad)"/>
+  <!-- Left inner wing fill -->
+  <polygon points="200,120 100,70 75,115 130,145" fill="#E8820A"/>
+
+  <!-- Right outer wing (mirror) -->
+  <polygon points="200,120 320,40 370,90 330,130 270,145" fill="url(#wingGrad)"/>
+  <!-- Right inner wing fill -->
+  <polygon points="200,120 300,70 325,115 270,145" fill="#E8820A"/>
+
+  <!-- Wing feather tips — left -->
+  <polygon points="80,40  50,30  55,60  80,50"  fill="#FFC044"/>
+  <polygon points="55,65  30,60  38,88  62,80"  fill="#FFC044"/>
+  <polygon points="40,95  18,98  28,122 52,112" fill="#FFC044"/>
+
+  <!-- Wing feather tips — right -->
+  <polygon points="320,40 350,30 345,60 320,50" fill="#FFC044"/>
+  <polygon points="345,65 370,60 362,88 338,80" fill="#FFC044"/>
+  <polygon points="360,95 382,98 372,122 348,112" fill="#FFC044"/>
+
+  <!-- Body -->
+  <polygon points="200,100 175,145 175,200 200,215 225,200 225,145" fill="url(#bodyGrad)"/>
+
+  <!-- Chest shield detail -->
+  <polygon points="200,120 185,150 200,165 215,150" fill="#FFC044" opacity="0.6"/>
+
+  <!-- Tail feathers -->
+  <polygon points="175,200 155,230 170,235 200,215 230,235 245,230 225,200" fill="url(#wingGrad)"/>
+  <line x1="200" y1="215" x2="200" y2="238" stroke="#FFC044" stroke-width="2"/>
+  <line x1="185" y1="218" x2="178" y2="237" stroke="#FFC044" stroke-width="1.5"/>
+  <line x1="215" y1="218" x2="222" y2="237" stroke="#FFC044" stroke-width="1.5"/>
+
+  <!-- Legs & talons -->
+  <!-- Left leg -->
+  <rect x="183" y="200" width="9" height="22" rx="3" fill="#D4500A"/>
+  <polygon points="192,222 172,232 176,238 192,228" fill="#E8630A"/>
+  <polygon points="192,222 184,235 189,239 194,227" fill="#E8630A"/>
+  <polygon points="188,226 182,238 187,241 192,229" fill="#FFC044" opacity="0.7"/>
+  <!-- Right leg -->
+  <rect x="208" y="200" width="9" height="22" rx="3" fill="#D4500A"/>
+  <polygon points="208,222 228,232 224,238 208,228" fill="#E8630A"/>
+  <polygon points="208,222 216,235 211,239 206,227" fill="#E8630A"/>
+  <polygon points="212,226 218,238 213,241 208,229" fill="#FFC044" opacity="0.7"/>
+
+  <!-- Neck -->
+  <polygon points="190,100 210,100 212,120 188,120" fill="#E8820A"/>
+
+  <!-- Head -->
+  <ellipse cx="200" cy="88" rx="22" ry="24" fill="url(#bodyGrad)"/>
+
+  <!-- Beak (eagle) -->
+  <polygon points="200,82 222,90 218,100 200,96" fill="#FFC044"/>
+  <polygon points="200,88 220,93 216,100 200,96" fill="#D4500A"/>
+
+  <!-- Eye -->
+  <circle cx="208" cy="82" r="5" fill="#0F1117"/>
+  <circle cx="209" cy="81" r="2" fill="#FFC044"/>
+  <circle cx="210" cy="80" r="1" fill="white"/>
+
+  <!-- Crown / crest feathers -->
+  <polygon points="200,64 193,44 198,66"  fill="#FFC044"/>
+  <polygon points="200,64 200,42 203,66"  fill="#FFD570"/>
+  <polygon points="200,64 207,44 202,66"  fill="#FFC044"/>
+  <polygon points="200,66 186,50 192,68"  fill="#E8820A" opacity="0.8"/>
+  <polygon points="200,66 214,50 208,68"  fill="#E8820A" opacity="0.8"/>
+
+  <!-- ══════════════════════
+       WORDMARK
+  ══════════════════════ -->
+  <text
+    x="200" y="270"
+    font-family="'SF Mono', 'Fira Code', 'Courier New', monospace"
+    font-size="28"
+    font-weight="700"
+    letter-spacing="6"
+    text-anchor="middle"
+    fill="#F5A623">GARUDUST</text>
+
+  <!-- Thin rule under wordmark -->
+  <line x1="100" y1="278" x2="300" y2="278" stroke="#F5A623" stroke-width="1" opacity="0.4"/>
+  <text
+    x="200" y="292"
+    font-family="'SF Mono', 'Fira Code', monospace"
+    font-size="10"
+    letter-spacing="3"
+    text-anchor="middle"
+    fill="#F5A623"
+    opacity="0.5">AI AGENT RUNTIME</text>
+</svg>

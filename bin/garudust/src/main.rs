@@ -56,7 +56,7 @@ enum Cmd {
 }
 
 #[derive(Parser)]
-#[command(name = "garudust", about = "Garudust AI Agent")]
+#[command(name = "garudust", about = "Garudust AI Agent", version)]
 struct Cli {
     #[command(subcommand)]
     cmd: Option<Cmd>,
@@ -215,7 +215,7 @@ async fn main() -> Result<()> {
     };
 
     if let Some(task) = &cli.task {
-        // One-shot mode
+        // ── One-shot mode ─────────────────────────────────────────────────────
         let approver = Arc::new(AutoApprover);
         let result = agent.run(task, approver, "cli").await?;
         println!("{}", result.output);

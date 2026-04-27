@@ -26,7 +26,11 @@ use garudust_tools::{
 use garudust_transport::build_transport;
 
 #[derive(Parser)]
-#[command(name = "garudust-server", about = "Garudust headless gateway server")]
+#[command(
+    name = "garudust-server",
+    about = "Garudust headless gateway server",
+    version
+)]
 struct Cli {
     #[arg(long, env = "GARUDUST_PORT", default_value = "3000")]
     port: u16,
@@ -136,6 +140,14 @@ async fn main() -> Result<()> {
 
     let cli = Cli::parse();
     let config = build_config(&cli);
+
+    tracing::info!(
+        "garudust-server {}  |  model: {}  |  provider: {}  |  port: {}",
+        env!("CARGO_PKG_VERSION"),
+        config.model,
+        config.provider,
+        cli.port,
+    );
     let db = Arc::new(SessionDb::open(&config.home_dir)?);
     let agent = build_agent(config.clone(), db.clone()).await;
     let sessions = SessionRegistry::new();

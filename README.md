@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="assets/logo.svg" alt="Garudust" width="260"/>
+</div>
+
 # Garudust
 
 **A self-hostable AI agent runtime written in Rust.**
