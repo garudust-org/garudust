@@ -6,7 +6,7 @@
 
 **A self-hostable AI agent runtime written in Rust.**
 
-Talk to it from your terminal, wire it into Telegram / Discord, or call it from your own app over HTTP — all from a single binary.
+Chat from your terminal, connect it to Telegram / Discord / Slack / Matrix, or call it over HTTP — all from a single binary.
 
 [![CI](https://github.com/ninenox/garudust/actions/workflows/ci.yml/badge.svg)](https://github.com/ninenox/garudust/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -20,36 +20,19 @@ Most AI agent frameworks are Python, heavy, and slow to start. Garudust is:
 
 - **~10 MB binary, < 20 ms cold start** — no Python runtime, no Docker required for local use
 - **Swap providers with one env var** — Anthropic, OpenRouter, AWS Bedrock, OpenAI Responses API, or any OpenAI-compatible endpoint
-- **Runs everywhere** — laptop TUI, headless server, Docker, Telegram bot, Discord bot, HTTP API
-- **Composable** — every piece is a separate crate with a clean trait boundary; add a tool, platform, or transport without touching anything else
-
----
-
-## Demo
-
-```
-$ garudust "find all TODO comments in this repo and open a GitHub issue for each one"
-
-  AI › Scanning repository for TODO comments…
-       Found 4 TODOs across 3 files.
-       Creating issue #12: "Implement rate limiting in gateway"…
-       Creating issue #13: "Add browser tool via CDP"…
-       Done — 2 issues opened.
-```
+- **Runs everywhere** — laptop TUI, headless server, Docker, Telegram, Discord, Slack, Matrix, HTTP
+- **Composable** — every piece is a separate crate; add a tool, platform, or transport without touching anything else
 
 ---
 
 ## Quick Start
 
-### Option A — Docker (fastest)
+### 1. Docker (fastest)
 
 ```bash
-# Copy env vars and start
 echo "OPENROUTER_API_KEY=sk-or-..." > .env
 docker compose up
 ```
-
-Then call it:
 
 ```bash
 curl -X POST http://localhost:3000/chat \
@@ -57,7 +40,9 @@ curl -X POST http://localhost:3000/chat \
   -d '{"message": "what is 2+2?"}'
 ```
 
-### Option B — Build from source
+### 2. Build from source
+
+**Prerequisites:** Rust 1.75+ and an API key from [OpenRouter](https://openrouter.ai) or [Anthropic](https://console.anthropic.com)
 
 ```bash
 git clone https://github.com/ninenox/garudust
@@ -65,15 +50,13 @@ cd garudust
 cargo build --release
 export PATH="$PATH:$(pwd)/target/release"
 
-garudust setup   # first-time wizard: picks provider, saves API key
+garudust setup   # pick provider, save API key
 garudust         # launch interactive TUI
 ```
 
-**Prerequisites:** Rust 1.75+ · An API key from [OpenRouter](https://openrouter.ai) or [Anthropic](https://console.anthropic.com)
-
 ---
 
-## Usage
+## CLI Usage
 
 ### Interactive TUI
 
@@ -97,85 +80,103 @@ garudust "summarise the git log from the last 7 days into a changelog"
 garudust --model anthropic/claude-opus-4-7 "review this PR for security issues"
 ```
 
-### Subcommands
-
-| Command | Description |
-|---------|-------------|
-| `garudust setup` | First-time wizard |
-| `garudust doctor` | Checks API key, connectivity, memory dir, session DB |
-| `garudust config show` | Print active config |
-| `garudust config set KEY VAL` | Set config value or secret |
+### Config commands
 
 ```bash
-garudust config set model                anthropic/claude-opus-4-7
-garudust config set OPENROUTER_API_KEY   sk-or-...
-garudust config set ANTHROPIC_API_KEY    sk-ant-...
+garudust setup                              # first-time wizard
+garudust doctor                             # check API key, connectivity, DB
+garudust config show                        # print active config
+garudust config set model anthropic/claude-opus-4-7
+garudust config set OPENROUTER_API_KEY sk-or-...
+garudust config set ANTHROPIC_API_KEY  sk-ant-...
 ```
 
 ---
 
 ## Headless Server
 
-`garudust-server` starts everything at once: HTTP gateway, platform adapters, and cron jobs.
+`garudust-server` runs the HTTP gateway, all platform adapters, and cron jobs in one process.
 
 ```bash
-garudust-server \
-  --anthropic-key  sk-ant-...   \
-  --telegram-token 123456:ABC...\
-  --discord-token  Bot_...
+garudust-server --anthropic-key sk-ant-... --port 3000
 ```
 
 ### HTTP API
 
 ```bash
-# Blocking — waits for full response
+# Blocking
 curl -X POST http://localhost:3000/chat \
   -H "Content-Type: application/json" \
   -d '{"message": "write a haiku about Rust"}'
 
-# Streaming — Server-Sent Events, chunks arrive as the model writes
+# Streaming (Server-Sent Events)
 curl -X POST http://localhost:3000/chat/stream \
   -H "Content-Type: application/json" \
   -d '{"message": "explain async/await in 3 sentences"}'
 
-# WebSocket — persistent connection, send JSON receive text chunks
+# WebSocket
 # Connect: ws://localhost:3000/chat/ws
 # Send:    {"message": "your task"}
 # Receive: text chunks … then {"done":true}
+
+# Health & metrics
+curl http://localhost:3000/health
+curl http://localhost:3000/metrics   # Prometheus-compatible
 ```
 
-### Environment variables
+---
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `OPENROUTER_API_KEY` | — | OpenRouter / any OpenAI-compatible key |
-| `ANTHROPIC_API_KEY` | — | Anthropic key (auto-selects Anthropic transport) |
-| `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` | — | AWS credentials for Bedrock transport |
-| `BRAVE_SEARCH_API_KEY` | — | Enables `web_search` tool |
-| `GARUDUST_MODEL` | `anthropic/claude-sonnet-4-6` | Model identifier |
-| `GARUDUST_PORT` | `3000` | HTTP gateway port |
-| `GARUDUST_WEBHOOK_PORT` | `3001` | Webhook adapter port (`0` = disabled) |
-| `TELEGRAM_TOKEN` | — | Telegram bot token |
-| `DISCORD_TOKEN` | — | Discord bot token |
-| `SLACK_BOT_TOKEN` | — | Slack bot token (`xoxb-…`) |
-| `SLACK_APP_TOKEN` | — | Slack app-level token for Socket Mode (`xapp-…`) |
-| `MATRIX_HOMESERVER` | — | Matrix homeserver URL (e.g. `https://matrix.org`) |
-| `MATRIX_USER` | — | Matrix username (e.g. `@bot:matrix.org`) |
-| `MATRIX_PASSWORD` | — | Matrix password |
-| `GARUDUST_CRON_JOBS` | — | Comma-separated `"cron_expr=task"` pairs |
-| `RUST_LOG` | `info` | Log level (`debug` for verbose) |
+## Platform Adapters
 
-### Cron jobs
+Connect the agent to any messaging platform by setting the relevant env vars and starting `garudust-server`.
+
+### Telegram
+
+1. Create a bot via [@BotFather](https://t.me/botfather), copy the token.
+2. Start the server:
 
 ```bash
-GARUDUST_CRON_JOBS="0 9 * * *=Write a morning briefing and save to ~/briefing.md" \
-garudust-server
+TELEGRAM_TOKEN=123456:ABC... garudust-server --anthropic-key sk-ant-...
+```
+
+### Discord
+
+1. Create an application at [discord.com/developers](https://discord.com/developers/applications).
+2. Under **Bot**, enable **Message Content Intent** and copy the token.
+
+```bash
+DISCORD_TOKEN=Bot_... garudust-server --anthropic-key sk-ant-...
+```
+
+### Slack
+
+1. Create a Slack app at [api.slack.com/apps](https://api.slack.com/apps).
+2. Enable **Socket Mode** and generate an App-Level Token (`xapp-…`).
+3. Add Bot Token Scopes: `chat:write`, `channels:history`, `im:history`.
+4. Install to workspace and copy the Bot Token (`xoxb-…`).
+
+```bash
+SLACK_BOT_TOKEN=xoxb-... \
+SLACK_APP_TOKEN=xapp-... \
+garudust-server --anthropic-key sk-ant-...
+```
+
+### Matrix
+
+Works with any Matrix homeserver (matrix.org, self-hosted Synapse/Dendrite, etc.).
+
+```bash
+MATRIX_HOMESERVER=https://matrix.org \
+MATRIX_USER=@yourbot:matrix.org \
+MATRIX_PASSWORD=secret \
+garudust-server --anthropic-key sk-ant-...
 ```
 
 ### Webhook
 
+Receives `POST /webhook`, runs the agent, and POSTs the reply to `callback_url`.
+
 ```bash
-# Garudust receives POST /webhook, runs the agent, POSTs the reply to callback_url
 curl -X POST http://localhost:3001/webhook \
   -H "Content-Type: application/json" \
   -d '{"text":"summarise today","callback_url":"https://your-app/reply"}'
@@ -185,19 +186,17 @@ curl -X POST http://localhost:3001/webhook \
 
 ## LLM Providers
 
-| Provider | `provider` value | Notes |
-|----------|-----------------|-------|
-| Anthropic | `anthropic` | Direct Messages API |
-| OpenRouter | `openrouter` *(default)* | Access 200+ models |
-| OpenAI Responses API | `codex` | `/v1/responses` endpoint |
-| AWS Bedrock | `bedrock` | Converse API, SigV4 auth from env |
-| Any OpenAI-compatible | `openrouter` | Set `GARUDUST_BASE_URL` |
-
-Switch provider:
+| Provider | How to select | Notes |
+|----------|--------------|-------|
+| Anthropic | Set `ANTHROPIC_API_KEY` | Direct Messages API |
+| OpenRouter | Set `OPENROUTER_API_KEY` *(default)* | 200+ models |
+| AWS Bedrock | Set `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` | Converse API, SigV4 |
+| OpenAI Responses API | `garudust config set provider codex` | `/v1/responses` endpoint |
+| Any OpenAI-compatible | Set `GARUDUST_BASE_URL` | Uses OpenRouter transport |
 
 ```bash
-garudust config set provider  bedrock
-garudust config set model     anthropic.claude-3-5-sonnet-20241022-v2:0
+garudust config set provider bedrock
+garudust config set model    anthropic.claude-3-5-sonnet-20241022-v2:0
 ```
 
 ---
@@ -206,21 +205,21 @@ garudust config set model     anthropic.claude-3-5-sonnet-20241022-v2:0
 
 | Tool | Description |
 |------|-------------|
-| `web_fetch` | Fetch content from a URL |
-| `web_search` | Web search via Brave Search |
-| `browser` | Control Chrome/Chromium via CDP — navigate, click, type, screenshot, evaluate JS |
+| `web_fetch` | Fetch a URL (static pages) |
+| `web_search` | Search via Brave Search API (`BRAVE_SEARCH_API_KEY`) |
+| `browser` | Control Chrome/Chromium via CDP — navigate, click, type, screenshot, run JS |
 | `read_file` | Read a file from the filesystem |
-| `write_file` | Write content to a file |
+| `write_file` | Write a file to the filesystem |
 | `terminal` | Run a shell command |
-| `memory` | Add / read / replace / remove persistent memory entries |
-| `session_search` | Full-text search across past conversations (FTS5) |
-| `skills_list` | List all available skills |
+| `memory` | Persistent key-value memory (add / read / replace / remove) |
+| `session_search` | Full-text search across past conversations (SQLite FTS5) |
+| `delegate_task` | Spawn a parallel sub-agent for decomposed work |
+| `skills_list` | List available skills |
 | `skill_view` | Load a skill's instructions by name |
-| `delegate_task` | Spawn a parallel sub-agent for a decomposed subtask |
 
 ### MCP Tools
 
-Any MCP server can be connected in `~/.garudust/config.yaml`:
+Connect any [MCP](https://modelcontextprotocol.io) server in `~/.garudust/config.yaml`:
 
 ```yaml
 mcp_servers:
@@ -232,13 +231,13 @@ mcp_servers:
     args: ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/mydb"]
 ```
 
-The tools appear automatically in the agent's registry.
+Tools from connected MCP servers appear automatically in the agent's registry.
 
 ---
 
 ## Skills
 
-Skills are reusable instruction sets loaded from `~/.garudust/skills/`. The agent sees them in every prompt and loads individual ones on demand.
+Skills are reusable instruction sets stored in `~/.garudust/skills/`. They are read from disk on every invocation — edit a skill file and the next agent call picks up the change immediately.
 
 ```
 ~/.garudust/skills/
@@ -260,79 +259,86 @@ Always write conventional commits. Always run tests before pushing...
 
 ---
 
+## All Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OPENROUTER_API_KEY` | — | OpenRouter / any OpenAI-compatible key |
+| `ANTHROPIC_API_KEY` | — | Anthropic key (auto-selects Anthropic transport) |
+| `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` | — | Bedrock credentials |
+| `BRAVE_SEARCH_API_KEY` | — | Enables `web_search` tool |
+| `GARUDUST_MODEL` | `anthropic/claude-sonnet-4-6` | Model identifier |
+| `GARUDUST_PORT` | `3000` | HTTP gateway port |
+| `GARUDUST_WEBHOOK_PORT` | `3001` | Webhook adapter port (`0` = disabled) |
+| `GARUDUST_BASE_URL` | — | Override LLM base URL |
+| `TELEGRAM_TOKEN` | — | Telegram bot token |
+| `DISCORD_TOKEN` | — | Discord bot token |
+| `SLACK_BOT_TOKEN` | — | Slack bot token (`xoxb-…`) |
+| `SLACK_APP_TOKEN` | — | Slack app token for Socket Mode (`xapp-…`) |
+| `MATRIX_HOMESERVER` | — | Matrix homeserver URL |
+| `MATRIX_USER` | — | Matrix username (`@bot:matrix.org`) |
+| `MATRIX_PASSWORD` | — | Matrix password |
+| `GARUDUST_CRON_JOBS` | — | Comma-separated `"cron_expr=task"` pairs |
+| `RUST_LOG` | `info` | Log level (`debug` for verbose) |
+
+### Cron jobs
+
+```bash
+GARUDUST_CRON_JOBS="0 9 * * *=Write a morning briefing and save to ~/briefing.md" \
+garudust-server --anthropic-key sk-ant-...
+```
+
+---
+
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      garudust-server                        │
-│                                                             │
-│  HTTP /chat ──┐                                             │
-│  HTTP /stream ┤                                             │
-│  Telegram ────┼──► GatewayHandler ──► Arc<Agent>           │
-│  Discord ─────┤                            │                │
-│  Webhook ─────┘                            ▼                │
-│  Cron ─────────────────────────►  run_loop()                │
-│                                       │        │            │
-│                               Transport    ToolRegistry     │
-│                           (Anthropic /   (web, file,        │
-│                            OpenRouter /   terminal,         │
-│                            Bedrock /      memory,           │
-│                            Codex)         MCP, ...)         │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                        garudust-server                           │
+│                                                                  │
+│  HTTP /chat ────┐                                                │
+│  HTTP /stream   │                                                │
+│  WebSocket ─────┼──► GatewayHandler ──► ArcSwap<Agent>          │
+│  Telegram       │                            │                   │
+│  Discord        │                            ▼                   │
+│  Slack ─────────┘                       run_loop()               │
+│  Matrix                                  │         │             │
+│  Cron ──────────────────────────►   Transport   ToolRegistry     │
+│                                    (Anthropic    (web, browser,  │
+│                                     OpenRouter   file, terminal, │
+│                                     Bedrock      memory, MCP,    │
+│                                     Codex)       delegate, ...)  │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 ### Crate layout
 
 ```
 crates/
-  garudust-core        Shared traits & types — zero I/O, depended on by all
+  garudust-core        Shared traits & types — zero I/O
   garudust-transport   LLM adapters: Anthropic, OpenAI-compat, Codex, Bedrock
-  garudust-tools       Tool registry + built-in toolsets
+  garudust-tools       Tool registry + built-in toolsets (web, browser, file, …)
   garudust-memory      FileMemoryStore (markdown) + SessionDb (SQLite + FTS5)
   garudust-agent       Agent run loop, context compressor, prompt builder
-  garudust-platforms   Platform adapters: Telegram, Discord, Webhook
+  garudust-platforms   Telegram, Discord, Slack, Matrix, Webhook
   garudust-cron        Cron scheduler
-  garudust-gateway     axum HTTP gateway, /health, /chat, /chat/stream
+  garudust-gateway     axum HTTP gateway — /chat, /chat/stream, /chat/ws, /metrics
 
 bin/
-  garudust             CLI: TUI, one-shot, setup, doctor, config
+  garudust             CLI: interactive TUI, one-shot, setup, doctor, config
   garudust-server      Headless: all platforms + HTTP + cron in one process
 ```
 
 ---
 
-## Roadmap
-
-Shipped:
-- [x] Streaming SSE endpoint (`POST /chat/stream`)
-- [x] WebSocket transport (`/chat/ws`)
-- [x] MCP client — connect any MCP tool server
-- [x] Session search (`session_search` tool, FTS5)
-- [x] Slash commands in TUI (`/new`, `/model`, `/help`)
-- [x] AWS Bedrock transport (Converse API)
-- [x] OpenAI Responses API transport (Codex)
-- [x] Docker + `docker-compose`
-- [x] `delegate_task` tool — spawn parallel sub-agents for decomposed work
-- [x] Metrics endpoint (`/metrics`, Prometheus-compatible)
-- [x] Rate limiting and request queuing in the HTTP gateway
-- [x] Hot-reload skills and config without restart
-- [x] Browser tool — CDP via `chromiumoxide`
-
-Up next:
-- [x] Slack and Matrix platform adapters
-
-> All roadmap items shipped. See [issues](https://github.com/ninenox/garudust/issues) for what's next.
-
----
-
 ## Contributing
 
-Contributions are welcome! Garudust is designed to be easy to extend — adding a tool, transport, or platform adapter is typically under 100 lines and touches exactly one crate.
+Garudust is designed to be easy to extend — adding a tool, transport, or platform adapter typically touches exactly one crate and takes under 100 lines.
 
 ### Good first issues
 
-- **New tool** — wrap any CLI or API as a `Tool` impl in `garudust-tools` (e.g. a `git` tool, an `image_gen` tool)
-- **New platform** — implement `PlatformAdapter` for Slack, Matrix, or Signal
+- **New tool** — wrap any CLI or API as a `Tool` impl in `garudust-tools`
+- **New platform** — implement `PlatformAdapter` (e.g. Signal, LINE, WhatsApp)
 - **Improve TUI** — multi-line input, syntax highlighting, mouse support
 - **Tests** — integration tests, property tests, snapshot tests
 
@@ -341,13 +347,13 @@ Contributions are welcome! Garudust is designed to be easy to extend — adding 
 ```bash
 git clone https://github.com/ninenox/garudust
 cd garudust
-cargo build                          # build everything
-cargo test --workspace               # run all tests
+cargo build                   # build everything
+cargo test --workspace        # run all tests
 cargo clippy --workspace --all-targets \
   -- -W clippy::all -W clippy::pedantic   # lint (same as CI)
 ```
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) for code guidelines, how to add a tool / platform / transport, commit conventions, and the full CI checklist.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for code guidelines, commit conventions, and the full CI checklist.
 
 ---
 
