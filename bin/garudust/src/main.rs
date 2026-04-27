@@ -147,7 +147,6 @@ async fn attach_mcp_servers(
     handles
 }
 
-
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
