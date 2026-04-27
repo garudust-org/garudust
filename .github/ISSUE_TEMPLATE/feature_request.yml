@@ -1,0 +1,58 @@
+name: Feature Request
+description: Suggest a new tool, platform adapter, transport, or other improvement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before opening a request, please check the [existing issues](https://github.com/ninenox/garudust/issues) to avoid duplicates.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which area does this affect?
+      options:
+        - New tool (garudust-tools)
+        - New platform adapter (garudust-platforms)
+        - New LLM transport (garudust-transport)
+        - CLI / TUI (bin/garudust)
+        - HTTP gateway (garudust-gateway)
+        - Agent behaviour / run loop
+        - Memory / session persistence
+        - Security
+        - Docker / deployment
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the use case or pain point. "I want to..." or "Currently it is hard to..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How should it work? Feel free to sketch an API, config snippet, or rough design.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What workarounds exist today? Why are they insufficient?
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Are you willing to implement this?
+      options:
+        - label: Yes, I can open a PR for this
+        - label: I can help review/test but not implement
+        - label: I'm just requesting — happy for someone else to pick it up

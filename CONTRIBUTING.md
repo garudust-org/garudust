@@ -29,16 +29,16 @@ cargo fmt --all -- --check
 
 | Crate / Binary | Purpose |
 |----------------|---------|
-| `crates/garudust-core` | Shared types, traits (`Tool`, `ProviderTransport`, `PlatformAdapter`, `MemoryStore`), config, errors |
-| `crates/garudust-transport` | LLM provider implementations — Anthropic, OpenAI-compatible (OpenRouter, etc.) |
-| `crates/garudust-tools` | Built-in tools: `read_file`, `write_file`, `terminal`, `web_fetch`, `web_search`, `memory`, `skills_list`, `skill_view` |
+| `crates/garudust-core` | Shared types, traits (`Tool`, `ProviderTransport`, `PlatformAdapter`, `MemoryStore`), config, `SecurityConfig`, `net_guard` (SSRF) |
+| `crates/garudust-transport` | LLM provider implementations — Anthropic, OpenAI-compatible (OpenRouter, etc.), AWS Bedrock, Codex |
+| `crates/garudust-tools` | Built-in tools: `read_file`, `write_file`, `terminal`, `web_fetch`, `web_search`, `browser`, `memory`, `delegate_task`, `skills_list`, `skill_view` |
 | `crates/garudust-memory` | Persistence: `FileMemoryStore` (markdown files) + `SessionDb` (SQLite + FTS5) |
-| `crates/garudust-agent` | Agent run loop, context compression, session persistence, `AutoApprover` / `DenyApprover` |
-| `crates/garudust-platforms` | Platform adapters: Telegram, Discord, Webhook |
+| `crates/garudust-agent` | Agent run loop, context compression, session persistence, `AutoApprover` / `SmartApprover` / `DenyApprover` |
+| `crates/garudust-platforms` | Platform adapters: Telegram, Discord, Slack (Socket Mode), Matrix, Webhook |
 | `crates/garudust-cron` | Cron scheduler — wraps `tokio-cron-scheduler`, spawns agent on schedule |
-| `crates/garudust-gateway` | HTTP gateway — `GatewayHandler`, `SessionRegistry`, `AppState`, `/health` + `/chat` routes |
+| `crates/garudust-gateway` | HTTP gateway — Bearer auth middleware, rate limiting, `GatewayHandler`, `/health` + `/chat*` routes |
 | `bin/garudust` | CLI binary: TUI chat, `setup`, `config show/set`, `doctor` |
-| `bin/garudust-server` | Headless server: Telegram + Discord + Webhook + HTTP API + Cron |
+| `bin/garudust-server` | Headless server: all platform adapters + HTTP API + Cron in one process |
 
 Each crate has a single focused responsibility. Keep those boundaries clean.
 
@@ -201,11 +201,15 @@ Recommended scope keys: `agent`, `tools`, `transport`, `memory`, `platforms`, `g
 
 Before every commit, verify:
 
-- No `.env` files are staged
+- No `.env` files are staged (`git status` should not show `.env`)
 - No raw API keys or tokens in code, tests, or fixtures
 - `git diff --cached | grep -iE '(api[_-]?key|secret|token|bearer|sk-)'` returns nothing
 
 `~/.garudust/.env` and `~/.garudust/config.yaml` are user-local and git-ignored by default.
+
+## Security
+
+Security-sensitive changes (new tool with network access, auth logic, file I/O) should be accompanied by a note in the PR explaining the threat model. See [SECURITY.md](SECURITY.md) for the project's security policy and how to report vulnerabilities privately.
 
 ## CI
 

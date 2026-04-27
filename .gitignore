@@ -1,5 +1,25 @@
+# Build output
 /target
+
+# Secrets — never commit real credentials
 .env
+.env.local
+.env.*.local
+
+# SQLite state files
 *.db
 *.db-shm
 *.db-wal
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Garudust user data (kept local, not in repo)
+# ~/.garudust/ is outside the repo — this covers any accidental symlinks
+state.db
+config.yaml

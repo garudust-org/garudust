@@ -4,16 +4,37 @@ services:
     ports:
       - "3000:3000"
     environment:
-      # Set at least one of these:
+      # LLM provider — set at least one
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      # Optional overrides
+
+      # Security — strongly recommended in production
+      GARUDUST_API_KEY: ${GARUDUST_API_KEY:-}
+      GARUDUST_APPROVAL_MODE: ${GARUDUST_APPROVAL_MODE:-smart}
+      GARUDUST_RATE_LIMIT: ${GARUDUST_RATE_LIMIT:-}
+
+      # Agent settings
       GARUDUST_MODEL: ${GARUDUST_MODEL:-}
       GARUDUST_PORT: "3000"
       RUST_LOG: ${RUST_LOG:-info}
+
+      # Platform adapters (uncomment / set as needed)
+      TELEGRAM_TOKEN: ${TELEGRAM_TOKEN:-}
+      DISCORD_TOKEN: ${DISCORD_TOKEN:-}
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      SLACK_APP_TOKEN: ${SLACK_APP_TOKEN:-}
+      MATRIX_HOMESERVER: ${MATRIX_HOMESERVER:-}
+      MATRIX_USER: ${MATRIX_USER:-}
+      MATRIX_PASSWORD: ${MATRIX_PASSWORD:-}
     volumes:
       - garudust-data:/root/.garudust
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 volumes:
   garudust-data:
