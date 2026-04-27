@@ -146,6 +146,7 @@ mod tests {
             memory: Arc::new(NopMemory),
             config: Arc::new(AgentConfig::default()),
             approver: Arc::new(DenyAll),
+            sub_agent: None,
         }
     }
 

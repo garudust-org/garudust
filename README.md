@@ -301,12 +301,12 @@ Shipped:
 - [x] Docker + `docker-compose`
 
 Up next:
-- [ ] `delegate_task` tool — spawn parallel sub-agents for decomposed work
+- [x] `delegate_task` tool — spawn parallel sub-agents for decomposed work
 - [ ] Browser tool — CDP via `chromiumoxide`
 - [ ] Slack and Matrix platform adapters
 - [ ] WebSocket transport (alternative to SSE)
-- [ ] Metrics endpoint (`/metrics`, Prometheus-compatible)
-- [ ] Rate limiting and request queuing in the HTTP gateway
+- [x] Metrics endpoint (`/metrics`, Prometheus-compatible)
+- [x] Rate limiting and request queuing in the HTTP gateway
 - [ ] Hot-reload skills and config without restart
 
 ---

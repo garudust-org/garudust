@@ -6,13 +6,14 @@ use garudust_agent::{Agent, AutoApprover};
 use garudust_core::config::McpServerConfig;
 use garudust_core::{config::AgentConfig, platform::PlatformAdapter};
 use garudust_cron::CronScheduler;
-use garudust_gateway::{create_router, AppState, GatewayHandler, SessionRegistry};
+use garudust_gateway::{create_router, AppState, GatewayHandler, Metrics, SessionRegistry};
 use garudust_memory::{FileMemoryStore, SessionDb};
 use garudust_platforms::{
     discord::DiscordAdapter, telegram::TelegramAdapter, webhook::WebhookAdapter,
 };
 use garudust_tools::{
     toolsets::{
+        delegate::DelegateTask,
         files::{ReadFile, WriteFile},
         mcp::connect_mcp_server,
         memory::MemoryTool,
@@ -90,6 +91,7 @@ async fn build_agent(config: Arc<AgentConfig>, db: Arc<SessionDb>) -> Arc<Agent>
     registry.register(SessionSearch);
     registry.register(SkillsList);
     registry.register(SkillView);
+    registry.register(DelegateTask);
 
     let mcp_handles = attach_mcp_servers(&mut registry, &config.mcp_servers).await;
     std::mem::forget(mcp_handles);
@@ -187,6 +189,7 @@ async fn main() -> Result<()> {
         config,
         session_db: db,
         agent,
+        metrics: Arc::new(Metrics::default()),
     };
     let router = create_router(state);
     let addr = format!("0.0.0.0:{}", cli.port);

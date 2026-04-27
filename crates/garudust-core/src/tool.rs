@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use crate::{
     budget::IterationBudget,
     config::AgentConfig,
-    error::ToolError,
+    error::{AgentError, ToolError},
     memory::MemoryStore,
     types::{ToolResult, ToolSchema},
 };
@@ -32,6 +32,11 @@ pub trait Tool: Send + Sync + 'static {
     }
 }
 
+#[async_trait]
+pub trait SubAgentRunner: Send + Sync + 'static {
+    async fn run_task(&self, task: &str, session_id: &str) -> Result<String, AgentError>;
+}
+
 pub struct ToolContext {
     pub session_id: String,
     pub agent_id: String,
@@ -40,6 +45,7 @@ pub struct ToolContext {
     pub memory: Arc<dyn MemoryStore>,
     pub config: Arc<AgentConfig>,
     pub approver: Arc<dyn CommandApprover>,
+    pub sub_agent: Option<Arc<dyn SubAgentRunner>>,
 }
 
 #[async_trait]
