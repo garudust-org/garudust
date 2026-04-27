@@ -35,11 +35,9 @@ fn is_path_allowed(path: &Path, allowed_roots: &[PathBuf]) -> bool {
         return false;
     }
 
-    allowed_roots.iter().any(|root| {
-        std::fs::canonicalize(root)
-            .map(|r| canonical.starts_with(&r))
-            .unwrap_or(false)
-    })
+    allowed_roots
+        .iter()
+        .any(|root| std::fs::canonicalize(root).is_ok_and(|r| canonical.starts_with(&r)))
 }
 
 pub struct ReadFile;
