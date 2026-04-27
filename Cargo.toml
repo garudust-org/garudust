@@ -82,3 +82,6 @@ rmcp = { version = "1", features = ["client", "transport-child-process"] }
 # Hot-reload
 arc-swap = "1"
 notify   = { version = "6", features = ["macos_fsevent"] }
+
+# Browser / CDP
+chromiumoxide = { version = "0.7", default-features = false, features = ["tokio-runtime"] }

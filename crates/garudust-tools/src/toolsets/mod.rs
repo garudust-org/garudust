@@ -1,3 +1,4 @@
+pub mod browser;
 pub mod delegate;
 pub mod files;
 pub mod mcp;

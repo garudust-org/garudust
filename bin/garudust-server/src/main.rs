@@ -14,6 +14,7 @@ use garudust_platforms::{
 };
 use garudust_tools::{
     toolsets::{
+        browser::BrowserTool,
         delegate::DelegateTask,
         files::{ReadFile, WriteFile},
         mcp::connect_mcp_server,
@@ -94,6 +95,7 @@ async fn build_agent(config: Arc<AgentConfig>, db: Arc<SessionDb>) -> Arc<Agent>
     registry.register(SkillsList);
     registry.register(SkillView);
     registry.register(DelegateTask);
+    registry.register(BrowserTool::new());
 
     let mcp_handles = attach_mcp_servers(&mut registry, &config.mcp_servers).await;
     std::mem::forget(mcp_handles);

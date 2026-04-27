@@ -203,6 +203,7 @@ garudust config set model     anthropic.claude-3-5-sonnet-20241022-v2:0
 |------|-------------|
 | `web_fetch` | Fetch content from a URL |
 | `web_search` | Web search via Brave Search |
+| `browser` | Control Chrome/Chromium via CDP — navigate, click, type, screenshot, evaluate JS |
 | `read_file` | Read a file from the filesystem |
 | `write_file` | Write content to a file |
 | `terminal` | Run a shell command |
@@ -210,6 +211,7 @@ garudust config set model     anthropic.claude-3-5-sonnet-20241022-v2:0
 | `session_search` | Full-text search across past conversations (FTS5) |
 | `skills_list` | List all available skills |
 | `skill_view` | Load a skill's instructions by name |
+| `delegate_task` | Spawn a parallel sub-agent for a decomposed subtask |
 
 ### MCP Tools
 
@@ -307,7 +309,7 @@ Shipped:
 
 Up next:
 - [x] `delegate_task` tool — spawn parallel sub-agents for decomposed work
-- [ ] Browser tool — CDP via `chromiumoxide`
+- [x] Browser tool — CDP via `chromiumoxide`
 - [ ] Slack and Matrix platform adapters
 - [x] WebSocket transport (alternative to SSE)
 - [x] Metrics endpoint (`/metrics`, Prometheus-compatible)

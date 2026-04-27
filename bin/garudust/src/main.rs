@@ -13,6 +13,7 @@ use garudust_core::config::McpServerConfig;
 use garudust_memory::{FileMemoryStore, SessionDb};
 use garudust_tools::{
     toolsets::{
+        browser::BrowserTool,
         delegate::DelegateTask,
         files::{ReadFile, WriteFile},
         mcp::connect_mcp_server,
@@ -117,6 +118,7 @@ fn build_agent(config: Arc<AgentConfig>) -> Arc<Agent> {
     registry.register(SkillsList);
     registry.register(SkillView);
     registry.register(DelegateTask);
+    registry.register(BrowserTool::new());
 
     let db = SessionDb::open(&config.home_dir).ok().map(Arc::new);
     let agent = Agent::new(transport, Arc::new(registry), memory, config);
