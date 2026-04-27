@@ -1036,11 +1036,14 @@ dependencies = [
  "garudust-agent",
  "garudust-core",
  "garudust-memory",
+ "garudust-tools",
+ "http-body-util",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
  "tokio-stream",
+ "tower",
  "tower-http",
  "tracing",
  "uuid",
@@ -1132,6 +1135,7 @@ dependencies = [
  "anyhow",
  "async-stream",
  "async-trait",
+ "chrono",
  "futures",
  "garudust-core",
  "reqwest 0.12.28",
@@ -3463,6 +3467,7 @@ dependencies = [
  "futures-core",
  "pin-project-lite",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]

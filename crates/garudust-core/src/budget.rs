@@ -39,3 +39,37 @@ impl IterationBudget {
         self.max
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn starts_at_max() {
+        let b = IterationBudget::new(3);
+        assert_eq!(b.remaining(), 3);
+        assert_eq!(b.max(), 3);
+    }
+
+    #[test]
+    fn consume_decrements() {
+        let b = IterationBudget::new(3);
+        assert_eq!(b.consume().unwrap(), 2);
+        assert_eq!(b.remaining(), 2);
+    }
+
+    #[test]
+    fn consume_until_exhausted() {
+        let b = IterationBudget::new(2);
+        b.consume().unwrap();
+        b.consume().unwrap();
+        assert!(b.consume().is_err());
+        assert_eq!(b.remaining(), 0);
+    }
+
+    #[test]
+    fn zero_budget_immediately_exhausted() {
+        let b = IterationBudget::new(0);
+        assert!(b.consume().is_err());
+    }
+}

@@ -1,0 +1,19 @@
+services:
+  garudust:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      # Set at least one of these:
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Optional overrides
+      GARUDUST_MODEL: ${GARUDUST_MODEL:-}
+      GARUDUST_PORT: "3000"
+      RUST_LOG: ${RUST_LOG:-info}
+    volumes:
+      - garudust-data:/root/.garudust
+    restart: unless-stopped
+
+volumes:
+  garudust-data:

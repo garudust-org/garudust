@@ -22,7 +22,7 @@ license     = "MIT"
 [workspace.dependencies]
 # Async runtime
 tokio        = { version = "1", features = ["full"] }
-tokio-stream = "0.1"
+tokio-stream = { version = "0.1", features = ["sync"] }
 async-trait  = "0.1"
 futures      = "0.3"
 async-stream = "0.3"

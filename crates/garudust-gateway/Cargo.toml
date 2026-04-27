@@ -20,3 +20,9 @@ thiserror          = { workspace = true }
 futures            = { workspace = true }
 uuid               = { workspace = true }
 chrono             = { workspace = true }
+
+[dev-dependencies]
+tower              = { version = "0.5", features = ["util"] }
+http-body-util     = "0.1"
+garudust-tools     = { path = "../garudust-tools" }
+uuid               = { workspace = true }

@@ -350,3 +350,72 @@ impl ProviderTransport for ChatCompletionsTransport {
         Ok(Box::pin(stream))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use garudust_core::types::{ContentPart, Message, Role};
+
+    #[test]
+    fn classify_401_is_auth() {
+        assert!(matches!(classify_error(401, ""), TransportError::Auth));
+    }
+
+    #[test]
+    fn classify_429_is_rate_limit() {
+        assert!(matches!(
+            classify_error(429, ""),
+            TransportError::RateLimit { .. }
+        ));
+    }
+
+    #[test]
+    fn classify_500_is_http() {
+        assert!(matches!(
+            classify_error(500, "oops"),
+            TransportError::Http { status: 500, .. }
+        ));
+    }
+
+    #[test]
+    fn system_message_serializes() {
+        let msgs = vec![Message::system("be helpful")];
+        let json = messages_to_json(&msgs);
+        assert_eq!(json.len(), 1);
+        assert_eq!(json[0]["role"], "system");
+        assert_eq!(json[0]["content"], "be helpful");
+    }
+
+    #[test]
+    fn tool_result_becomes_tool_role() {
+        let msg = Message {
+            role: Role::Tool,
+            content: vec![ContentPart::ToolResult {
+                tool_use_id: "call_1".into(),
+                content: "42".into(),
+                is_error: false,
+            }],
+        };
+        let json = messages_to_json(&[msg]);
+        assert_eq!(json.len(), 1);
+        assert_eq!(json[0]["role"], "tool");
+        assert_eq!(json[0]["tool_call_id"], "call_1");
+        assert_eq!(json[0]["content"], "42");
+    }
+
+    #[test]
+    fn assistant_with_tool_call() {
+        let msg = Message {
+            role: Role::Assistant,
+            content: vec![ContentPart::ToolUse {
+                id: "tc1".into(),
+                name: "read_file".into(),
+                input: serde_json::json!({ "path": "/tmp/x" }),
+            }],
+        };
+        let json = messages_to_json(&[msg]);
+        assert_eq!(json.len(), 1);
+        let tcs = json[0]["tool_calls"].as_array().unwrap();
+        assert_eq!(tcs[0]["function"]["name"], "read_file");
+    }
+}
