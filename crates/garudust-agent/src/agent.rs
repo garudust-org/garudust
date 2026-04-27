@@ -7,7 +7,7 @@ use garudust_core::{
     config::AgentConfig,
     error::AgentError,
     memory::MemoryStore,
-    tool::ToolContext,
+    tool::{SubAgentRunner, ToolContext},
     transport::ProviderTransport,
     types::{
         AgentResult, ContentPart, InferenceConfig, Message, Role, StopReason, StreamChunk,
@@ -105,6 +105,36 @@ pub struct Agent {
     config: Arc<AgentConfig>,
     compressor: ContextCompressor,
     session_db: Option<Arc<SessionDb>>,
+}
+
+impl Clone for Agent {
+    fn clone(&self) -> Self {
+        let comp_model = self
+            .config
+            .compression
+            .model
+            .clone()
+            .unwrap_or_else(|| self.config.model.clone());
+        Self {
+            id: self.id.clone(),
+            transport: self.transport.clone(),
+            tools: self.tools.clone(),
+            memory: self.memory.clone(),
+            budget: self.budget.clone(),
+            config: self.config.clone(),
+            compressor: ContextCompressor::new(self.transport.clone(), comp_model),
+            session_db: self.session_db.clone(),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl SubAgentRunner for Agent {
+    async fn run_task(&self, task: &str, session_id: &str) -> Result<String, AgentError> {
+        let approver = Arc::new(crate::approver::AutoApprover);
+        let result = self.run(task, approver, session_id).await?;
+        Ok(result.output)
+    }
 }
 
 impl Agent {
@@ -259,6 +289,7 @@ impl Agent {
             }
 
             // Parallel tool dispatch via tokio::join_all
+            let sub_agent: Arc<dyn SubAgentRunner> = Arc::new(self.clone());
             let ctx = Arc::new(ToolContext {
                 session_id: session_id.clone(),
                 agent_id: self.id.clone(),
@@ -267,6 +298,7 @@ impl Agent {
                 memory: self.memory.clone(),
                 config: self.config.clone(),
                 approver: approver.clone(),
+                sub_agent: Some(sub_agent),
             });
 
             let tool_futs: Vec<_> = resp

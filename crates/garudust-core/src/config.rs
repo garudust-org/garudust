@@ -17,6 +17,8 @@ pub struct AgentConfig {
     pub network: NetworkConfig,
     #[serde(default)]
     pub mcp_servers: Vec<McpServerConfig>,
+    #[serde(default)]
+    pub max_concurrent_requests: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,6 +42,7 @@ impl Default for AgentConfig {
             compression: CompressionConfig::default(),
             network: NetworkConfig::default(),
             mcp_servers: Vec::new(),
+            max_concurrent_requests: None,
         }
     }
 }

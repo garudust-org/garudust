@@ -4,7 +4,10 @@ use std::sync::Arc;
 use axum::{
     extract::State,
     http::StatusCode,
-    response::sse::{Event, Sse},
+    response::{
+        sse::{Event, Sse},
+        IntoResponse, Response,
+    },
     routing::{get, post},
     Json, Router,
 };
@@ -14,11 +17,22 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tokio_stream::StreamExt;
+use tower::limit::ConcurrencyLimitLayer;
 
 use crate::state::AppState;
 
 async fn health() -> &'static str {
     "ok"
+}
+
+async fn metrics(State(state): State<AppState>) -> Response {
+    let body = state.metrics.prometheus_text();
+    (
+        StatusCode::OK,
+        [("content-type", "text/plain; version=0.0.4; charset=utf-8")],
+        body,
+    )
+        .into_response()
 }
 
 #[derive(Deserialize)]
@@ -39,12 +53,15 @@ async fn chat(
     State(state): State<AppState>,
     Json(req): Json<ChatRequest>,
 ) -> Result<Json<ChatResponse>, (StatusCode, String)> {
+    state.metrics.inc_request();
     let approver = Arc::new(AutoApprover);
-    state
-        .agent
-        .run(&req.message, approver, "http")
-        .await
+    let result = state.agent.run(&req.message, approver, "http").await;
+    state.metrics.dec_active();
+    result
         .map(|r| {
+            state
+                .metrics
+                .add_tokens(r.usage.input_tokens, r.usage.output_tokens);
             Json(ChatResponse {
                 output: r.output,
                 session_id: r.session_id,
@@ -53,7 +70,10 @@ async fn chat(
                 output_tokens: r.usage.output_tokens,
             })
         })
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+        .map_err(|e| {
+            state.metrics.inc_error();
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })
 }
 
 async fn chat_stream(
@@ -77,10 +97,13 @@ async fn chat_stream(
 }
 
 pub fn create_router(state: AppState) -> Router {
+    let concurrency_limit = state.config.max_concurrent_requests.unwrap_or(64);
     Router::new()
         .route("/health", get(health))
+        .route("/metrics", get(metrics))
         .route("/chat", post(chat))
         .route("/chat/stream", post(chat_stream))
+        .layer(ConcurrencyLimitLayer::new(concurrency_limit))
         .with_state(state)
 }
 
@@ -180,6 +203,7 @@ mod tests {
             config,
             session_db: db,
             agent,
+            metrics: Arc::new(crate::metrics::Metrics::default()),
         }
     }
 

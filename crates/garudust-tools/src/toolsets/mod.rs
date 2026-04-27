@@ -1,3 +1,4 @@
+pub mod delegate;
 pub mod files;
 pub mod mcp;
 pub mod memory;
