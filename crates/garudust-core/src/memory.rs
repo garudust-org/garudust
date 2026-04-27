@@ -26,7 +26,7 @@ impl MemoryCategory {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn from_name(s: &str) -> Self {
         match s {
             "fact" => Self::Fact,
             "preference" => Self::Preference,
@@ -75,7 +75,7 @@ impl MemoryEntry {
                 let cat_str = parts.next().unwrap_or("other");
                 let date = parts.next().unwrap_or("").to_string();
                 return Self {
-                    category: MemoryCategory::from_str(cat_str),
+                    category: MemoryCategory::from_name(cat_str),
                     content,
                     created_at: date,
                 };
@@ -109,7 +109,7 @@ impl MemoryContent {
             .split(ENTRY_DELIMITER)
             .map(str::trim)
             .filter(|s| !s.is_empty())
-            .map(|s| MemoryEntry::parse(s))
+            .map(MemoryEntry::parse)
             .collect();
         Self { entries }
     }
@@ -215,15 +215,15 @@ mod tests {
             ("project", MemoryCategory::Project),
             ("other", MemoryCategory::Other),
         ] {
-            assert_eq!(MemoryCategory::from_str(s), cat);
+            assert_eq!(MemoryCategory::from_name(s), cat);
             assert_eq!(cat.as_str(), s);
         }
     }
 
     #[test]
     fn unknown_category_becomes_other() {
-        assert_eq!(MemoryCategory::from_str("unknown"), MemoryCategory::Other);
-        assert_eq!(MemoryCategory::from_str(""), MemoryCategory::Other);
+        assert_eq!(MemoryCategory::from_name("unknown"), MemoryCategory::Other);
+        assert_eq!(MemoryCategory::from_name(""), MemoryCategory::Other);
     }
 
     // ── MemoryEntry parse ─────────────────────────────────────────────────────
@@ -241,7 +241,7 @@ mod tests {
         for cat in ["fact", "preference", "skill", "project", "other"] {
             let raw = format!("[{cat}|2026-01-01] some content");
             let e = MemoryEntry::parse(&raw);
-            assert_eq!(e.category, MemoryCategory::from_str(cat));
+            assert_eq!(e.category, MemoryCategory::from_name(cat));
             assert_eq!(e.content, "some content");
         }
     }
