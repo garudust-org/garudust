@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/logo.svg" alt="Garudust" width="260"/>
+  <img src="assets/logo.png" alt="Garudust" width="260"/>
 </div>
 
 # Garudust
