@@ -17,6 +17,10 @@
 
 Chat from your terminal, connect it to Telegram / Discord / Slack / Matrix, or call it over HTTP — all from a single binary.
 
+<div align="center">
+  <img src="assets/demo.svg" alt="Garudust demo"/>
+</div>
+
 ---
 
 ## Why Garudust?
