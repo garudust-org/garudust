@@ -336,23 +336,29 @@ impl ProviderTransport for ChatCompletionsTransport {
                                 tc_acc[index].1 = name.to_string();
                             }
                             if let Some(args) = tc["function"]["arguments"].as_str() {
-                                let entry = &mut tc_acc[index];
-                                let is_first = entry.0.is_empty() && entry.1.is_empty();
+                                // is_first_args: true the first time we receive arguments for
+                                // this tool call. Some providers (e.g. Qwen3/vLLM) send id +
+                                // name in a separate earlier chunk with no arguments, so we
+                                // cannot use `entry.0.is_empty()` here — that would always be
+                                // false by the time args arrive, causing id/name to be dropped.
+                                let is_first_args = tc_acc[index].2.is_empty();
+                                let acc_id = tc_acc[index].0.clone();
+                                let acc_name = tc_acc[index].1.clone();
+                                tc_acc[index].2.push_str(args);
                                 yield StreamChunk::ToolCallDelta {
                                     index,
-                                    id: if is_first {
-                                        tc["id"].as_str().map(str::to_string)
+                                    id: if is_first_args && !acc_id.is_empty() {
+                                        Some(acc_id)
                                     } else {
                                         None
                                     },
-                                    name: if is_first {
-                                        tc["function"]["name"].as_str().map(str::to_string)
+                                    name: if is_first_args && !acc_name.is_empty() {
+                                        Some(acc_name)
                                     } else {
                                         None
                                     },
                                     args_delta: args.to_string(),
                                 };
-                                entry.2.push_str(args);
                             }
                         }
                     }
@@ -430,5 +436,38 @@ mod tests {
         assert_eq!(json.len(), 1);
         let tcs = json[0]["tool_calls"].as_array().unwrap();
         assert_eq!(tcs[0]["function"]["name"], "read_file");
+    }
+
+    /// Qwen3/vLLM streams id+name in a separate chunk before arguments.
+    /// Verify that the accumulator correctly propagates id and name to the
+    /// first ToolCallDelta that carries arguments.
+    #[test]
+    fn streaming_id_name_before_args() {
+        // Simulate what the accumulator logic does for the split-chunk pattern
+        let mut tc_acc: Vec<(String, String, String)> = Vec::new();
+
+        // Chunk 1: id + name, no args (Qwen3 pattern)
+        let index = 0usize;
+        while tc_acc.len() <= index {
+            tc_acc.push((String::new(), String::new(), String::new()));
+        }
+        tc_acc[index].0 = "call_abc".to_string();
+        tc_acc[index].1 = "web_search".to_string();
+        // no args yet — no ToolCallDelta emitted
+
+        // Chunk 2: args arrive, id/name absent in this chunk
+        let args = r#"{"query":"gold price"}"#;
+        let is_first_args = tc_acc[index].2.is_empty();
+        let acc_id = tc_acc[index].0.clone();
+        let acc_name = tc_acc[index].1.clone();
+        tc_acc[index].2.push_str(args);
+
+        assert!(is_first_args, "should be first args chunk");
+        assert_eq!(acc_id, "call_abc", "id must survive split-chunk pattern");
+        assert_eq!(
+            acc_name, "web_search",
+            "name must survive split-chunk pattern"
+        );
+        assert_eq!(tc_acc[index].2, args);
     }
 }
