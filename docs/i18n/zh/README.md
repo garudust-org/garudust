@@ -15,6 +15,7 @@
 从终端聊天，连接 Telegram / Discord / Slack / Matrix，或通过 HTTP 调用 — 一个二进制文件搞定一切。
 
 [![CI](https://github.com/garudust-org/garudust/actions/workflows/ci.yml/badge.svg)](https://github.com/garudust-org/garudust/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/garudust-org/garudust)](https://github.com/garudust-org/garudust/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](../../../LICENSE)
 ![Rust 1.75+](https://img.shields.io/badge/rust-1.75+-orange.svg)
 
@@ -25,23 +26,69 @@
 大多数 AI 智能体框架基于 Python，体积庞大，启动缓慢。Garudust 不同：
 
 - **二进制文件 ~10 MB，冷启动 < 20 ms** — 无需 Python 运行时，本地使用无需 Docker
-- **一个环境变量切换 LLM 提供商** — 支持 Anthropic、OpenRouter、AWS Bedrock、OpenAI Responses API 或任何 OpenAI 兼容端点
+- **一个环境变量切换 LLM 提供商** — 支持 Anthropic、OpenRouter、AWS Bedrock、Ollama、vLLM 或任何 OpenAI 兼容端点
 - **随处运行** — 笔记本 TUI、无头服务器、Docker、Telegram、Discord、Slack、Matrix、HTTP
 - **高度可组合** — 每个模块都是独立 crate，添加工具、平台或传输层无需改动其他代码
 
 ---
 
-## 快速开始
+## 安装
 
-### 1. Docker（最快）
+### 预构建二进制文件（推荐）
+
+从 [**GitHub Releases**](https://github.com/garudust-org/garudust/releases/latest) 下载 — 无需安装 Rust：
+
+| 平台 | 文件 |
+|------|------|
+| macOS Apple Silicon | `garudust-*-aarch64-apple-darwin.tar.gz` |
+| macOS Intel | `garudust-*-x86_64-apple-darwin.tar.gz` |
+| Linux x86_64 | `garudust-*-x86_64-unknown-linux-musl.tar.gz` |
+| Linux ARM64 | `garudust-*-aarch64-unknown-linux-musl.tar.gz` |
+| Windows | `garudust-*-x86_64-pc-windows-msvc.zip` |
 
 ```bash
-# 云端提供商（OpenRouter、Anthropic 等）
+tar -xzf garudust-*.tar.gz
+sudo mv garudust garudust-server /usr/local/bin/
+```
+
+### 从源码构建
+
+需要 Rust 1.75+：
+
+```bash
+git clone https://github.com/garudust-org/garudust
+cd garudust
+cargo build --release
+export PATH="$PATH:$(pwd)/target/release"
+```
+
+---
+
+## 快速开始
+
+### 1. 配置并聊天
+
+```bash
+garudust setup   # 选择提供商（OpenRouter / Anthropic / vLLM / Ollama / 自定义）并保存 key
+garudust         # 启动交互式 TUI
+```
+
+使用本地模型（无需 API key）：
+
+```bash
+garudust setup   # 选择 "4) ollama"，输入 OLLAMA_BASE_URL，选择模型
+garudust
+```
+
+### 2. Docker（服务器模式）
+
+```bash
+# 云端提供商
 echo "OPENROUTER_API_KEY=sk-or-..." > .env
 docker compose up
 
-# 或：通过 Ollama 使用本地模型（无需 API key）
-echo "OLLAMA_BASE_URL=http://host.docker.internal:11434/v1" > .env
+# 通过 Ollama 使用本地模型
+echo "OLLAMA_BASE_URL=http://host.docker.internal:11434" > .env
 echo "GARUDUST_MODEL=llama3.2" >> .env
 docker compose up
 ```
@@ -50,20 +97,6 @@ docker compose up
 curl -X POST http://localhost:3000/chat \
   -H "Content-Type: application/json" \
   -d '{"message": "2+2 等于多少？"}'
-```
-
-### 2. 从源码构建
-
-**前提条件：** Rust 1.75+，以及来自 [OpenRouter](https://openrouter.ai) / [Anthropic](https://console.anthropic.com) 的 API key，或运行中的 [Ollama](https://ollama.com) 实例。
-
-```bash
-git clone https://github.com/garudust-org/garudust
-cd garudust
-cargo build --release
-export PATH="$PATH:$(pwd)/target/release"
-
-garudust setup   # 选择提供商，保存 API key
-garudust         # 启动交互式 TUI
 ```
 
 ---
@@ -95,12 +128,14 @@ garudust --model anthropic/claude-opus-4-7 "对这个 PR 进行安全审查"
 ### 配置命令
 
 ```bash
-garudust setup                              # 首次配置向导
+garudust setup                              # 首次配置向导（Quick 或 Full 模式）
 garudust doctor                             # 检查 API key、连通性、数据库
 garudust config show                        # 显示当前配置
-garudust config set model anthropic/claude-opus-4-7
+garudust model                              # 显示当前模型，提示输入新模型
+garudust model anthropic/claude-opus-4-7   # 直接切换模型
 garudust config set OPENROUTER_API_KEY sk-or-...
-garudust config set ANTHROPIC_API_KEY  sk-ant-...
+garudust config set ANTHROPIC_API_KEY sk-ant-...
+garudust config set VLLM_BASE_URL http://localhost:8000/v1
 ```
 
 ---
@@ -126,10 +161,8 @@ curl -X POST http://localhost:3000/chat/stream \
   -H "Content-Type: application/json" \
   -d '{"message": "用 3 句话解释 async/await"}'
 
-# WebSocket
-# 连接：ws://localhost:3000/chat/ws
-# 发送：{"message": "你的任务"}
-# 接收：文本片段… 然后 {"done":true}
+# WebSocket：ws://localhost:3000/chat/ws
+# 发送：{"message": "你的任务"}  接收：文本片段… 然后 {"done":true}
 
 # 健康检查与指标
 curl http://localhost:3000/health
@@ -140,58 +173,29 @@ curl http://localhost:3000/metrics   # Prometheus 兼容
 
 ## 平台适配器
 
-设置相关环境变量并启动 `garudust-server`，即可将智能体接入任意消息平台。
+设置相关环境变量并启动 `garudust-server`，所有适配器可在同一进程中同时运行。
 
-### Telegram
+| 平台 | 所需环境变量 |
+|------|------------|
+| Telegram | `TELEGRAM_TOKEN` |
+| Discord | `DISCORD_TOKEN` |
+| Slack | `SLACK_BOT_TOKEN`、`SLACK_APP_TOKEN` |
+| Matrix | `MATRIX_HOMESERVER`、`MATRIX_USER`、`MATRIX_PASSWORD` |
+| Webhook | 始终开启，监听 `POST /webhook` — 无需 token |
 
-1. 通过 [@BotFather](https://t.me/botfather) 创建机器人，复制 token。
-2. 启动服务器：
+**Telegram** — 通过 [@BotFather](https://t.me/botfather) 创建机器人，复制 token。
 
-```bash
-TELEGRAM_TOKEN=123456:ABC... garudust-server --anthropic-key sk-ant-...
-```
+**Discord** — 在 [discord.com/developers](https://discord.com/developers/applications) 创建应用，在 Bot 设置中启用 **Message Content Intent**，复制 token。
 
-### Discord
+**Slack** — 在 [api.slack.com/apps](https://api.slack.com/apps) 创建应用，启用 **Socket Mode**，添加权限范围 `chat:write channels:history im:history`，安装到工作区。
 
-1. 在 [discord.com/developers](https://discord.com/developers/applications) 创建应用。
-2. 在 **Bot** 下启用 **Message Content Intent** 并复制 token。
-
-```bash
-DISCORD_TOKEN=Bot_... garudust-server --anthropic-key sk-ant-...
-```
-
-### Slack
-
-1. 在 [api.slack.com/apps](https://api.slack.com/apps) 创建 Slack 应用。
-2. 启用 **Socket Mode** 并生成 App-Level Token（`xapp-…`）。
-3. 添加 Bot Token 权限范围：`chat:write`、`channels:history`、`im:history`。
-4. 安装到工作区并复制 Bot Token（`xoxb-…`）。
+**Matrix** — 支持任意 homeserver（matrix.org、Synapse、Dendrite 等）。
 
 ```bash
+TELEGRAM_TOKEN=123:ABC \
 SLACK_BOT_TOKEN=xoxb-... \
 SLACK_APP_TOKEN=xapp-... \
 garudust-server --anthropic-key sk-ant-...
-```
-
-### Matrix
-
-支持任意 Matrix homeserver（matrix.org、自托管 Synapse/Dendrite 等）。
-
-```bash
-MATRIX_HOMESERVER=https://matrix.org \
-MATRIX_USER=@yourbot:matrix.org \
-MATRIX_PASSWORD=secret \
-garudust-server --anthropic-key sk-ant-...
-```
-
-### Webhook
-
-接收 `POST /webhook`，运行智能体，并将回复 POST 到 `callback_url`。
-
-```bash
-curl -X POST http://localhost:3001/webhook \
-  -H "Content-Type: application/json" \
-  -d '{"text":"总结今日工作","callback_url":"https://your-app/reply"}'
 ```
 
 ---
@@ -203,31 +207,24 @@ curl -X POST http://localhost:3001/webhook \
 | Anthropic | 设置 `ANTHROPIC_API_KEY` | 直接使用 Messages API |
 | OpenRouter | 设置 `OPENROUTER_API_KEY` *（默认）* | 200+ 模型 |
 | AWS Bedrock | 设置 `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` | Converse API，SigV4 |
-| OpenAI Responses API | `garudust config set provider codex` | `/v1/responses` 端点 |
+| OpenAI Responses | `garudust config set provider codex` | `/v1/responses` 端点 |
 | Ollama | 设置 `OLLAMA_BASE_URL` | 本地运行，无需 key |
 | vLLM | 设置 `VLLM_BASE_URL` | 本地 OpenAI 兼容服务器 |
-| 其他 OpenAI 兼容 | 设置 `GARUDUST_BASE_URL` | OpenAI 兼容传输层 |
-
-### Ollama（本地，无需 key）
+| 其他 OpenAI 兼容 | 设置 `GARUDUST_BASE_URL` | 通用传输层 |
 
 ```bash
-OLLAMA_BASE_URL=http://localhost:11434/v1
+# Ollama（本地，无需 key）
+OLLAMA_BASE_URL=http://localhost:11434
 GARUDUST_MODEL=llama3.2
-```
 
-### vLLM（本地 OpenAI 兼容服务器）
-
-```bash
+# vLLM
 VLLM_BASE_URL=http://localhost:8000/v1
-VLLM_API_KEY=token-abc123
+VLLM_API_KEY=token-abc123          # 仅当服务器需要 --api-key 时填写
 GARUDUST_MODEL=meta-llama/Llama-3.1-8B-Instruct
-```
 
-### AWS Bedrock
-
-```bash
+# AWS Bedrock
 garudust config set provider bedrock
-garudust config set model    anthropic.claude-3-5-sonnet-20241022-v2:0
+garudust config set model anthropic.claude-3-5-sonnet-20241022-v2:0
 ```
 
 ---
@@ -266,7 +263,7 @@ mcp_servers:
 
 ## 技能（Skills）
 
-技能是存储在 `~/.garudust/skills/` 中的可复用指令集，每次调用时从磁盘读取——修改技能文件后，下次智能体调用立即生效。
+技能是存储在 `~/.garudust/skills/` 中的可复用指令集，每次调用时从磁盘读取 — 修改文件后，下次调用立即生效。
 
 ```
 ~/.garudust/skills/
@@ -294,7 +291,7 @@ version: 1.0.0
 |------|--------|------|
 | `ANTHROPIC_API_KEY` | — | Anthropic key（自动选择 Anthropic 传输层） |
 | `OPENROUTER_API_KEY` | — | OpenRouter key（默认提供商） |
-| `OLLAMA_BASE_URL` | — | Ollama base URL — 自动选择 Ollama 传输层，无需 key |
+| `OLLAMA_BASE_URL` | — | Ollama base URL — 自动选择 Ollama，无需 key |
 | `VLLM_BASE_URL` | — | vLLM base URL — 自动选择 vLLM 传输层 |
 | `VLLM_API_KEY` | — | vLLM API key（可选） |
 | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` | — | Bedrock 凭证 |
@@ -302,7 +299,7 @@ version: 1.0.0
 | `GARUDUST_MODEL` | `anthropic/claude-sonnet-4-6` | 模型标识符 |
 | `GARUDUST_PORT` | `3000` | HTTP 网关端口 |
 | `GARUDUST_WEBHOOK_PORT` | `3001` | Webhook 适配器端口（`0` = 禁用） |
-| `GARUDUST_BASE_URL` | — | 覆盖 LLM base URL |
+| `GARUDUST_BASE_URL` | — | 覆盖 LLM base URL（任何 OpenAI 兼容端点） |
 | `GARUDUST_API_KEY` | — | `/chat*` 端点的 Bearer token（生产环境推荐） |
 | `GARUDUST_APPROVAL_MODE` | `smart` | 命令审批：`auto` \| `smart` \| `deny` |
 | `GARUDUST_RATE_LIMIT` | — | 每 IP 速率限制（请求数/分钟） |
@@ -362,7 +359,7 @@ crates/
   garudust-gateway     axum HTTP 网关 — /chat、/chat/stream、/chat/ws、/metrics
 
 bin/
-  garudust             CLI：交互式 TUI、单次任务、setup、doctor、config
+  garudust             CLI：交互式 TUI、单次任务、setup、doctor、config、model
   garudust-server      无头模式：所有平台 + HTTP + 定时任务，单进程运行
 ```
 
@@ -379,15 +376,12 @@ Garudust 设计为易于扩展 — 添加工具、传输层或平台适配器通
 - **改进 TUI** — 多行输入、语法高亮、鼠标支持
 - **测试** — 集成测试、属性测试、快照测试
 
-### 开始贡献
-
 ```bash
 git clone https://github.com/garudust-org/garudust
 cd garudust
-cargo build                   # 构建所有内容
-cargo test --workspace        # 运行所有测试
-cargo clippy --workspace --all-targets \
-  -- -W clippy::all -W clippy::pedantic   # lint（与 CI 相同）
+cargo build
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -W clippy::all -W clippy::pedantic
 ```
 
 请阅读 [CONTRIBUTING.md](../../../CONTRIBUTING.md) 了解代码规范、提交约定和完整 CI 检查清单。

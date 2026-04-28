@@ -14,7 +14,8 @@
 
 Chat from your terminal, connect it to Telegram / Discord / Slack / Matrix, or call it over HTTP — all from a single binary.
 
-[![CI](https://github.com/ninenox/garudust/actions/workflows/ci.yml/badge.svg)](https://github.com/ninenox/garudust/actions/workflows/ci.yml)
+[![CI](https://github.com/garudust-org/garudust/actions/workflows/ci.yml/badge.svg)](https://github.com/garudust-org/garudust/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/garudust-org/garudust)](https://github.com/garudust-org/garudust/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Rust 1.75+](https://img.shields.io/badge/rust-1.75+-orange.svg)
 
@@ -25,23 +26,69 @@ Chat from your terminal, connect it to Telegram / Discord / Slack / Matrix, or c
 Most AI agent frameworks are Python, heavy, and slow to start. Garudust is:
 
 - **~10 MB binary, < 20 ms cold start** — no Python runtime, no Docker required for local use
-- **Swap providers with one env var** — Anthropic, OpenRouter, AWS Bedrock, OpenAI Responses API, or any OpenAI-compatible endpoint
+- **Swap providers with one env var** — Anthropic, OpenRouter, AWS Bedrock, Ollama, vLLM, or any OpenAI-compatible endpoint
 - **Runs everywhere** — laptop TUI, headless server, Docker, Telegram, Discord, Slack, Matrix, HTTP
 - **Composable** — every piece is a separate crate; add a tool, platform, or transport without touching anything else
 
 ---
 
-## Quick Start
+## Install
 
-### 1. Docker (fastest)
+### Pre-built binaries (recommended)
+
+Download from [**GitHub Releases**](https://github.com/garudust-org/garudust/releases/latest) — no Rust required:
+
+| Platform | File |
+|----------|------|
+| macOS Apple Silicon | `garudust-*-aarch64-apple-darwin.tar.gz` |
+| macOS Intel | `garudust-*-x86_64-apple-darwin.tar.gz` |
+| Linux x86_64 | `garudust-*-x86_64-unknown-linux-musl.tar.gz` |
+| Linux ARM64 | `garudust-*-aarch64-unknown-linux-musl.tar.gz` |
+| Windows | `garudust-*-x86_64-pc-windows-msvc.zip` |
 
 ```bash
-# Cloud provider (OpenRouter, Anthropic, …)
+tar -xzf garudust-*.tar.gz
+sudo mv garudust garudust-server /usr/local/bin/
+```
+
+### Build from source
+
+Requires Rust 1.75+:
+
+```bash
+git clone https://github.com/garudust-org/garudust
+cd garudust
+cargo build --release
+export PATH="$PATH:$(pwd)/target/release"
+```
+
+---
+
+## Quick Start
+
+### 1. Configure and chat
+
+```bash
+garudust setup   # pick provider (OpenRouter / Anthropic / vLLM / Ollama / custom) + save key
+garudust         # launch interactive TUI
+```
+
+For a self-hosted model with no API key:
+
+```bash
+garudust setup   # choose "4) ollama", enter OLLAMA_BASE_URL, pick a model
+garudust
+```
+
+### 2. Docker (server mode)
+
+```bash
+# Cloud provider
 echo "OPENROUTER_API_KEY=sk-or-..." > .env
 docker compose up
 
-# Or: local model via Ollama (no API key required)
-echo "OLLAMA_BASE_URL=http://host.docker.internal:11434/v1" > .env
+# Local model via Ollama
+echo "OLLAMA_BASE_URL=http://host.docker.internal:11434" > .env
 echo "GARUDUST_MODEL=llama3.2" >> .env
 docker compose up
 ```
@@ -50,20 +97,6 @@ docker compose up
 curl -X POST http://localhost:3000/chat \
   -H "Content-Type: application/json" \
   -d '{"message": "what is 2+2?"}'
-```
-
-### 2. Build from source
-
-**Prerequisites:** Rust 1.75+ and either an API key from [OpenRouter](https://openrouter.ai) / [Anthropic](https://console.anthropic.com), or a running [Ollama](https://ollama.com) instance.
-
-```bash
-git clone https://github.com/ninenox/garudust
-cd garudust
-cargo build --release
-export PATH="$PATH:$(pwd)/target/release"
-
-garudust setup   # pick provider, save API key
-garudust         # launch interactive TUI
 ```
 
 ---
@@ -95,12 +128,14 @@ garudust --model anthropic/claude-opus-4-7 "review this PR for security issues"
 ### Config commands
 
 ```bash
-garudust setup                              # first-time wizard
+garudust setup                              # first-time wizard (Quick or Full mode)
 garudust doctor                             # check API key, connectivity, DB
 garudust config show                        # print active config
-garudust config set model anthropic/claude-opus-4-7
+garudust model                              # show current model, prompt for new
+garudust model anthropic/claude-opus-4-7   # switch model directly
 garudust config set OPENROUTER_API_KEY sk-or-...
-garudust config set ANTHROPIC_API_KEY  sk-ant-...
+garudust config set ANTHROPIC_API_KEY sk-ant-...
+garudust config set VLLM_BASE_URL http://localhost:8000/v1
 ```
 
 ---
@@ -126,10 +161,8 @@ curl -X POST http://localhost:3000/chat/stream \
   -H "Content-Type: application/json" \
   -d '{"message": "explain async/await in 3 sentences"}'
 
-# WebSocket
-# Connect: ws://localhost:3000/chat/ws
-# Send:    {"message": "your task"}
-# Receive: text chunks … then {"done":true}
+# WebSocket: ws://localhost:3000/chat/ws
+# Send: {"message": "your task"}  Receive: text chunks … then {"done":true}
 
 # Health & metrics
 curl http://localhost:3000/health
@@ -140,58 +173,29 @@ curl http://localhost:3000/metrics   # Prometheus-compatible
 
 ## Platform Adapters
 
-Connect the agent to any messaging platform by setting the relevant env vars and starting `garudust-server`.
+Set the relevant env vars and start `garudust-server`. Every adapter can run together in the same process.
 
-### Telegram
+| Platform | Required env vars |
+|----------|-------------------|
+| Telegram | `TELEGRAM_TOKEN` |
+| Discord | `DISCORD_TOKEN` |
+| Slack | `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN` |
+| Matrix | `MATRIX_HOMESERVER`, `MATRIX_USER`, `MATRIX_PASSWORD` |
+| Webhook | always-on at `POST /webhook` — no token needed |
 
-1. Create a bot via [@BotFather](https://t.me/botfather), copy the token.
-2. Start the server:
+**Telegram** — create a bot via [@BotFather](https://t.me/botfather), copy the token.
 
-```bash
-TELEGRAM_TOKEN=123456:ABC... garudust-server --anthropic-key sk-ant-...
-```
+**Discord** — create an app at [discord.com/developers](https://discord.com/developers/applications), enable **Message Content Intent** under Bot, copy the token.
 
-### Discord
+**Slack** — create an app at [api.slack.com/apps](https://api.slack.com/apps), enable **Socket Mode**, add scopes `chat:write channels:history im:history`, install to workspace.
 
-1. Create an application at [discord.com/developers](https://discord.com/developers/applications).
-2. Under **Bot**, enable **Message Content Intent** and copy the token.
-
-```bash
-DISCORD_TOKEN=Bot_... garudust-server --anthropic-key sk-ant-...
-```
-
-### Slack
-
-1. Create a Slack app at [api.slack.com/apps](https://api.slack.com/apps).
-2. Enable **Socket Mode** and generate an App-Level Token (`xapp-…`).
-3. Add Bot Token Scopes: `chat:write`, `channels:history`, `im:history`.
-4. Install to workspace and copy the Bot Token (`xoxb-…`).
+**Matrix** — works with any homeserver (matrix.org, Synapse, Dendrite, etc.).
 
 ```bash
+TELEGRAM_TOKEN=123:ABC \
 SLACK_BOT_TOKEN=xoxb-... \
 SLACK_APP_TOKEN=xapp-... \
 garudust-server --anthropic-key sk-ant-...
-```
-
-### Matrix
-
-Works with any Matrix homeserver (matrix.org, self-hosted Synapse/Dendrite, etc.).
-
-```bash
-MATRIX_HOMESERVER=https://matrix.org \
-MATRIX_USER=@yourbot:matrix.org \
-MATRIX_PASSWORD=secret \
-garudust-server --anthropic-key sk-ant-...
-```
-
-### Webhook
-
-Receives `POST /webhook`, runs the agent, and POSTs the reply to `callback_url`.
-
-```bash
-curl -X POST http://localhost:3001/webhook \
-  -H "Content-Type: application/json" \
-  -d '{"text":"summarise today","callback_url":"https://your-app/reply"}'
 ```
 
 ---
@@ -203,39 +207,24 @@ curl -X POST http://localhost:3001/webhook \
 | Anthropic | Set `ANTHROPIC_API_KEY` | Direct Messages API |
 | OpenRouter | Set `OPENROUTER_API_KEY` *(default)* | 200+ models |
 | AWS Bedrock | Set `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` | Converse API, SigV4 |
-| OpenAI Responses API | `garudust config set provider codex` | `/v1/responses` endpoint |
+| OpenAI Responses | `garudust config set provider codex` | `/v1/responses` endpoint |
 | Ollama | Set `OLLAMA_BASE_URL` | Local, no key required |
 | vLLM | Set `VLLM_BASE_URL` | Local OpenAI-compatible server |
-| Any OpenAI-compatible | Set `GARUDUST_BASE_URL` | OpenAI-compatible transport |
-
-### Ollama (local, no key required)
+| Any OpenAI-compat | Set `GARUDUST_BASE_URL` | Generic transport |
 
 ```bash
-# default: http://localhost:11434/v1
-OLLAMA_BASE_URL=http://localhost:11434/v1
+# Ollama (local, no key)
+OLLAMA_BASE_URL=http://localhost:11434
 GARUDUST_MODEL=llama3.2
-```
 
-```bash
-docker compose up        # or: garudust-server
-curl -X POST http://localhost:3000/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "hello"}'
-```
-
-### vLLM (local OpenAI-compatible server)
-
-```bash
+# vLLM
 VLLM_BASE_URL=http://localhost:8000/v1
-VLLM_API_KEY=token-abc123          # only if vLLM started with --api-key
+VLLM_API_KEY=token-abc123          # only if server requires --api-key
 GARUDUST_MODEL=meta-llama/Llama-3.1-8B-Instruct
-```
 
-### AWS Bedrock
-
-```bash
+# AWS Bedrock
 garudust config set provider bedrock
-garudust config set model    anthropic.claude-3-5-sonnet-20241022-v2:0
+garudust config set model anthropic.claude-3-5-sonnet-20241022-v2:0
 ```
 
 ---
@@ -270,13 +259,11 @@ mcp_servers:
     args: ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/mydb"]
 ```
 
-Tools from connected MCP servers appear automatically in the agent's registry.
-
 ---
 
 ## Skills
 
-Skills are reusable instruction sets stored in `~/.garudust/skills/`. They are read from disk on every invocation — edit a skill file and the next agent call picks up the change immediately.
+Skills are reusable instruction sets stored in `~/.garudust/skills/`. They are loaded from disk on every invocation — edit a file and the next call picks up the change immediately.
 
 ```
 ~/.garudust/skills/
@@ -304,9 +291,9 @@ Always write conventional commits. Always run tests before pushing...
 |----------|---------|-------------|
 | `ANTHROPIC_API_KEY` | — | Anthropic key (auto-selects Anthropic transport) |
 | `OPENROUTER_API_KEY` | — | OpenRouter key (default provider) |
-| `OLLAMA_BASE_URL` | — | Ollama base URL — auto-selects Ollama transport, no key required |
+| `OLLAMA_BASE_URL` | — | Ollama base URL — auto-selects Ollama, no key needed |
 | `VLLM_BASE_URL` | — | vLLM base URL — auto-selects vLLM transport |
-| `VLLM_API_KEY` | — | vLLM API key (optional, only if server requires it) |
+| `VLLM_API_KEY` | — | vLLM API key (optional) |
 | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` | — | Bedrock credentials |
 | `BRAVE_SEARCH_API_KEY` | — | Enables `web_search` tool |
 | `GARUDUST_MODEL` | `anthropic/claude-sonnet-4-6` | Model identifier |
@@ -372,7 +359,7 @@ crates/
   garudust-gateway     axum HTTP gateway — /chat, /chat/stream, /chat/ws, /metrics
 
 bin/
-  garudust             CLI: interactive TUI, one-shot, setup, doctor, config
+  garudust             CLI: interactive TUI, one-shot, setup, doctor, config, model
   garudust-server      Headless: all platforms + HTTP + cron in one process
 ```
 
@@ -389,15 +376,12 @@ Garudust is designed to be easy to extend — adding a tool, transport, or platf
 - **Improve TUI** — multi-line input, syntax highlighting, mouse support
 - **Tests** — integration tests, property tests, snapshot tests
 
-### Getting started
-
 ```bash
-git clone https://github.com/ninenox/garudust
+git clone https://github.com/garudust-org/garudust
 cd garudust
-cargo build                   # build everything
-cargo test --workspace        # run all tests
-cargo clippy --workspace --all-targets \
-  -- -W clippy::all -W clippy::pedantic   # lint (same as CI)
+cargo build
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -W clippy::all -W clippy::pedantic
 ```
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) for code guidelines, commit conventions, and the full CI checklist.
