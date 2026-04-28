@@ -5,8 +5,25 @@ use garudust_core::config::AgentConfig;
 const SECRET_KEYS: &[&str] = &[
     "OPENROUTER_API_KEY",
     "ANTHROPIC_API_KEY",
+    "VLLM_API_KEY",
+    "BRAVE_SEARCH_API_KEY",
+    "GARUDUST_API_KEY",
     "TELEGRAM_TOKEN",
     "DISCORD_TOKEN",
+    "SLACK_BOT_TOKEN",
+    "SLACK_APP_TOKEN",
+    "MATRIX_PASSWORD",
+];
+
+const ENV_KEYS: &[&str] = &[
+    "VLLM_BASE_URL",
+    "OLLAMA_BASE_URL",
+    "GARUDUST_MODEL",
+    "GARUDUST_BASE_URL",
+    "GARUDUST_APPROVAL_MODE",
+    "GARUDUST_RATE_LIMIT",
+    "MATRIX_HOMESERVER",
+    "MATRIX_USER",
 ];
 
 const YAML_KEYS: &[&str] = &[
@@ -29,6 +46,7 @@ pub fn show(config: &AgentConfig) {
         "base_url        : {}",
         config.base_url.as_deref().unwrap_or("(default)")
     );
+    println!("approval_mode   : {}", config.security.approval_mode);
     let key_display = match &config.api_key {
         Some(k) if k.len() > 10 => format!("{}…{}", &k[..6], &k[k.len() - 4..]),
         Some(_) => "set".into(),
@@ -72,6 +90,12 @@ pub fn set(key: &str, value: &str, home_dir: &Path) -> anyhow::Result<()> {
         return Ok(());
     }
 
+    if ENV_KEYS.contains(&upper.as_str()) {
+        AgentConfig::set_env_var(home_dir, &upper, value)?;
+        println!("[✓] {} saved to {}", upper, home_dir.join(".env").display());
+        return Ok(());
+    }
+
     if YAML_KEYS.contains(&key) {
         update_yaml(key, value, home_dir)?;
         println!(
@@ -82,8 +106,9 @@ pub fn set(key: &str, value: &str, home_dir: &Path) -> anyhow::Result<()> {
     }
 
     anyhow::bail!(
-        "Unknown key: '{key}'\n\nSecret keys (saved to .env):\n  {}\n\nConfig keys (saved to config.yaml):\n  {}",
+        "Unknown key: '{key}'\n\nSecret keys (saved to .env):\n  {}\n\nEnv keys (saved to .env):\n  {}\n\nConfig keys (saved to config.yaml):\n  {}",
         SECRET_KEYS.join(", "),
+        ENV_KEYS.join(", "),
         YAML_KEYS.join(", "),
     )
 }
