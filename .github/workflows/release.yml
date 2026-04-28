@@ -1,0 +1,156 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  build:
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux x86_64 — static musl (no glibc dependency)
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            cross: false
+            ext: ""
+            archive: tar.gz
+
+          # Linux ARM64 — for Raspberry Pi, ARM VPS
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            cross: true
+            ext: ""
+            archive: tar.gz
+
+          # macOS Intel
+          - target: x86_64-apple-darwin
+            os: macos-13
+            cross: false
+            ext: ""
+            archive: tar.gz
+
+          # macOS Apple Silicon
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            cross: false
+            ext: ""
+            archive: tar.gz
+
+          # Windows x86_64
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            cross: false
+            ext: ".exe"
+            archive: zip
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: release-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: release-${{ matrix.target }}-
+
+      # Native Linux musl — just needs musl-tools
+      - name: Install musl-tools (Linux x86_64)
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      # Cross-compilation for aarch64 Linux
+      - name: Install cross
+        if: matrix.cross
+        run: cargo install cross --locked
+
+      - name: Build (native)
+        if: "!matrix.cross"
+        run: cargo build --release --bin garudust --bin garudust-server --target ${{ matrix.target }}
+
+      - name: Build (cross)
+        if: matrix.cross
+        run: cross build --release --bin garudust --bin garudust-server --target ${{ matrix.target }}
+
+      # ── Package ────────────────────────────────────────────────────────────
+      - name: Package (tar.gz)
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          TARGET="${{ matrix.target }}"
+          DIR="garudust-${VERSION}-${TARGET}"
+          mkdir -p "${DIR}"
+          cp "target/${TARGET}/release/garudust"        "${DIR}/"
+          cp "target/${TARGET}/release/garudust-server" "${DIR}/"
+          cp README.md LICENSE                          "${DIR}/"
+          tar -czf "${DIR}.tar.gz" "${DIR}"
+          echo "ASSET=${DIR}.tar.gz" >> "$GITHUB_ENV"
+
+      - name: Package (zip — Windows)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          $VERSION = $env:GITHUB_REF_NAME
+          $TARGET  = "${{ matrix.target }}"
+          $DIR     = "garudust-${VERSION}-${TARGET}"
+          New-Item -ItemType Directory -Path $DIR | Out-Null
+          Copy-Item "target\${TARGET}\release\garudust.exe"        "${DIR}\"
+          Copy-Item "target\${TARGET}\release\garudust-server.exe" "${DIR}\"
+          Copy-Item README.md, LICENSE                              "${DIR}\"
+          Compress-Archive -Path "${DIR}\*" -DestinationPath "${DIR}.zip"
+          "ASSET=${DIR}.zip" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: garudust-${{ github.ref_name }}-${{ matrix.target }}.*
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          sha256sum * > SHA256SUMS.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/*
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
