@@ -55,6 +55,12 @@ enum Cmd {
         #[command(subcommand)]
         sub: ConfigCmd,
     },
+
+    /// Get or set the active model
+    Model {
+        /// Model name to switch to (omit for interactive prompt)
+        name: Option<String>,
+    },
 }
 
 #[derive(Parser)]
@@ -187,6 +193,12 @@ async fn main() -> Result<()> {
         }) => {
             let config = build_config(&cli);
             config_cmd::set(key, value, &config.home_dir)?;
+            return Ok(());
+        }
+
+        Some(Cmd::Model { name }) => {
+            let config = build_config(&cli);
+            config_cmd::set_model(name.as_deref(), &config)?;
             return Ok(());
         }
 

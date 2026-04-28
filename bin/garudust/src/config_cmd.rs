@@ -1,3 +1,4 @@
+use std::io::{self, Write};
 use std::path::Path;
 
 use garudust_core::config::AgentConfig;
@@ -111,6 +112,28 @@ pub fn set(key: &str, value: &str, home_dir: &Path) -> anyhow::Result<()> {
         ENV_KEYS.join(", "),
         YAML_KEYS.join(", "),
     )
+}
+
+pub fn set_model(name: Option<&str>, config: &AgentConfig) -> anyhow::Result<()> {
+    let new_model = match name {
+        Some(n) => n.to_string(),
+        None => {
+            println!("Current model: {}", config.model);
+            print!("  New model [{}]: ", config.model);
+            io::stdout().flush()?;
+            let mut buf = String::new();
+            io::stdin().read_line(&mut buf)?;
+            let input = buf.trim().to_string();
+            if input.is_empty() {
+                println!("Model unchanged.");
+                return Ok(());
+            }
+            input
+        }
+    };
+    update_yaml("model", &new_model, &config.home_dir)?;
+    println!("[✓] model = {new_model}");
+    Ok(())
 }
 
 fn update_yaml(key: &str, value: &str, home_dir: &Path) -> anyhow::Result<()> {
