@@ -54,3 +54,55 @@ impl Metrics {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn counters_start_at_zero() {
+        let m = Metrics::default();
+        assert_eq!(m.requests_total.load(Ordering::Relaxed), 0);
+        assert_eq!(m.errors_total.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn inc_request_increments_total_and_active() {
+        let m = Metrics::default();
+        m.inc_request();
+        m.inc_request();
+        assert_eq!(m.requests_total.load(Ordering::Relaxed), 2);
+        assert_eq!(m.requests_active.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn dec_active_decrements_without_affecting_total() {
+        let m = Metrics::default();
+        m.inc_request();
+        m.dec_active();
+        assert_eq!(m.requests_total.load(Ordering::Relaxed), 1);
+        assert_eq!(m.requests_active.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn add_tokens_accumulates_correctly() {
+        let m = Metrics::default();
+        m.add_tokens(100, 50);
+        m.add_tokens(200, 75);
+        assert_eq!(m.tokens_in_total.load(Ordering::Relaxed), 300);
+        assert_eq!(m.tokens_out_total.load(Ordering::Relaxed), 125);
+    }
+
+    #[test]
+    fn prometheus_text_contains_expected_metric_names() {
+        let m = Metrics::default();
+        m.inc_request();
+        m.inc_error();
+        m.add_tokens(10, 5);
+        let text = m.prometheus_text();
+        assert!(text.contains("garudust_requests_total 1"));
+        assert!(text.contains("garudust_errors_total 1"));
+        assert!(text.contains("direction=\"in\"} 10"));
+        assert!(text.contains("direction=\"out\"} 5"));
+    }
+}

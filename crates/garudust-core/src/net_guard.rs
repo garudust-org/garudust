@@ -102,3 +102,62 @@ fn is_private_v6(ip: Ipv6Addr) -> bool {
     // fe80::/10 — link-local
     || (segs[0] & 0xffc0) == 0xfe80
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejects_non_http_scheme() {
+        assert!(is_safe_url("ftp://example.com").is_err());
+        assert!(is_safe_url("file:///etc/passwd").is_err());
+    }
+
+    #[test]
+    fn rejects_empty_host() {
+        assert!(is_safe_url("http://").is_err());
+    }
+
+    #[test]
+    fn rejects_loopback() {
+        assert!(is_safe_url("http://127.0.0.1/anything").is_err());
+        assert!(is_safe_url("http://localhost/anything").is_err());
+    }
+
+    #[test]
+    fn rejects_private_ipv4_ranges() {
+        assert!(is_safe_url("http://10.0.0.1").is_err());
+        assert!(is_safe_url("http://172.16.0.1").is_err());
+        assert!(is_safe_url("http://192.168.1.1").is_err());
+        assert!(is_safe_url("http://100.64.0.1").is_err());
+    }
+
+    #[test]
+    fn rejects_cloud_metadata_hosts() {
+        assert!(is_safe_url("http://169.254.169.254/latest/meta-data/").is_err());
+        assert!(is_safe_url("http://metadata.google.internal/computeMetadata/v1/").is_err());
+    }
+
+    #[test]
+    fn is_private_v4_covers_all_ranges() {
+        assert!(is_private_v4(Ipv4Addr::new(10, 0, 0, 1)));
+        assert!(is_private_v4(Ipv4Addr::new(172, 16, 0, 1)));
+        assert!(is_private_v4(Ipv4Addr::new(172, 31, 255, 255)));
+        assert!(is_private_v4(Ipv4Addr::new(192, 168, 0, 1)));
+        assert!(is_private_v4(Ipv4Addr::new(100, 64, 0, 1)));
+        assert!(!is_private_v4(Ipv4Addr::new(8, 8, 8, 8)));
+        assert!(!is_private_v4(Ipv4Addr::new(172, 15, 0, 1)));
+        assert!(!is_private_v4(Ipv4Addr::new(172, 32, 0, 1)));
+    }
+
+    #[test]
+    fn is_private_v6_covers_ranges() {
+        // fc00::/7 unique local
+        assert!(is_private_v6("fc00::1".parse().unwrap()));
+        assert!(is_private_v6("fd00::1".parse().unwrap()));
+        // fe80::/10 link-local
+        assert!(is_private_v6("fe80::1".parse().unwrap()));
+        // public
+        assert!(!is_private_v6("2001:db8::1".parse().unwrap()));
+    }
+}

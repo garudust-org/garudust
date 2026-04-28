@@ -348,13 +348,9 @@ async fn main() -> Result<()> {
         let scheduler = CronScheduler::new(agent.load_full(), approver.clone()).await?;
 
         if let Some(jobs_str) = &cli.cron_jobs {
-            for entry in jobs_str.split(',') {
-                if let Some((expr, task)) = entry.trim().split_once('=') {
-                    scheduler
-                        .add_job(expr.trim(), task.trim().to_string())
-                        .await?;
-                    tracing::info!(cron = %expr.trim(), task = %task.trim(), "cron job registered");
-                }
+            for (expr, task) in garudust_cron::parse_job_pairs(jobs_str) {
+                scheduler.add_job(&expr, task.clone()).await?;
+                tracing::info!(cron = %expr, task = %task, "cron job registered");
             }
         }
 

@@ -41,3 +41,48 @@ impl SessionRegistry {
         self.sessions.read().await.len()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn new_registry_is_empty() {
+        let r = SessionRegistry::new();
+        assert_eq!(r.count().await, 0);
+    }
+
+    #[tokio::test]
+    async fn touch_creates_new_session() {
+        let r = SessionRegistry::new();
+        r.touch("key1", "telegram", "user1").await;
+        assert_eq!(r.count().await, 1);
+    }
+
+    #[tokio::test]
+    async fn touch_same_key_does_not_duplicate() {
+        let r = SessionRegistry::new();
+        r.touch("key1", "telegram", "user1").await;
+        r.touch("key1", "telegram", "user1").await;
+        assert_eq!(r.count().await, 1);
+    }
+
+    #[tokio::test]
+    async fn touch_different_keys_each_counted() {
+        let r = SessionRegistry::new();
+        r.touch("key1", "telegram", "user1").await;
+        r.touch("key2", "discord", "user2").await;
+        assert_eq!(r.count().await, 2);
+    }
+
+    #[tokio::test]
+    async fn touch_updates_last_seen() {
+        let r = SessionRegistry::new();
+        r.touch("key1", "telegram", "user1").await;
+        let first = r.sessions.read().await["key1"].last_seen;
+        tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+        r.touch("key1", "telegram", "user1").await;
+        let second = r.sessions.read().await["key1"].last_seen;
+        assert!(second >= first);
+    }
+}

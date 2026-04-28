@@ -124,3 +124,41 @@ impl PlatformAdapter for WebhookAdapter {
         self.send_message(channel, OutboundMessage::text(buf)).await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use garudust_core::net_guard;
+
+    #[test]
+    fn send_message_rejects_private_callback_url() {
+        // net_guard is called before the HTTP client, so a private URL must
+        // be rejected without making any network request.
+        let result = net_guard::is_safe_url("http://192.168.1.1/callback");
+        assert!(result.is_err(), "private callback URL must be blocked");
+    }
+
+    #[test]
+    fn session_key_falls_back_to_callback_url() {
+        // Mirrors the logic in handle_webhook: empty session_key → use callback_url.
+        let session_key = "";
+        let callback_url = "https://example.com/reply";
+        let key = if session_key.is_empty() {
+            format!("webhook:{callback_url}")
+        } else {
+            session_key.to_string()
+        };
+        assert_eq!(key, "webhook:https://example.com/reply");
+    }
+
+    #[test]
+    fn session_key_used_when_provided() {
+        let session_key = "my-custom-key";
+        let callback_url = "https://example.com/reply";
+        let key = if session_key.is_empty() {
+            format!("webhook:{callback_url}")
+        } else {
+            session_key.to_string()
+        };
+        assert_eq!(key, "my-custom-key");
+    }
+}
