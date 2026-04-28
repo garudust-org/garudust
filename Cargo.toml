@@ -73,8 +73,8 @@ crossterm = "0.28"
 tokio-cron-scheduler = "0.13"
 
 # Platform SDKs (optional flag set per-crate, not here)
-teloxide  = { version = "0.13", features = ["macros"] }
-serenity  = { version = "0.12", features = ["client", "gateway", "model"] }
+teloxide  = { version = "0.13", default-features = false, features = ["macros", "rustls", "ctrlc_handler"] }
+serenity  = { version = "0.12", default-features = false, features = ["default_no_backend", "rustls_backend"] }
 
 # MCP
 rmcp = { version = "1", features = ["client", "transport-child-process"] }
