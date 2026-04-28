@@ -189,14 +189,14 @@ async fn ddg_search(query: &str, count: usize) -> Result<ToolResult, ToolError> 
     Ok(ToolResult::ok("", items.join("\n\n")))
 }
 
+/// Parse search results from DDG HTML response.
+/// DDG redirect URLs look like: `//duckduckgo.com/l/?uddg=https%3A%2F%2F...`
+/// This scrapes an undocumented HTML format and may break if DDG changes its markup.
 fn parse_ddg_html(html: &str, limit: usize) -> Vec<String> {
-    // Extract title links and snippets from DDG HTML response.
-    // DDG redirect URLs look like: //duckduckgo.com/l/?uddg=https%3A%2F%2F...
     let mut results = Vec::new();
     let mut pos = 0;
 
     while results.len() < limit {
-        // Find next result title anchor
         let Some(a_start) = html[pos..].find("result__title") else {
             break;
         };
@@ -210,15 +210,13 @@ fn parse_ddg_html(html: &str, limit: usize) -> Vec<String> {
         };
         let raw_url = &html[href_off..href_off + href_end];
 
-        // Resolve DDG redirect to real URL
         let url = if let Some(uddg) = raw_url.split("uddg=").nth(1) {
-            let decoded = uddg.split('&').next().unwrap_or(uddg);
-            percent_decode(decoded)
+            let encoded = uddg.split('&').next().unwrap_or(uddg);
+            percent_decode(encoded)
         } else {
             raw_url.to_string()
         };
 
-        // Extract link text (title)
         let Some(gt) = html[href_off + href_end..].find('>') else {
             break;
         };
@@ -232,20 +230,17 @@ fn parse_ddg_html(html: &str, limit: usize) -> Vec<String> {
             .replace("&gt;", ">")
             .replace("&quot;", "\"");
 
-        // Find following snippet
         let snippet = if let Some(snip_start) = html[title_off..].find("result__snippet") {
             let snip_base = title_off + snip_start;
             if let Some(gt2) = html[snip_base..].find('>') {
                 let snip_off = snip_base + gt2 + 1;
                 if let Some(lt2) = html[snip_off..].find("</") {
                     let raw = &html[snip_off..snip_off + lt2];
-                    // Strip any inner tags
-                    let clean: String = raw.chars().collect::<String>();
-                    let clean = clean
-                        .replace("<b>", "")
+                    raw.replace("<b>", "")
                         .replace("</b>", "")
-                        .replace("&amp;", "&");
-                    clean.trim().to_string()
+                        .replace("&amp;", "&")
+                        .trim()
+                        .to_string()
                 } else {
                     String::new()
                 }
@@ -273,21 +268,52 @@ fn parse_ddg_html(html: &str, limit: usize) -> Vec<String> {
 }
 
 fn percent_decode(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    let bytes = s.as_bytes();
+    let mut buf: Vec<u8> = Vec::with_capacity(s.len());
+    let b = s.as_bytes();
     let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(hex) = std::str::from_utf8(&bytes[i + 1..i + 3]) {
-                if let Ok(b) = u8::from_str_radix(hex, 16) {
-                    out.push(b as char);
-                    i += 3;
-                    continue;
-                }
+    while i < b.len() {
+        if b[i] == b'%' && i + 2 < b.len() {
+            if let Some(byte) = std::str::from_utf8(&b[i + 1..i + 3])
+                .ok()
+                .and_then(|h| u8::from_str_radix(h, 16).ok())
+            {
+                buf.push(byte);
+                i += 3;
+                continue;
             }
         }
-        out.push(bytes[i] as char);
+        buf.push(b[i]);
         i += 1;
     }
-    out
+    String::from_utf8_lossy(&buf).into_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn percent_decode_ascii() {
+        assert_eq!(percent_decode("hello%20world"), "hello world");
+    }
+
+    #[test]
+    fn percent_decode_thai_utf8() {
+        // ก = U+0E01, UTF-8: 0xE0 0xB8 0x81 → %E0%B8%81
+        assert_eq!(percent_decode("%E0%B8%81"), "ก");
+    }
+
+    #[test]
+    fn percent_decode_mixed() {
+        assert_eq!(
+            percent_decode("https%3A%2F%2Fexample.com"),
+            "https://example.com"
+        );
+    }
+
+    #[test]
+    fn percent_decode_invalid_sequence_passthrough() {
+        // Invalid hex after % — leave bytes as-is
+        assert_eq!(percent_decode("%ZZ"), "%ZZ");
+    }
 }
