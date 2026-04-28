@@ -19,19 +19,21 @@ pub async fn run() -> anyhow::Result<()> {
     println!();
 
     // ── Provider ──────────────────────────────────────────────────────────────
+    let ollama_detected = std::net::TcpStream::connect("127.0.0.1:11434").is_ok();
+    let ollama_hint = if ollama_detected { " ✓ detected" } else { "" };
     println!("LLM Provider:");
-    println!("  1) openrouter  — 200+ hosted models (openrouter.ai)");
-    println!("  2) anthropic   — Claude directly");
-    println!("  3) vllm        — self-hosted vLLM server");
-    println!("  4) ollama      — local Ollama");
+    println!("  1) ollama      — local Ollama, no API key needed{ollama_hint}");
+    println!("  2) openrouter  — 200+ hosted models (openrouter.ai)");
+    println!("  3) anthropic   — Claude directly");
+    println!("  4) vllm        — self-hosted vLLM server");
     println!("  5) custom      — any OpenAI-compatible endpoint");
     let choice = prompt("Choose provider", Some("1"));
     let provider = match choice.trim() {
-        "2" | "anthropic" => "anthropic",
-        "3" | "vllm" => "vllm",
-        "4" | "ollama" => "ollama",
+        "2" | "openrouter" => "openrouter",
+        "3" | "anthropic" => "anthropic",
+        "4" | "vllm" => "vllm",
         "5" | "custom" => "custom",
-        _ => "openrouter",
+        _ => "ollama",
     };
     println!();
 
@@ -89,8 +91,8 @@ pub async fn run() -> anyhow::Result<()> {
 
     // ── Model ─────────────────────────────────────────────────────────────────
     let default_model = match provider {
-        "anthropic" => "claude-sonnet-4-6",
         "ollama" => "llama3.2",
+        "anthropic" => "claude-sonnet-4-6",
         "openrouter" => "anthropic/claude-sonnet-4-6",
         _ => "",
     };
