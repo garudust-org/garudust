@@ -10,7 +10,7 @@ members = [
     "crates/garudust-gateway",
     "bin/garudust",
     "bin/garudust-server",
-    "tools/make-cast",
+    "utils/make-cast",
 ]
 resolver = "2"
 
