@@ -109,6 +109,19 @@ pub async fn run() -> anyhow::Result<()> {
 
     // ── Platform adapters (Full mode) ─────────────────────────────────────────
     if full {
+        println!("Optional Tools (Enter to skip each):");
+        let tool_fields: &[(&str, &str)] = &[(
+            "Brave Search API key (web_search tool)",
+            "BRAVE_SEARCH_API_KEY",
+        )];
+        for (label, var) in tool_fields {
+            let val = prompt(label, Some(""));
+            if !val.is_empty() {
+                env_vars.push((var, val));
+            }
+        }
+        println!();
+
         println!("Platform Adapters (Enter to skip each):");
         let platform_fields: &[(&str, &str)] = &[
             ("Telegram bot token", "TELEGRAM_TOKEN"),
