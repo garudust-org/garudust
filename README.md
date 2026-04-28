@@ -73,13 +73,6 @@ garudust setup   # pick provider (OpenRouter / Anthropic / vLLM / Ollama / custo
 garudust         # launch interactive TUI
 ```
 
-For a self-hosted model with no API key:
-
-```bash
-garudust setup   # choose "4) ollama", enter OLLAMA_BASE_URL, pick a model
-garudust
-```
-
 ### 2. Docker (server mode)
 
 ```bash

@@ -73,13 +73,6 @@ garudust setup   # เลือก provider (OpenRouter / Anthropic / vLLM / Oll
 garudust         # เปิด TUI แบบโต้ตอบ
 ```
 
-สำหรับโมเดลบนเครื่องที่ไม่ต้องใช้ API key:
-
-```bash
-garudust setup   # เลือก "4) ollama" กรอก OLLAMA_BASE_URL แล้วเลือก model
-garudust
-```
-
 ### 2. Docker (server mode)
 
 ```bash
