@@ -29,7 +29,7 @@ async-stream = "0.3"
 
 # HTTP
 axum         = { version = "0.8", features = ["ws", "macros"] }
-reqwest      = { version = "0.12", features = ["json", "stream"] }
+reqwest      = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
 tower        = { version = "0.5", features = ["limit", "util"] }
 tower-http   = { version = "0.6", features = ["cors", "trace"] }
 
@@ -90,5 +90,5 @@ tower_governor = { version = "0.8", features = ["axum"] }
 chromiumoxide = { version = "0.7", default-features = false, features = ["tokio-runtime"] }
 
 # Platform SDKs (Slack / Matrix)
-tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
+tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
 matrix-sdk        = { version = "0.7", default-features = false, features = ["rustls-tls"] }
