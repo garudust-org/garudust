@@ -107,7 +107,7 @@ pub async fn run() -> anyhow::Result<()> {
     };
     println!();
 
-    // ── Platform adapters (Full mode) ─────────────────────────────────────────
+    // ── Optional tools + platform adapters (Full mode) ───────────────────────
     if full {
         println!("Optional Tools (Enter to skip each):");
         let tool_fields: &[(&str, &str)] = &[(

@@ -7,6 +7,8 @@ on:
 
 jobs:
   review:
+    # Only review when all CI checks pass — avoids reviewing code that still
+    # has lint/format errors and wastes tokens on already-known problems.
     if: |
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'pull_request'
@@ -31,6 +33,9 @@ jobs:
         run: |
           PR_NUMBER=$(gh api "repos/$REPO/pulls" \
             --jq ".[] | select(.head.sha == \"$HEAD_SHA\") | .number" | head -1)
+          if [ -z "$PR_NUMBER" ]; then
+            echo "::warning::No open PR found for SHA $HEAD_SHA — skipping review"
+          fi
           echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
 
       - uses: anthropics/claude-code-action@v1
