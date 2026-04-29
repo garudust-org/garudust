@@ -230,7 +230,20 @@ impl Agent {
             reasoning_effort: None,
         };
 
-        let mut history: Vec<Message> = vec![Message::system(&system_prompt), Message::user(task)];
+        // Pre-turn memory recall: surface entries relevant to this task so the
+        // model sees them immediately before the question, not buried in the system prompt.
+        let user_msg = if let Ok(mem) = self.memory.read_memory().await {
+            let recalled = mem.prefetch_for_prompt(task);
+            if recalled.is_empty() {
+                task.to_string()
+            } else {
+                format!("<recalled_memory>\n{recalled}\n</recalled_memory>\n\n{task}")
+            }
+        } else {
+            task.to_string()
+        };
+
+        let mut history: Vec<Message> = vec![Message::system(&system_prompt), Message::user(&user_msg)];
 
         let schemas = self.tools.all_schemas();
         let mut total_in = 0u32;

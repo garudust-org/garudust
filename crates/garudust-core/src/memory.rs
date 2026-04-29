@@ -153,6 +153,50 @@ impl MemoryContent {
         before - self.entries.len()
     }
 
+    /// Keyword-match recall: entries whose content contains any significant word
+    /// from `query` (>= 3 alphabetic chars, case-insensitive).
+    pub fn prefetch(&self, query: &str) -> Vec<&MemoryEntry> {
+        let words: Vec<String> = query
+            .split_whitespace()
+            .filter(|w| w.chars().filter(|c| c.is_alphabetic()).count() >= 3)
+            .map(|w| w.to_lowercase())
+            .collect();
+        if words.is_empty() {
+            return vec![];
+        }
+        self.entries
+            .iter()
+            .filter(|e| {
+                let lower = e.content.to_lowercase();
+                words.iter().any(|w| lower.contains(w.as_str()))
+            })
+            .collect()
+    }
+
+    /// Format prefetch hits as a compact block for injection into the user message.
+    /// Returns empty string when no hits.
+    pub fn prefetch_for_prompt(&self, query: &str) -> String {
+        let hits = self.prefetch(query);
+        if hits.is_empty() {
+            return String::new();
+        }
+        hits.iter()
+            .map(|e| {
+                if e.created_at.is_empty() {
+                    format!("- {} [{}]", e.content, e.category.display_name())
+                } else {
+                    format!(
+                        "- {} [{}] ({})",
+                        e.content,
+                        e.category.display_name(),
+                        e.created_at
+                    )
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     /// Grouped markdown for the system prompt.
     pub fn serialize_for_prompt(&self) -> String {
         if self.entries.is_empty() {
@@ -430,6 +474,52 @@ mod tests {
         assert_eq!(removed, 2);
         assert_eq!(mc.entries.len(), 1);
         assert_eq!(mc.entries[0].content, "keep");
+    }
+
+    // ── prefetch ──────────────────────────────────────────────────────────────
+
+    #[test]
+    fn prefetch_returns_matching_entries() {
+        let raw = "[preference|2026-04-29] user drinks black coffee\n§\n[fact|2026-04-29] user lives in Bangkok";
+        let mc = MemoryContent::parse(raw);
+        let hits = mc.prefetch("what coffee");
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].content.contains("coffee"));
+    }
+
+    #[test]
+    fn prefetch_returns_empty_when_no_match() {
+        let raw = "[preference|2026-04-29] user likes black coffee";
+        let mc = MemoryContent::parse(raw);
+        let hits = mc.prefetch("what is the weather today");
+        assert!(hits.is_empty());
+    }
+
+    #[test]
+    fn prefetch_is_case_insensitive() {
+        let raw = "[preference|2026-04-29] user likes Black Coffee";
+        let mc = MemoryContent::parse(raw);
+        let hits = mc.prefetch("COFFEE");
+        assert_eq!(hits.len(), 1);
+    }
+
+    #[test]
+    fn prefetch_ignores_short_words() {
+        let raw = "[preference|2026-04-29] user likes tea";
+        let mc = MemoryContent::parse(raw);
+        // "is" and "he" are < 3 alpha chars — should not match anything
+        let hits = mc.prefetch("is he ok");
+        assert!(hits.is_empty());
+    }
+
+    #[test]
+    fn prefetch_for_prompt_formats_correctly() {
+        let raw = "[preference|2026-04-29] user likes black coffee";
+        let mc = MemoryContent::parse(raw);
+        let block = mc.prefetch_for_prompt("coffee preference");
+        assert!(block.contains("user likes black coffee"));
+        assert!(block.contains("[Preferences]"));
+        assert!(block.contains("2026-04-29"));
     }
 
     #[test]
