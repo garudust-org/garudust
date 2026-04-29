@@ -246,8 +246,7 @@ fn parse_ddg_html(html: &str, limit: usize) -> Vec<String> {
         let after_title = title_off + lt;
         let next_result_off = html[after_title..]
             .find("result__title")
-            .map(|o| after_title + o)
-            .unwrap_or(html.len());
+            .map_or(html.len(), |o| after_title + o);
         let search_window = &html[after_title..next_result_off];
 
         let snippet = if let Some(snip_start) = search_window.find("result__snippet") {
