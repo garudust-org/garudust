@@ -1,12 +1,13 @@
 use std::path::Path;
 
 use garudust_core::config::AgentConfig;
-use garudust_core::memory::MemoryStore;
+use garudust_core::memory::MemoryContent;
 use garudust_tools::toolsets::skills::build_skills_index;
 
 pub async fn build_system_prompt(
     config: &AgentConfig,
-    memory: &dyn MemoryStore,
+    memory_content: Option<&MemoryContent>,
+    user_profile: Option<&str>,
     platform: &str,
 ) -> String {
     let mut parts = Vec::new();
@@ -30,7 +31,7 @@ pub async fn build_system_prompt(
     }
 
     // Memory
-    if let Ok(mem) = memory.read_memory().await {
+    if let Some(mem) = memory_content {
         let content = mem.serialize_for_prompt();
         if !content.is_empty() {
             parts.push(format!("# Memory\n{content}"));
@@ -38,7 +39,7 @@ pub async fn build_system_prompt(
     }
 
     // User profile
-    if let Ok(profile) = memory.read_user_profile().await {
+    if let Some(profile) = user_profile {
         if !profile.is_empty() {
             parts.push(format!("# User Profile\n{profile}"));
         }

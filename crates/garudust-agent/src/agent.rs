@@ -222,7 +222,27 @@ impl Agent {
         let session_id = Uuid::new_v4().to_string();
         #[allow(clippy::cast_precision_loss)]
         let started_at = Utc::now().timestamp_millis() as f64 / 1000.0;
-        let system_prompt = build_system_prompt(&self.config, self.memory.as_ref(), platform).await;
+        // Read memory once — shared by system-prompt serialization and prefetch injection.
+        let mem = self
+            .memory
+            .read_memory()
+            .await
+            .map_err(|e| {
+                warn!("failed to read memory: {e}");
+                e
+            })
+            .ok();
+        let profile = self
+            .memory
+            .read_user_profile()
+            .await
+            .map_err(|e| {
+                warn!("failed to read user profile: {e}");
+                e
+            })
+            .ok();
+        let system_prompt =
+            build_system_prompt(&self.config, mem.as_ref(), profile.as_deref(), platform).await;
         let inf_config = InferenceConfig {
             model: self.config.model.clone(),
             max_tokens: Some(8192),
@@ -232,15 +252,14 @@ impl Agent {
 
         // Pre-turn memory recall: surface entries relevant to this task so the
         // model sees them immediately before the question, not buried in the system prompt.
-        let user_msg = if let Ok(mem) = self.memory.read_memory().await {
-            let recalled = mem.prefetch_for_prompt(task);
-            if recalled.is_empty() {
-                task.to_string()
-            } else {
+        // Note: prefetch uses ASCII/Latin keyword matching; non-Latin scripts (e.g. Thai)
+        // are not word-tokenized and will not trigger recall via this path — the full
+        // memory block in the system prompt still covers those cases.
+        let user_msg = match mem.as_ref().map(|m| m.prefetch_for_prompt(task)) {
+            Some(recalled) if !recalled.is_empty() => {
                 format!("<recalled_memory>\n{recalled}\n</recalled_memory>\n\n{task}")
             }
-        } else {
-            task.to_string()
+            _ => task.to_string(),
         };
 
         let mut history: Vec<Message> =
