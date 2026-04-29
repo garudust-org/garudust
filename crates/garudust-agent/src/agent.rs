@@ -36,16 +36,13 @@ fn scrub_recalled_memory(text: &str) -> String {
     const CLOSE: &str = "</recalled_memory>";
     let mut out = text.to_string();
     while let Some(start) = out.find(OPEN) {
-        match out[start..].find(CLOSE) {
-            Some(rel) => {
-                let end = start + rel + CLOSE.len();
-                out = format!("{}{}", out[..start].trim_end(), out[end..].trim_start());
-            }
-            None => {
-                // Unclosed tag — strip everything from the tag onwards.
-                out.truncate(start);
-                break;
-            }
+        if let Some(rel) = out[start..].find(CLOSE) {
+            let end = start + rel + CLOSE.len();
+            out = format!("{}{}", out[..start].trim_end(), out[end..].trim_start());
+        } else {
+            // Unclosed tag — strip everything from the tag onwards.
+            out.truncate(start);
+            break;
         }
     }
     out.trim().to_string()
