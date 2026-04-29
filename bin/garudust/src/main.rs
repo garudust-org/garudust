@@ -31,6 +31,8 @@ use tokio::sync::mpsc;
 use tokio::sync::RwLock;
 use tui::{AgentEvent, TuiEvent};
 
+type McpHandles = Vec<Box<dyn std::any::Any + Send>>;
+
 #[derive(Subcommand)]
 enum ConfigCmd {
     /// Show current configuration
@@ -109,7 +111,10 @@ fn build_config(cli: &Cli) -> Arc<AgentConfig> {
     Arc::new(config)
 }
 
-fn build_agent(config: Arc<AgentConfig>) -> Arc<Agent> {
+/// Single source of truth for the CLI agent — registers all tools and MCP servers.
+/// Returns the agent and MCP process handles; caller must keep handles alive for
+/// as long as the agent is in use (dropping them terminates the MCP processes).
+async fn build_agent(config: Arc<AgentConfig>) -> (Arc<Agent>, McpHandles) {
     let memory = Arc::new(FileMemoryStore::new(&config.home_dir));
     let transport = build_transport(&config);
 
@@ -128,20 +133,22 @@ fn build_agent(config: Arc<AgentConfig>) -> Arc<Agent> {
     registry.register(DelegateTask);
     registry.register(BrowserTool::new());
 
+    let mcp_handles = attach_mcp_servers(&mut registry, &config.mcp_servers).await;
+
     let db = SessionDb::open(&config.home_dir).ok().map(Arc::new);
     let agent = Agent::new(transport, Arc::new(registry), memory, config);
     let agent = match db {
         Some(db) => agent.with_session_db(db),
         None => agent,
     };
-    Arc::new(agent)
+    (Arc::new(agent), mcp_handles)
 }
 
 async fn attach_mcp_servers(
     registry: &mut ToolRegistry,
     servers: &[McpServerConfig],
-) -> Vec<Box<dyn std::any::Any + Send>> {
-    let mut handles: Vec<Box<dyn std::any::Any + Send>> = Vec::new();
+) -> McpHandles {
+    let mut handles: McpHandles = Vec::new();
     for srv in servers {
         match connect_mcp_server(&srv.command, &srv.args).await {
             Ok((tools, handle)) => {
@@ -207,37 +214,12 @@ async fn main() -> Result<()> {
 
     // ── Agent modes ───────────────────────────────────────────────────────────
     let config = build_config(&cli);
-    let agent = {
-        let memory = Arc::new(FileMemoryStore::new(&config.home_dir));
-        let transport = build_transport(&config);
-        let mut registry = ToolRegistry::new();
-        registry.register(WebFetch);
-        registry.register(WebSearch);
-        registry.register(ReadFile);
-        registry.register(WriteFile);
-        registry.register(Terminal);
-        registry.register(MemoryTool);
-        registry.register(UserProfileTool);
-        registry.register(SessionSearch);
-        registry.register(SkillsList);
-        registry.register(SkillView);
-        registry.register(WriteSkill);
-        registry.register(DelegateTask);
-        registry.register(BrowserTool::new());
-        let mcp_handles = attach_mcp_servers(&mut registry, &config.mcp_servers).await;
-        let db = SessionDb::open(&config.home_dir).ok().map(Arc::new);
-        let a = Agent::new(transport, Arc::new(registry), memory, config.clone());
-        let a = match db {
-            Some(db) => a.with_session_db(db),
-            None => a,
-        };
-        // leak mcp_handles so the MCP processes stay alive for the entire run
-        std::mem::forget(mcp_handles);
-        Arc::new(a)
-    };
+    let (agent, mcp_handles) = build_agent(config.clone()).await;
 
     if let Some(task) = &cli.task {
         // ── One-shot mode ─────────────────────────────────────────────────────
+        // Keep handles alive for the duration of the run; drop at block exit.
+        let _handles = mcp_handles;
         let approver = Arc::new(AutoApprover);
         let result = agent.run(task, approver, "cli").await?;
         println!("{}", result.output);
@@ -246,13 +228,19 @@ async fn main() -> Result<()> {
             result.iterations, result.usage.input_tokens, result.usage.output_tokens
         );
     } else {
-        // Interactive TUI mode
+        // ── Interactive TUI mode ──────────────────────────────────────────────
+        // shared_state holds both the agent and its MCP handles together so that
+        // dropping the old state on /model switch reaps the old MCP processes.
         let approver = Arc::new(AutoApprover);
 
         let (tx_event, mut rx_event) = mpsc::channel::<TuiEvent>(32);
         let (tx_agent, rx_agent) = mpsc::channel::<AgentEvent>(64);
 
+        // agent is in a RwLock (Arc<Agent>: Sync — fine for concurrent reads in Submit).
+        // MCP handles are in a Mutex: Vec<Box<dyn Any+Send>> is Send but not Sync,
+        // so RwLock won't work; Mutex<T> is Sync whenever T: Send.
         let shared_agent = Arc::new(RwLock::new(agent.clone()));
+        let shared_handles = Arc::new(tokio::sync::Mutex::new(mcp_handles));
         let shared_config = config.clone();
         let approver2 = approver.clone();
         let tx_agent2 = tx_agent.clone();
@@ -265,7 +253,9 @@ async fn main() -> Result<()> {
                     TuiEvent::ChangeModel(model) => {
                         let mut new_cfg = (*shared_config).clone();
                         new_cfg.model = model;
-                        let new_agent = build_agent(Arc::new(new_cfg));
+                        let (new_agent, new_handles) = build_agent(Arc::new(new_cfg)).await;
+                        // Drop old handles first — terminates previous MCP child processes.
+                        *shared_handles.lock().await = new_handles;
                         *shared_agent.write().await = new_agent;
                     }
                     TuiEvent::Submit(task) => {
