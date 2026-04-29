@@ -13,9 +13,9 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Rust 1.75+](https://img.shields.io/badge/rust-1.75+-orange.svg)
 
-**A self-hostable AI agent runtime written in Rust.**
+**A self-hostable, self-improving AI agent runtime written in Rust.**
 
-Chat from your terminal, connect it to Telegram / Discord / Slack / Matrix, or call it over HTTP — all from a single binary.
+Chat from your terminal, connect it to Telegram / Discord / Slack / Matrix, or call it over HTTP — all from a single binary. It remembers what you teach it, speaks your language, and gets smarter with every session.
 
 <div align="center">
   <img src="assets/demo.svg" alt="Garudust demo"/>
@@ -25,9 +25,11 @@ Chat from your terminal, connect it to Telegram / Discord / Slack / Matrix, or c
 
 ## Why Garudust?
 
-Most AI agent frameworks are Python, heavy, and slow to start. Garudust is:
+Most AI agent frameworks are Python, heavy, and forget everything between sessions. Garudust is different:
 
 - **~10 MB binary, < 20 ms cold start** — no Python runtime, no Docker required for local use
+- **Self-improving** — learns your preferences, saves reusable workflows as skills, and corrects itself without being told twice
+- **Speaks your language** — detects Thai, Chinese, Japanese, Arabic, Korean, and more automatically; no configuration needed
 - **Swap providers with one env var** — Anthropic, OpenRouter, AWS Bedrock, Ollama, vLLM, or any OpenAI-compatible endpoint
 - **Runs everywhere** — laptop TUI, headless server, Docker, Telegram, Discord, Slack, Matrix, HTTP
 - **Composable** — every piece is a separate crate; add a tool, platform, or transport without touching anything else
@@ -59,7 +61,7 @@ Requires Rust 1.75+:
 
 ```bash
 git clone https://github.com/garudust-org/garudust-agent
-cd garudust
+cd garudust-agent
 cargo build --release
 export PATH="$PATH:$(pwd)/target/release"
 ```
@@ -132,6 +134,84 @@ garudust config set OPENROUTER_API_KEY sk-or-...
 garudust config set ANTHROPIC_API_KEY sk-ant-...
 garudust config set VLLM_BASE_URL http://localhost:8000/v1
 ```
+
+---
+
+## Memory & Self-Improvement
+
+Garudust remembers facts across sessions and gets smarter the more you use it.
+
+### How memory works
+
+The agent automatically saves durable knowledge to `~/.garudust/memory/` — user preferences, project conventions, corrections you make to its behaviour:
+
+```
+You: always format JSON with 2-space indent
+Agent: [saves to memory] Got it — I'll use 2-space indent for JSON from now on.
+```
+
+On the next session, that preference is already loaded. You never need to repeat yourself.
+
+A Hermes-style nudge fires every few iterations during long tasks, prompting the agent to persist any new facts before the session ends. Configure the interval (or disable it) in `~/.garudust/config.yaml`:
+
+```yaml
+nudge_interval: 5   # inject memory reminder every 5 LLM iterations (0 = off)
+```
+
+### What gets saved
+
+| Category | Examples |
+|----------|---------|
+| Preferences | output format, language, tone, tool choices |
+| Project details | paths, configs, conventions, known quirks |
+| Corrections | anything you tell the agent to stop doing — saved immediately |
+
+The agent does **not** save session logs, task progress, or one-off details — only facts that will matter in future sessions.
+
+---
+
+## Skills
+
+Skills are reusable instruction sets the agent loads before acting. They live in `~/.garudust/skills/` and are hot-reloaded on every call — edit a file and the next message picks up the change immediately.
+
+```
+~/.garudust/skills/
+  git-workflow/SKILL.md
+  daily-standup/SKILL.md
+  rust-code-review/SKILL.md
+```
+
+### Proactive skill loading
+
+Before processing any message, the agent scans all available skills. If a skill is relevant — even partially — it calls `skill_view` to load the full instructions before proceeding. This ensures established workflows are always followed, regardless of the language you write in.
+
+### Creating skills
+
+The agent creates skills automatically when it discovers a multi-step workflow:
+
+```
+You: write a skill for reviewing Rust PRs
+Agent: [calls write_skill] Saved skill 'rust-code-review' to ~/.garudust/skills/rust-code-review/SKILL.md
+```
+
+You can also create them directly with the `write_skill` tool, or write `SKILL.md` files by hand.
+
+Minimal `SKILL.md`:
+
+```markdown
+---
+name: git-workflow
+description: Opinionated Git commit and PR workflow
+version: 1.0.0
+---
+
+Always write conventional commits. Always run tests before pushing.
+Open a draft PR first, then mark ready when CI is green.
+```
+
+### Updating skills
+
+If the agent finds a skill's steps are outdated or wrong during a task, it patches the file immediately — no need to ask. Skills stay accurate automatically.
 
 ---
 
@@ -235,10 +315,12 @@ garudust config set model anthropic.claude-3-5-sonnet-20241022-v2:0
 | `write_file` | Write a file to the filesystem |
 | `terminal` | Run a shell command |
 | `memory` | Persistent key-value memory (add / read / replace / remove) |
+| `user_profile` | Read and update the persistent user profile |
 | `session_search` | Full-text search across past conversations (SQLite FTS5) |
 | `delegate_task` | Spawn a parallel sub-agent for decomposed work |
 | `skills_list` | List available skills |
-| `skill_view` | Load a skill's instructions by name |
+| `skill_view` | Load a skill's full instructions by name |
+| `write_skill` | Create or update a skill in `~/.garudust/skills/` |
 
 ### MCP Tools
 
@@ -252,30 +334,6 @@ mcp_servers:
   - name: postgres
     command: npx
     args: ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/mydb"]
-```
-
----
-
-## Skills
-
-Skills are reusable instruction sets stored in `~/.garudust/skills/`. They are loaded from disk on every invocation — edit a file and the next call picks up the change immediately.
-
-```
-~/.garudust/skills/
-  git-workflow/SKILL.md
-  daily-standup/SKILL.md
-```
-
-Minimal `SKILL.md`:
-
-```markdown
----
-name: git-workflow
-description: Opinionated Git commit and PR workflow
-version: 1.0.0
----
-
-Always write conventional commits. Always run tests before pushing...
 ```
 
 ---
@@ -373,7 +431,7 @@ Garudust is designed to be easy to extend — adding a tool, transport, or platf
 
 ```bash
 git clone https://github.com/garudust-org/garudust-agent
-cd garudust
+cd garudust-agent
 cargo build
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -W clippy::all -W clippy::pedantic

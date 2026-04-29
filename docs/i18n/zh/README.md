@@ -13,17 +13,19 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](../../../LICENSE)
 ![Rust 1.75+](https://img.shields.io/badge/rust-1.75+-orange.svg)
 
-**用 Rust 编写的可自托管 AI 智能体运行时**
+**用 Rust 编写的可自托管、可自我进化的 AI 智能体运行时**
 
-从终端聊天，连接 Telegram / Discord / Slack / Matrix，或通过 HTTP 调用 — 一个二进制文件搞定一切。
+从终端聊天，连接 Telegram / Discord / Slack / Matrix，或通过 HTTP 调用 — 一个二进制文件搞定一切。它记住你教给它的东西，说你的语言，每次使用都变得更聪明。
 
 ---
 
 ## 为什么选择 Garudust？
 
-大多数 AI 智能体框架基于 Python，体积庞大，启动缓慢。Garudust 不同：
+大多数 AI 智能体框架基于 Python，体积庞大，会话间什么都不记得。Garudust 不同：
 
 - **二进制文件 ~10 MB，冷启动 < 20 ms** — 无需 Python 运行时，本地使用无需 Docker
+- **自我进化** — 学习你的偏好，将可复用的工作流保存为技能，无需提醒两次便能自我修正
+- **说你的语言** — 自动检测中文、泰语、日语、阿拉伯语、韩语等，无需任何配置
 - **一个环境变量切换 LLM 提供商** — 支持 Anthropic、OpenRouter、AWS Bedrock、Ollama、vLLM 或任何 OpenAI 兼容端点
 - **随处运行** — 笔记本 TUI、无头服务器、Docker、Telegram、Discord、Slack、Matrix、HTTP
 - **高度可组合** — 每个模块都是独立 crate，添加工具、平台或传输层无需改动其他代码
@@ -55,7 +57,7 @@ sudo mv garudust garudust-server /usr/local/bin/
 
 ```bash
 git clone https://github.com/garudust-org/garudust-agent
-cd garudust
+cd garudust-agent
 cargo build --release
 export PATH="$PATH:$(pwd)/target/release"
 ```
@@ -128,6 +130,84 @@ garudust config set OPENROUTER_API_KEY sk-or-...
 garudust config set ANTHROPIC_API_KEY sk-ant-...
 garudust config set VLLM_BASE_URL http://localhost:8000/v1
 ```
+
+---
+
+## 记忆与自我进化
+
+Garudust 跨会话记住信息，使用得越多越聪明。
+
+### 记忆机制
+
+智能体自动将持久知识保存到 `~/.garudust/memory/` — 用户偏好、项目规范以及你对其行为的纠正：
+
+```
+你：JSON 始终使用 2 空格缩进
+智能体：[保存记忆] 明白了，从现在起 JSON 将使用 2 空格缩进。
+```
+
+下次会话时，该偏好已经加载好了。你不需要重复说明。
+
+Hermes 风格的提示每隔几次迭代在长任务中触发一次，提醒智能体在会话结束前保存新发现的事实。在 `~/.garudust/config.yaml` 中配置间隔（或禁用）：
+
+```yaml
+nudge_interval: 5   # 每 5 次 LLM 迭代注入一次记忆提示（0 = 关闭）
+```
+
+### 保存内容
+
+| 类别 | 示例 |
+|------|------|
+| 偏好设置 | 输出格式、语言、语气、工具选择 |
+| 项目详情 | 路径、配置、规范、已知的特殊行为 |
+| 纠正内容 | 你告诉智能体停止做的事 — 立即保存 |
+
+智能体**不会**保存会话日志、任务进度或一次性细节 — 只保存未来会话中有价值的事实。
+
+---
+
+## 技能（Skills）
+
+技能是智能体在行动前加载的可复用指令集，存储在 `~/.garudust/skills/` 中，每次调用时热重载 — 修改文件后，下一条消息立即生效。
+
+```
+~/.garudust/skills/
+  git-workflow/SKILL.md
+  daily-standup/SKILL.md
+  rust-code-review/SKILL.md
+```
+
+### 主动技能加载
+
+处理每条消息前，智能体会扫描所有可用技能。如果某个技能相关 — 哪怕只是部分相关 — 它会在继续之前调用 `skill_view` 加载完整指令。无论你用什么语言写指令，既定的工作流都会被遵循。
+
+### 创建技能
+
+智能体在发现多步骤工作流时会自动创建技能：
+
+```
+你：为 Rust PR 审查创建一个技能
+智能体：[调用 write_skill] 已将技能 'rust-code-review' 保存到 ~/.garudust/skills/rust-code-review/SKILL.md
+```
+
+你也可以直接使用 `write_skill` 工具创建技能，或手动编写 `SKILL.md` 文件。
+
+最小化 `SKILL.md` 示例：
+
+```markdown
+---
+name: git-workflow
+description: 规范化的 Git 提交和 PR 工作流
+version: 1.0.0
+---
+
+始终编写 conventional commits。推送前始终运行测试。
+先开 draft PR，CI 通过后再标记为 ready。
+```
+
+### 更新技能
+
+如果智能体在任务执行过程中发现技能的步骤已过时或有误，它会立即修补文件 — 无需等待提醒。技能会自动保持准确。
 
 ---
 
@@ -230,11 +310,13 @@ garudust config set model anthropic.claude-3-5-sonnet-20241022-v2:0
 | `read_file` | 从文件系统读取文件 |
 | `write_file` | 向文件系统写入文件 |
 | `terminal` | 运行 shell 命令 |
-| `memory` | 持久化键值内存（add / read / replace / remove） |
+| `memory` | 持久化键值记忆（add / read / replace / remove） |
+| `user_profile` | 读取和更新持久化用户档案 |
 | `session_search` | 跨历史对话全文搜索（SQLite FTS5） |
 | `delegate_task` | 为分解的任务生成并行子智能体 |
 | `skills_list` | 列出可用技能 |
-| `skill_view` | 按名称加载技能指令 |
+| `skill_view` | 按名称加载技能完整指令 |
+| `write_skill` | 在 `~/.garudust/skills/` 中创建或更新技能 |
 
 ### MCP 工具
 
@@ -248,30 +330,6 @@ mcp_servers:
   - name: postgres
     command: npx
     args: ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/mydb"]
-```
-
----
-
-## 技能（Skills）
-
-技能是存储在 `~/.garudust/skills/` 中的可复用指令集，每次调用时从磁盘读取 — 修改文件后，下次调用立即生效。
-
-```
-~/.garudust/skills/
-  git-workflow/SKILL.md
-  daily-standup/SKILL.md
-```
-
-最小化 `SKILL.md` 示例：
-
-```markdown
----
-name: git-workflow
-description: 规范化的 Git 提交和 PR 工作流
-version: 1.0.0
----
-
-始终编写 conventional commits。推送前始终运行测试...
 ```
 
 ---
@@ -369,7 +427,7 @@ Garudust 设计为易于扩展 — 添加工具、传输层或平台适配器通
 
 ```bash
 git clone https://github.com/garudust-org/garudust-agent
-cd garudust
+cd garudust-agent
 cargo build
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -W clippy::all -W clippy::pedantic

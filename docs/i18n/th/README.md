@@ -13,17 +13,19 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](../../../LICENSE)
 ![Rust 1.75+](https://img.shields.io/badge/rust-1.75+-orange.svg)
 
-**ระบบรันไทม์ AI agent ที่โฮสต์เองได้ เขียนด้วย Rust**
+**ระบบรันไทม์ AI agent ที่โฮสต์เองได้ พัฒนาตัวเองได้ เขียนด้วย Rust**
 
-แชทจากเทอร์มินัล เชื่อมต่อกับ Telegram / Discord / Slack / Matrix หรือเรียกใช้งานผ่าน HTTP — ทั้งหมดจากไบนารีเดียว
+แชทจากเทอร์มินัล เชื่อมต่อกับ Telegram / Discord / Slack / Matrix หรือเรียกใช้ผ่าน HTTP — ทั้งหมดจากไบนารีเดียว มันจำสิ่งที่คุณสอน พูดภาษาของคุณ และฉลาดขึ้นทุกเซสชัน
 
 ---
 
 ## ทำไมต้อง Garudust?
 
-เฟรมเวิร์ก AI agent ส่วนใหญ่เขียนด้วย Python ขนาดหนัก และสตาร์ทช้า Garudust แตกต่างออกไป:
+เฟรมเวิร์ก AI agent ส่วนใหญ่เขียนด้วย Python หนัก และลืมทุกอย่างระหว่างเซสชัน Garudust แตกต่างออกไป:
 
 - **ไบนารีขนาด ~10 MB, cold start < 20 ms** — ไม่ต้องใช้ Python runtime หรือ Docker สำหรับการใช้งานบนเครื่องท้องถิ่น
+- **พัฒนาตัวเองได้** — เรียนรู้ความชอบของคุณ บันทึก workflow ที่นำกลับมาใช้ซ้ำเป็นสกิล และแก้ไขตัวเองโดยไม่ต้องบอกสองครั้ง
+- **พูดภาษาของคุณ** — ตรวจจับภาษาไทย จีน ญี่ปุ่น อาหรับ เกาหลี และอื่น ๆ โดยอัตโนมัติ ไม่ต้องตั้งค่าเพิ่มเติม
 - **เปลี่ยนผู้ให้บริการ LLM ด้วย env var เดียว** — รองรับ Anthropic, OpenRouter, AWS Bedrock, Ollama, vLLM หรือ endpoint ที่เข้ากันได้กับ OpenAI
 - **รันได้ทุกที่** — TUI บนแล็ปท็อป, เซิร์ฟเวอร์ headless, Docker, Telegram, Discord, Slack, Matrix, HTTP
 - **ประกอบต่อได้ง่าย** — แต่ละส่วนแยกเป็น crate อิสระ เพิ่มเครื่องมือ แพลตฟอร์ม หรือทรานสปอร์ตได้โดยไม่กระทบโค้ดส่วนอื่น
@@ -55,7 +57,7 @@ sudo mv garudust garudust-server /usr/local/bin/
 
 ```bash
 git clone https://github.com/garudust-org/garudust-agent
-cd garudust
+cd garudust-agent
 cargo build --release
 export PATH="$PATH:$(pwd)/target/release"
 ```
@@ -128,6 +130,84 @@ garudust config set OPENROUTER_API_KEY sk-or-...
 garudust config set ANTHROPIC_API_KEY sk-ant-...
 garudust config set VLLM_BASE_URL http://localhost:8000/v1
 ```
+
+---
+
+## หน่วยความจำและการพัฒนาตัวเอง
+
+Garudust จำข้อมูลข้ามเซสชันและฉลาดขึ้นตามการใช้งาน
+
+### หน่วยความจำทำงานอย่างไร
+
+agent บันทึกความรู้ที่คงทนไว้ใน `~/.garudust/memory/` โดยอัตโนมัติ — ความชอบของผู้ใช้ สถาปัตยกรรมโปรเจกต์ และการแก้ไขที่คุณทำกับพฤติกรรมของมัน:
+
+```
+คุณ: format JSON ด้วย 2-space indent เสมอ
+agent: [บันทึกความจำ] เข้าใจแล้ว จะใช้ 2-space indent สำหรับ JSON ต่อจากนี้
+```
+
+เซสชันถัดไป ความชอบนั้นโหลดมาแล้ว คุณไม่ต้องบอกซ้ำอีก
+
+nudge แบบ Hermes จะทำงานทุก ๆ ไม่กี่ iteration ระหว่างงานที่ยาว เพื่อเตือนให้ agent บันทึกข้อเท็จจริงใหม่ก่อนจบเซสชัน ตั้งค่า interval ได้ใน `~/.garudust/config.yaml`:
+
+```yaml
+nudge_interval: 5   # เพิ่ม nudge ทุก 5 LLM iteration (0 = ปิด)
+```
+
+### สิ่งที่ถูกบันทึก
+
+| หมวดหมู่ | ตัวอย่าง |
+|---------|---------|
+| ความชอบ | รูปแบบ output, ภาษา, โทน, การเลือกเครื่องมือ |
+| รายละเอียดโปรเจกต์ | paths, configs, conventions, quirks ที่รู้จัก |
+| การแก้ไข | สิ่งที่คุณบอก agent ให้หยุดทำ — บันทึกทันที |
+
+agent จะ **ไม่** บันทึก session log, ความคืบหน้างาน หรือรายละเอียดชั่วคราว — เฉพาะข้อเท็จจริงที่จะสำคัญในเซสชันอนาคต
+
+---
+
+## สกิล
+
+สกิลคือชุดคำแนะนำที่นำกลับมาใช้ซ้ำได้ ซึ่ง agent โหลดก่อนลงมือทำ เก็บไว้ใน `~/.garudust/skills/` และโหลดใหม่ทุกครั้งที่เรียกใช้ — แก้ไขไฟล์แล้วข้อความถัดไปจะรับการเปลี่ยนแปลงทันที
+
+```
+~/.garudust/skills/
+  git-workflow/SKILL.md
+  daily-standup/SKILL.md
+  rust-code-review/SKILL.md
+```
+
+### การโหลดสกิลเชิงรุก
+
+ก่อนประมวลผลทุกข้อความ agent จะสแกนสกิลที่มีทั้งหมด หากสกิลใดเกี่ยวข้อง — แม้แต่บางส่วน — มันจะเรียก `skill_view` เพื่อโหลดคำแนะนำเต็มก่อนดำเนินการ สิ่งนี้ทำให้ workflow ที่กำหนดถูกปฏิบัติตามเสมอ ไม่ว่าจะเขียนคำสั่งเป็นภาษาใด
+
+### การสร้างสกิล
+
+agent สร้างสกิลโดยอัตโนมัติเมื่อค้นพบ workflow หลายขั้นตอน:
+
+```
+คุณ: สร้างสกิลสำหรับ review Rust PR
+agent: [เรียก write_skill] บันทึกสกิล 'rust-code-review' ไปยัง ~/.garudust/skills/rust-code-review/SKILL.md แล้ว
+```
+
+คุณยังสร้างสกิลโดยตรงด้วยเครื่องมือ `write_skill` หรือเขียนไฟล์ `SKILL.md` ด้วยมือก็ได้
+
+ตัวอย่าง `SKILL.md` ขั้นต่ำ:
+
+```markdown
+---
+name: git-workflow
+description: Git commit และ PR workflow แบบมีมาตรฐาน
+version: 1.0.0
+---
+
+เขียน conventional commits เสมอ รันเทสก่อน push เสมอ
+เปิด draft PR ก่อน แล้วค่อยทำเป็น ready เมื่อ CI ผ่าน
+```
+
+### การอัปเดตสกิล
+
+หาก agent พบว่าขั้นตอนในสกิลล้าสมัยหรือผิดพลาดระหว่างงาน มันจะแก้ไขไฟล์ทันที ไม่ต้องรอให้ถาม สกิลจะถูกดูแลให้ถูกต้องโดยอัตโนมัติ
 
 ---
 
@@ -231,10 +311,12 @@ garudust config set model anthropic.claude-3-5-sonnet-20241022-v2:0
 | `write_file` | เขียนไฟล์ไปยังระบบไฟล์ |
 | `terminal` | รันคำสั่ง shell |
 | `memory` | หน่วยความจำถาวรแบบ key-value (add / read / replace / remove) |
+| `user_profile` | อ่านและอัปเดต user profile ที่ถาวร |
 | `session_search` | ค้นหาแบบ full-text ข้ามการสนทนาในอดีต (SQLite FTS5) |
 | `delegate_task` | สร้าง sub-agent แบบขนานสำหรับงานที่แบ่งย่อย |
 | `skills_list` | แสดงรายการสกิลที่มีอยู่ |
-| `skill_view` | โหลดคำแนะนำของสกิลตามชื่อ |
+| `skill_view` | โหลดคำแนะนำเต็มของสกิลตามชื่อ |
+| `write_skill` | สร้างหรืออัปเดตสกิลใน `~/.garudust/skills/` |
 
 ### MCP Tools
 
@@ -248,30 +330,6 @@ mcp_servers:
   - name: postgres
     command: npx
     args: ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/mydb"]
-```
-
----
-
-## สกิล
-
-สกิลคือชุดคำแนะนำที่นำมาใช้ซ้ำได้ เก็บไว้ใน `~/.garudust/skills/` อ่านจากดิสก์ทุกครั้งที่เรียกใช้งาน แก้ไขไฟล์สกิลแล้วการเรียกครั้งถัดไปจะรับการเปลี่ยนแปลงทันที
-
-```
-~/.garudust/skills/
-  git-workflow/SKILL.md
-  daily-standup/SKILL.md
-```
-
-ตัวอย่าง `SKILL.md` ขั้นต่ำ:
-
-```markdown
----
-name: git-workflow
-description: Git commit และ PR workflow แบบมีมาตรฐาน
-version: 1.0.0
----
-
-เขียน conventional commits เสมอ รันเทสก่อน push เสมอ...
 ```
 
 ---
@@ -369,7 +427,7 @@ Garudust ออกแบบมาให้ขยายได้ง่าย — 
 
 ```bash
 git clone https://github.com/garudust-org/garudust-agent
-cd garudust
+cd garudust-agent
 cargo build
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -W clippy::all -W clippy::pedantic
