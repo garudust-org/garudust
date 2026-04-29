@@ -263,6 +263,9 @@ impl Agent {
             })
             .map_or_else(
                 || task.to_string(),
+                // Safety assumption: memory entries are user-authored and trusted; a
+                // "</recalled_memory>" substring in an entry would mis-close the block,
+                // but the memory tool can only be driven by the authenticated user.
                 |recalled| format!("<recalled_memory>\n{recalled}\n</recalled_memory>\n\n{task}"),
             );
 

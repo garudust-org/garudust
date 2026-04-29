@@ -153,25 +153,23 @@ impl MemoryContent {
         before - self.entries.len()
     }
 
-    /// Keyword-match recall: entries whose content contains any significant word
-    /// from `query` (>= 3 alphabetic chars, case-insensitive).
-    /// Max entries returned by prefetch to prevent context bloat.
+    /// Max entries returned by [`Self::prefetch`] to prevent context bloat.
     const PREFETCH_LIMIT: usize = 8;
 
-    /// Common English stop words excluded from keyword matching to avoid
-    /// false positives on prepositions, articles, and auxiliary verbs.
+    /// Five-or-more-char English stop words excluded from keyword matching.
+    /// Only words that survive the `alpha.len() < 5` filter need to be listed here.
     const STOP_WORDS: &'static [&'static str] = &[
-        "the", "and", "for", "are", "but", "not", "you", "all", "can", "had", "her", "was", "one",
-        "our", "out", "day", "get", "has", "him", "his", "how", "its", "may", "new", "now", "old",
-        "see", "two", "who", "did", "let", "put", "say", "she", "too", "use", "way", "what",
-        "when", "with", "have", "from", "they", "will", "been", "into", "more", "that", "this",
-        "then", "than", "some", "your", "also", "just", "over", "such", "even", "most", "very",
-        "well", "does", "made", "each", "much", "same", "does", "like", "here", "there", "about",
+        "there", "about", "which", "where", "their", "those", "these", "every", "after",
+        "other", "never", "still", "under", "again", "being", "since", "while", "shall",
+        "might", "until", "above", "below", "maybe", "often", "quite", "would", "could",
+        "shall", "until", "whose", "whether", "however", "although", "because", "without",
+        "within", "around", "before", "should", "through", "always", "almost", "already",
     ];
 
     /// Keyword-match recall: entries whose content contains any significant word
-    /// from `query`. Stop words and tokens < 5 chars are excluded to reduce false
-    /// positives. Returns at most `PREFETCH_LIMIT` entries, newest first.
+    /// from `query`. Tokens < 5 alphabetic chars and stop words are excluded to
+    /// reduce false positives. Returns at most [`Self::PREFETCH_LIMIT`] entries,
+    /// newest first.
     pub fn prefetch(&self, query: &str) -> Vec<&MemoryEntry> {
         let words: Vec<String> = query
             .split_whitespace()
