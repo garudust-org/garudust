@@ -108,7 +108,12 @@ pub async fn build_skills_index(skills_dir: &Path, platform: &str) -> String {
     }
 
     format!(
-        "# Skills\nUse `skill_view` to load a skill's full instructions.\n\n{}",
+        "# Skills\n\
+         Before replying, scan this list. If a skill matches or is even partially \
+         relevant to the task, you MUST call `skill_view` first to load its full \
+         instructions before proceeding. Err on the side of loading — missing a skill \
+         means missing critical steps or established workflows. Only skip if genuinely \
+         none are relevant.\n\n{}",
         entries.join("\n")
     )
 }
