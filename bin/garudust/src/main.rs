@@ -217,9 +217,13 @@ async fn main() -> Result<()> {
         registry.register(WriteFile);
         registry.register(Terminal);
         registry.register(MemoryTool);
+        registry.register(UserProfileTool);
         registry.register(SessionSearch);
         registry.register(SkillsList);
         registry.register(SkillView);
+        registry.register(WriteSkill);
+        registry.register(DelegateTask);
+        registry.register(BrowserTool::new());
         let mcp_handles = attach_mcp_servers(&mut registry, &config.mcp_servers).await;
         let db = SessionDb::open(&config.home_dir).ok().map(Arc::new);
         let a = Agent::new(transport, Arc::new(registry), memory, config.clone());
