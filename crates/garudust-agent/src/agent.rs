@@ -24,10 +24,8 @@ use tokio::sync::mpsc;
 /// distinguish untrusted data from authoritative instructions.
 const EXTERNAL_TOOLS: &[&str] = &["web_fetch", "web_search", "browser", "read_file"];
 
-/// Returns true if the skills directory contains at least one entry.
 fn has_skills(home_dir: &std::path::Path) -> bool {
-    std::fs::read_dir(home_dir.join("skills"))
-        .is_ok_and(|mut d| d.next().is_some())
+    std::fs::read_dir(home_dir.join("skills")).is_ok_and(|mut d| d.next().is_some())
 }
 
 /// Hermes-style nudge injected before every Nth LLM call to remind the model
