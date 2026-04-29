@@ -65,7 +65,7 @@ impl Tool for WebSearch {
         "web_search"
     }
     fn description(&self) -> &'static str {
-        "Search the web via Brave Search API. Requires BRAVE_SEARCH_API_KEY."
+        "Search the web. Uses Brave Search when BRAVE_SEARCH_API_KEY is set, DuckDuckGo otherwise."
     }
     fn toolset(&self) -> &'static str {
         "web"
@@ -109,8 +109,19 @@ impl Tool for WebSearch {
     }
 }
 
+static HTTP_CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+
+fn http_client() -> &'static reqwest::Client {
+    HTTP_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .user_agent("Mozilla/5.0 (compatible; Garudust/1.0)")
+            .build()
+            .expect("failed to build HTTP client")
+    })
+}
+
 async fn brave_search(query: &str, count: usize, api_key: &str) -> Result<ToolResult, ToolError> {
-    let client = reqwest::Client::new();
+    let client = http_client();
     let resp = client
         .get("https://api.search.brave.com/res/v1/web/search")
         .query(&[("q", query), ("count", &count.to_string())])
@@ -156,14 +167,8 @@ async fn brave_search(query: &str, count: usize, api_key: &str) -> Result<ToolRe
     Ok(ToolResult::ok("", formatted.join("\n\n")))
 }
 
-/// Keyless fallback using DuckDuckGo HTML search.
 async fn ddg_search(query: &str, count: usize) -> Result<ToolResult, ToolError> {
-    let client = reqwest::Client::builder()
-        .user_agent("Mozilla/5.0 (compatible; Garudust/1.0)")
-        .build()
-        .map_err(|e| ToolError::Execution(e.to_string()))?;
-
-    let resp = client
+    let resp = http_client()
         .get("https://html.duckduckgo.com/html/")
         .query(&[("q", query)])
         .send()
@@ -184,12 +189,14 @@ async fn ddg_search(query: &str, count: usize) -> Result<ToolResult, ToolError> 
 
     let items = parse_ddg_html(&html, count);
     if items.is_empty() {
-        return Ok(ToolResult::ok("", "No results found."));
+        return Ok(ToolResult::ok(
+            "",
+            "No results found. (DDG returned no parseable results — it may be rate-limiting.)",
+        ));
     }
     Ok(ToolResult::ok("", items.join("\n\n")))
 }
 
-/// Parse search results from DDG HTML response.
 /// DDG redirect URLs look like: `//duckduckgo.com/l/?uddg=https%3A%2F%2F...`
 /// This scrapes an undocumented HTML format and may break if DDG changes its markup.
 fn parse_ddg_html(html: &str, limit: usize) -> Vec<String> {
@@ -315,5 +322,38 @@ mod tests {
     fn percent_decode_invalid_sequence_passthrough() {
         // Invalid hex after % — leave bytes as-is
         assert_eq!(percent_decode("%ZZ"), "%ZZ");
+    }
+
+    #[test]
+    fn parse_ddg_html_extracts_results() {
+        let html = r#"
+            <div class="result__title">
+              <a href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com&amp;rut=abc"
+                 class="result__a">Example Title</a>
+            </div>
+            <div class="result__snippet">A short description here.</div>
+        "#;
+        let results = parse_ddg_html(html, 5);
+        assert_eq!(results.len(), 1);
+        assert!(results[0].contains("Example Title"));
+        assert!(results[0].contains("https://example.com"));
+        assert!(results[0].contains("A short description here."));
+    }
+
+    #[test]
+    fn parse_ddg_html_respects_limit() {
+        let item = r#"
+            <div class="result__title">
+              <a href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com">Title</a>
+            </div>
+        "#;
+        let html = item.repeat(10);
+        let results = parse_ddg_html(&html, 3);
+        assert_eq!(results.len(), 3);
+    }
+
+    #[test]
+    fn parse_ddg_html_empty_on_no_results() {
+        assert!(parse_ddg_html("<html><body>no results</body></html>", 5).is_empty());
     }
 }
