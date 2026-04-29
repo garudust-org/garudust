@@ -6,10 +6,10 @@
   <a href="../zh/README.md"><img src="https://img.shields.io/badge/🇨🇳-简体中文-yellow?style=flat-square" alt="简体中文"/></a>
 </div>
 
-# Garudust
+# Garudust Agent
 
-[![CI](https://github.com/garudust-org/garudust/actions/workflows/ci.yml/badge.svg)](https://github.com/garudust-org/garudust/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/garudust-org/garudust)](https://github.com/garudust-org/garudust/releases/latest)
+[![CI](https://github.com/garudust-org/garudust-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/garudust-org/garudust-agent/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/garudust-org/garudust-agent)](https://github.com/garudust-org/garudust-agent/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](../../../LICENSE)
 ![Rust 1.75+](https://img.shields.io/badge/rust-1.75+-orange.svg)
 
@@ -34,7 +34,7 @@
 
 ### ไบนารีสำเร็จรูป (แนะนำ)
 
-ดาวน์โหลดได้จาก [**GitHub Releases**](https://github.com/garudust-org/garudust/releases/latest) — ไม่ต้องติดตั้ง Rust:
+ดาวน์โหลดได้จาก [**GitHub Releases**](https://github.com/garudust-org/garudust-agent/releases/latest) — ไม่ต้องติดตั้ง Rust:
 
 | แพลตฟอร์ม | ไฟล์ |
 |-----------|------|
@@ -54,7 +54,7 @@ sudo mv garudust garudust-server /usr/local/bin/
 ต้องการ Rust 1.75+:
 
 ```bash
-git clone https://github.com/garudust-org/garudust
+git clone https://github.com/garudust-org/garudust-agent
 cd garudust
 cargo build --release
 export PATH="$PATH:$(pwd)/target/release"
@@ -368,7 +368,7 @@ Garudust ออกแบบมาให้ขยายได้ง่าย — 
 - **เทส** — integration tests, property tests, snapshot tests
 
 ```bash
-git clone https://github.com/garudust-org/garudust
+git clone https://github.com/garudust-org/garudust-agent
 cd garudust
 cargo build
 cargo test --workspace

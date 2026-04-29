@@ -6,10 +6,10 @@
   <a href="docs/i18n/zh/README.md"><img src="https://img.shields.io/badge/🇨🇳-简体中文-yellow?style=flat-square" alt="简体中文"/></a>
 </div>
 
-# Garudust
+# Garudust Agent
 
-[![CI](https://github.com/garudust-org/garudust/actions/workflows/ci.yml/badge.svg)](https://github.com/garudust-org/garudust/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/garudust-org/garudust)](https://github.com/garudust-org/garudust/releases/latest)
+[![CI](https://github.com/garudust-org/garudust-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/garudust-org/garudust-agent/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/garudust-org/garudust-agent)](https://github.com/garudust-org/garudust-agent/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Rust 1.75+](https://img.shields.io/badge/rust-1.75+-orange.svg)
 
@@ -38,7 +38,7 @@ Most AI agent frameworks are Python, heavy, and slow to start. Garudust is:
 
 ### Pre-built binaries (recommended)
 
-Download from [**GitHub Releases**](https://github.com/garudust-org/garudust/releases/latest) — no Rust required:
+Download from [**GitHub Releases**](https://github.com/garudust-org/garudust-agent/releases/latest) — no Rust required:
 
 | Platform | File |
 |----------|------|
@@ -58,7 +58,7 @@ sudo mv garudust garudust-server /usr/local/bin/
 Requires Rust 1.75+:
 
 ```bash
-git clone https://github.com/garudust-org/garudust
+git clone https://github.com/garudust-org/garudust-agent
 cd garudust
 cargo build --release
 export PATH="$PATH:$(pwd)/target/release"
@@ -372,7 +372,7 @@ Garudust is designed to be easy to extend — adding a tool, transport, or platf
 - **Tests** — integration tests, property tests, snapshot tests
 
 ```bash
-git clone https://github.com/garudust-org/garudust
+git clone https://github.com/garudust-org/garudust-agent
 cd garudust
 cargo build
 cargo test --workspace
