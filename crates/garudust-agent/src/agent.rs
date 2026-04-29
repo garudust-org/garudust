@@ -222,7 +222,27 @@ impl Agent {
         let session_id = Uuid::new_v4().to_string();
         #[allow(clippy::cast_precision_loss)]
         let started_at = Utc::now().timestamp_millis() as f64 / 1000.0;
-        let system_prompt = build_system_prompt(&self.config, self.memory.as_ref(), platform).await;
+        // Read memory once — shared by system-prompt serialization and prefetch injection.
+        let mem = self
+            .memory
+            .read_memory()
+            .await
+            .map_err(|e| {
+                warn!("failed to read memory: {e}");
+                e
+            })
+            .ok();
+        let profile = self
+            .memory
+            .read_user_profile()
+            .await
+            .map_err(|e| {
+                warn!("failed to read user profile: {e}");
+                e
+            })
+            .ok();
+        let system_prompt =
+            build_system_prompt(&self.config, mem.as_ref(), profile.as_deref(), platform).await;
         let inf_config = InferenceConfig {
             model: self.config.model.clone(),
             max_tokens: Some(8192),
@@ -230,7 +250,30 @@ impl Agent {
             reasoning_effort: None,
         };
 
-        let mut history: Vec<Message> = vec![Message::system(&system_prompt), Message::user(task)];
+        // Pre-turn memory recall: surface entries relevant to this task so the
+        // model sees them immediately before the question, not buried in the system prompt.
+        // Note: prefetch uses ASCII/Latin keyword matching; non-Latin scripts (e.g. Thai)
+        // are not word-tokenized and will not trigger recall via this path — the full
+        // memory block in the system prompt still covers those cases.
+        let user_msg = mem
+            .as_ref()
+            .and_then(|m| {
+                let s = m.prefetch_for_prompt(task);
+                (!s.is_empty()).then_some(s)
+            })
+            .map_or_else(
+                || task.to_string(),
+                |recalled| {
+                    // Strip < and > so an agent-written memory entry (e.g. from a
+                    // malicious web page instructing the agent to save crafted content)
+                    // cannot inject a closing tag and break out of the block.
+                    let safe = recalled.replace(['<', '>'], "");
+                    format!("<recalled_memory>\n{safe}\n</recalled_memory>\n\n{task}")
+                },
+            );
+
+        let mut history: Vec<Message> =
+            vec![Message::system(&system_prompt), Message::user(&user_msg)];
 
         let schemas = self.tools.all_schemas();
         let mut total_in = 0u32;

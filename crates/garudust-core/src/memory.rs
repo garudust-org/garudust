@@ -153,6 +153,79 @@ impl MemoryContent {
         before - self.entries.len()
     }
 
+    /// Max entries returned by [`Self::prefetch`] to prevent context bloat.
+    const PREFETCH_LIMIT: usize = 8;
+
+    /// Five-or-more-char English stop words excluded from keyword matching.
+    /// Only words that survive the `alpha.len() < 5` filter need to be listed here.
+    const STOP_WORDS: &'static [&'static str] = &[
+        "there", "about", "which", "where", "their", "those", "these", "every", "after", "other",
+        "never", "still", "under", "again", "being", "since", "while", "shall", "might", "until",
+        "above", "below", "maybe", "often", "quite", "would", "could", "whose", "whether",
+        "however", "although", "because", "without", "within", "around", "before", "should",
+        "through", "always", "almost", "already",
+    ];
+
+    /// Keyword-match recall: entries whose content contains any significant word
+    /// from `query`. Tokens < 5 alphabetic chars and stop words are excluded to
+    /// reduce false positives. Returns at most [`Self::PREFETCH_LIMIT`] entries,
+    /// newest first.
+    pub fn prefetch(&self, query: &str) -> Vec<&MemoryEntry> {
+        let words: Vec<String> = query
+            .split_whitespace()
+            .filter_map(|w| {
+                let alpha: String = w.chars().filter(|c| c.is_alphabetic()).collect();
+                if alpha.len() < 5 {
+                    return None;
+                }
+                let lower = alpha.to_lowercase();
+                if Self::STOP_WORDS.contains(&lower.as_str()) {
+                    return None;
+                }
+                Some(lower)
+            })
+            .collect();
+        if words.is_empty() {
+            return vec![];
+        }
+        let mut hits: Vec<&MemoryEntry> = self
+            .entries
+            .iter()
+            .filter(|e| {
+                let lower = e.content.to_lowercase();
+                words.iter().any(|w| lower.contains(w.as_str()))
+            })
+            .collect();
+        // Prefer newest entries (created_at is YYYY-MM-DD, lexicographically sortable).
+        hits.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        hits.truncate(Self::PREFETCH_LIMIT);
+        hits
+    }
+
+    /// Format prefetch hits as a compact block for injection into the user message.
+    /// Returns empty string when no hits.
+    pub fn prefetch_for_prompt(&self, query: &str) -> String {
+        let hits = self.prefetch(query);
+        if hits.is_empty() {
+            return String::new();
+        }
+        hits.iter()
+            .map(|e| {
+                if e.created_at.is_empty() {
+                    format!("- {} [{}]", e.content, e.category.display_name())
+                } else {
+                    format!(
+                        "- {} [{}] ({})",
+                        e.content,
+                        e.category.display_name(),
+                        e.created_at
+                    )
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     /// Grouped markdown for the system prompt.
     pub fn serialize_for_prompt(&self) -> String {
         if self.entries.is_empty() {
@@ -430,6 +503,97 @@ mod tests {
         assert_eq!(removed, 2);
         assert_eq!(mc.entries.len(), 1);
         assert_eq!(mc.entries[0].content, "keep");
+    }
+
+    // ── prefetch ──────────────────────────────────────────────────────────────
+
+    #[test]
+    fn prefetch_returns_matching_entries() {
+        let raw = "[preference|2026-04-29] user drinks black coffee\n§\n[fact|2026-04-29] user lives in Bangkok";
+        let mc = MemoryContent::parse(raw);
+        // "coffee" is 6 chars and not a stop word — should match only the first entry
+        let hits = mc.prefetch("about coffee");
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].content.contains("coffee"));
+    }
+
+    #[test]
+    fn prefetch_returns_empty_when_no_match() {
+        let raw = "[preference|2026-04-29] user likes black coffee";
+        let mc = MemoryContent::parse(raw);
+        // "weather" doesn't appear in the entry
+        let hits = mc.prefetch("current weather");
+        assert!(hits.is_empty());
+    }
+
+    #[test]
+    fn prefetch_is_case_insensitive() {
+        let raw = "[preference|2026-04-29] user likes Black Coffee";
+        let mc = MemoryContent::parse(raw);
+        let hits = mc.prefetch("COFFEE");
+        assert_eq!(hits.len(), 1);
+    }
+
+    #[test]
+    fn prefetch_strips_punctuation_from_query_words() {
+        let raw = "[preference|2026-04-29] user drinks black coffee";
+        let mc = MemoryContent::parse(raw);
+        let hits = mc.prefetch("coffee?");
+        assert_eq!(hits.len(), 1);
+    }
+
+    #[test]
+    fn prefetch_ignores_short_words() {
+        let raw = "[preference|2026-04-29] user likes tea";
+        let mc = MemoryContent::parse(raw);
+        // all words are < 5 alpha chars — nothing should match
+        let hits = mc.prefetch("is he ok now");
+        assert!(hits.is_empty());
+    }
+
+    #[test]
+    fn prefetch_ignores_stop_words() {
+        let raw = "[preference|2026-04-29] user changed the API endpoint";
+        let mc = MemoryContent::parse(raw);
+        // "about", "their", "there" are >= 5 chars but "about" and "there"
+        // are stop words; only "their" might vary — use a pure stop word query
+        let hits = mc.prefetch("about there");
+        assert!(hits.is_empty());
+    }
+
+    #[test]
+    fn prefetch_caps_results_at_limit() {
+        let entries: String = (0..20)
+            .map(|i| {
+                format!(
+                    "[fact|2026-04-{:02}] keyword entry number {i}",
+                    (i % 28) + 1
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n§\n");
+        let mc = MemoryContent::parse(&entries);
+        let hits = mc.prefetch("keyword entry");
+        assert!(hits.len() <= MemoryContent::PREFETCH_LIMIT);
+    }
+
+    #[test]
+    fn prefetch_returns_newest_first() {
+        let raw = "[fact|2026-01-01] keyword old entry\n§\n[fact|2026-04-29] keyword new entry";
+        let mc = MemoryContent::parse(raw);
+        let hits = mc.prefetch("keyword entry");
+        assert_eq!(hits.len(), 2);
+        assert_eq!(hits[0].created_at, "2026-04-29");
+    }
+
+    #[test]
+    fn prefetch_for_prompt_formats_correctly() {
+        let raw = "[preference|2026-04-29] user likes black coffee";
+        let mc = MemoryContent::parse(raw);
+        let block = mc.prefetch_for_prompt("coffee preference");
+        assert!(block.contains("user likes black coffee"));
+        assert!(block.contains("[Preferences]"));
+        assert!(block.contains("2026-04-29"));
     }
 
     #[test]
