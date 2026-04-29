@@ -51,6 +51,11 @@ async fn read_context_file(path: &Path) -> std::io::Result<String> {
     tokio::fs::read_to_string(path).await
 }
 
+// Security tradeoff: instructing the model to "read and use" untrusted content
+// means a crafted page could embed misleading facts (e.g. a fake price). This is
+// intentional — the alternative (ignoring content) breaks search-augmented tasks.
+// Instruction-following injection ("ignore previous instructions") is still blocked;
+// only data, not commands, flows through the untrusted channel.
 const AGENT_IDENTITY: &str = "\
 You are Garudust, a powerful self-improving AI agent. You have access to tools \
 to help complete tasks. Think step by step, use tools when needed, and always \

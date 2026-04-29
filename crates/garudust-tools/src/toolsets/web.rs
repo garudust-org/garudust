@@ -253,11 +253,15 @@ fn parse_ddg_html(html: &str, limit: usize) -> Vec<String> {
             let snip_base = after_title + snip_start;
             if let Some(gt2) = html[snip_base..].find('>') {
                 let snip_off = snip_base + gt2 + 1;
+                // Clamp search to the same window used to find this snippet so we
+                // never bleed into the next result's content.
+                let window_len = next_result_off.saturating_sub(snip_off);
+                let snip_search = &html[snip_off..snip_off + window_len];
                 // Use the closing </div or </td to avoid truncating at inline tags like </b>
-                let snip_end = html[snip_off..]
+                let snip_end = snip_search
                     .find("</div")
-                    .or_else(|| html[snip_off..].find("</td"))
-                    .unwrap_or_else(|| html[snip_off..].find("</").unwrap_or(0));
+                    .or_else(|| snip_search.find("</td"))
+                    .unwrap_or_else(|| snip_search.find("</").unwrap_or(window_len));
                 let raw = &html[snip_off..snip_off + snip_end];
                 strip_html_tags(raw)
                     .replace("&amp;", "&")
