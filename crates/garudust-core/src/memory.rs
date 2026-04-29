@@ -159,7 +159,7 @@ impl MemoryContent {
         let words: Vec<String> = query
             .split_whitespace()
             .filter(|w| w.chars().filter(|c| c.is_alphabetic()).count() >= 3)
-            .map(|w| w.to_lowercase())
+            .map(str::to_lowercase)
             .collect();
         if words.is_empty() {
             return vec![];

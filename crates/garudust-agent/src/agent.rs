@@ -243,7 +243,8 @@ impl Agent {
             task.to_string()
         };
 
-        let mut history: Vec<Message> = vec![Message::system(&system_prompt), Message::user(&user_msg)];
+        let mut history: Vec<Message> =
+            vec![Message::system(&system_prompt), Message::user(&user_msg)];
 
         let schemas = self.tools.all_schemas();
         let mut total_in = 0u32;
