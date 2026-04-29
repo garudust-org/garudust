@@ -23,6 +23,20 @@ use tokio::sync::mpsc;
 /// Results from these tools are wrapped in XML tags to help the model
 /// distinguish untrusted data from authoritative instructions.
 const EXTERNAL_TOOLS: &[&str] = &["web_fetch", "web_search", "browser", "read_file"];
+
+/// Hermes-style nudge injected before every Nth LLM call to remind the model
+/// to persist any new facts or preferences it encountered during the task.
+const MEMORY_NUDGE: &str = "[System: You have completed several tool-use rounds in this task. \
+     If you learned any new user preferences, facts, or corrections, \
+     call save_memory now to persist them before continuing.]";
+
+/// Thai-language keywords that indicate the user wants to save something to memory.
+const THAI_MEMORY_KEYWORDS: &[&str] = &["จำ", "บันทึก", "จำไว้", "จดจำ", "จำข้อมูล", "จำให้", "เก็บไว้"];
+
+/// Returns true if `text` contains any Thai memory-intent keyword.
+fn has_thai_memory_intent(text: &str) -> bool {
+    THAI_MEMORY_KEYWORDS.iter().any(|kw| text.contains(kw))
+}
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
@@ -300,6 +314,18 @@ impl Agent {
                 },
             );
 
+        // Append English save-memory note when the user's message contains Thai
+        // memory-intent keywords so local models (e.g. Qwen3) recognise the request
+        // regardless of language.
+        let user_msg = if has_thai_memory_intent(task) {
+            format!(
+                "{user_msg}\n\n[System note: The user may be asking you to \
+                 remember something. If so, call the save_memory tool before responding.]"
+            )
+        } else {
+            user_msg
+        };
+
         let mut history: Vec<Message> =
             vec![Message::system(&system_prompt), Message::user(&user_msg)];
 
@@ -309,6 +335,15 @@ impl Agent {
         let mut iters = 0u32;
 
         loop {
+            // Hermes-style nudge: remind the model to save memory every N tool rounds.
+            // iters == 0 on the first pass (before increment), so this only fires after
+            // at least one full tool-use round has completed.
+            let nudge = self.config.nudge_interval;
+            if nudge > 0 && iters > 0 && iters.is_multiple_of(nudge) {
+                history.push(Message::user(MEMORY_NUDGE));
+                debug!(iteration = iters, "injecting memory nudge");
+            }
+
             // Compress if needed before every LLM call
             if self.config.compression.enabled && self.compressor.should_compress(&history) {
                 info!("compressing context before turn {}", iters + 1);

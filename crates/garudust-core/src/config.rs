@@ -58,6 +58,14 @@ pub struct AgentConfig {
     pub security: SecurityConfig,
     #[serde(default)]
     pub memory_expiry: MemoryExpiryConfig,
+    /// Inject a memory-save reminder every N tool-use iterations within a task.
+    /// 0 = disabled. Default: 5.
+    #[serde(default = "default_nudge_interval")]
+    pub nudge_interval: u32,
+}
+
+fn default_nudge_interval() -> u32 {
+    5
 }
 
 /// Per-category retention policy for memory entries.
@@ -167,6 +175,7 @@ impl Default for AgentConfig {
                 rate_limit_rpm: None,
             },
             memory_expiry: MemoryExpiryConfig::default(),
+            nudge_interval: default_nudge_interval(),
         }
     }
 }
