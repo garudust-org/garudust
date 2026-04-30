@@ -26,7 +26,7 @@ impl RetryTransport {
 fn is_retryable(err: &TransportError) -> bool {
     match err {
         TransportError::Http { status, .. } => matches!(status, 429 | 500 | 502 | 503 | 504),
-        TransportError::RateLimit { .. } | TransportError::Other(_) => true,
+        TransportError::RateLimit { .. } | TransportError::Network(_) => true,
         _ => false,
     }
 }
@@ -41,7 +41,9 @@ fn delay_ms(err: &TransportError, attempt: u32, base_ms: u64) -> u64 {
                 "Retry-After exceeds cap, clamping"
             );
         }
-        return retry_after_secs.min(&MAX_RATE_LIMIT_SECS).saturating_mul(1000);
+        return retry_after_secs
+            .min(&MAX_RATE_LIMIT_SECS)
+            .saturating_mul(1000);
     }
     let exp = base_ms.saturating_mul(1u64 << attempt.min(6));
     // cheap time-based jitter without external deps

@@ -125,7 +125,7 @@ impl ProviderTransport for AnthropicTransport {
             .json(&body)
             .send()
             .await
-            .map_err(|e| TransportError::Other(anyhow::anyhow!("{e}")))?;
+            .map_err(|e| TransportError::Network(e.to_string()))?;
 
         if !resp.status().is_success() {
             let status = resp.status().as_u16();
@@ -140,7 +140,7 @@ impl ProviderTransport for AnthropicTransport {
         let data: serde_json::Value = resp
             .json()
             .await
-            .map_err(|e| TransportError::Other(anyhow::anyhow!("{e}")))?;
+            .map_err(|e| TransportError::Network(e.to_string()))?;
 
         parse_response(&data)
     }
@@ -161,7 +161,7 @@ impl ProviderTransport for AnthropicTransport {
             .json(&body)
             .send()
             .await
-            .map_err(|e| TransportError::Other(anyhow::anyhow!("{e}")))?;
+            .map_err(|e| TransportError::Network(e.to_string()))?;
 
         if !resp.status().is_success() {
             let status = resp.status().as_u16();

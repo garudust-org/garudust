@@ -460,13 +460,13 @@ impl ProviderTransport for BedrockTransport {
         let resp = req
             .send()
             .await
-            .map_err(|e| TransportError::Other(anyhow::anyhow!("{e}")))?;
+            .map_err(|e| TransportError::Network(e.to_string()))?;
 
         let status = resp.status().as_u16();
         let text = resp
             .text()
             .await
-            .map_err(|e| TransportError::Other(anyhow::anyhow!("{e}")))?;
+            .map_err(|e| TransportError::Network(e.to_string()))?;
 
         if status != 200 {
             return Err(classify_error(status, &text));
@@ -521,7 +521,7 @@ impl ProviderTransport for BedrockTransport {
         let resp = req
             .send()
             .await
-            .map_err(|e| TransportError::Other(anyhow::anyhow!("{e}")))?;
+            .map_err(|e| TransportError::Network(e.to_string()))?;
 
         let status = resp.status().as_u16();
         if status != 200 {

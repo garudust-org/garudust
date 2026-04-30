@@ -22,6 +22,8 @@ pub enum TransportError {
     Http { status: u16, body: String },
     #[error("rate limited, retry after {retry_after_secs}s")]
     RateLimit { retry_after_secs: u64 },
+    #[error("network error: {0}")]
+    Network(String),
     #[error("authentication failed")]
     Auth,
     #[error("model not found: {0}")]
