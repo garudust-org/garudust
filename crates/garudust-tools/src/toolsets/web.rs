@@ -1,3 +1,6 @@
+use std::net::SocketAddr;
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use garudust_core::{
     error::ToolError,
@@ -5,7 +8,41 @@ use garudust_core::{
     tool::{Tool, ToolContext},
     types::ToolResult,
 };
+use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 use serde_json::json;
+
+// ─── Safe DNS resolver ────────────────────────────────────────────────────────
+
+/// Custom DNS resolver that filters out private/reserved IPs at resolution time,
+/// closing the TOCTOU gap between is_safe_url() and reqwest's actual connect.
+struct SafeResolver;
+
+impl Resolve for SafeResolver {
+    fn resolve(&self, name: Name) -> Resolving {
+        let host = name.as_str().to_string();
+        Box::pin(async move {
+            let all: Vec<SocketAddr> = tokio::net::lookup_host(format!("{host}:0"))
+                .await
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?
+                .collect();
+
+            let safe: Vec<SocketAddr> = all
+                .into_iter()
+                .filter(|a| !net_guard::is_blocked_ip(a.ip()))
+                .collect();
+
+            if safe.is_empty() {
+                return Err(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    format!("SSRF protection: '{host}' resolved only to private/reserved IPs"),
+                ))
+                    as Box<dyn std::error::Error + Send + Sync>);
+            }
+
+            Ok(Box::new(safe.into_iter()) as Addrs)
+        })
+    }
+}
 
 // ─── WebFetch ─────────────────────────────────────────────────────────────────
 
@@ -44,7 +81,9 @@ impl Tool for WebFetch {
 
         net_guard::is_safe_url(url)?;
 
-        let body = reqwest::get(url)
+        let body = http_client()?
+            .get(url)
+            .send()
             .await
             .map_err(|e| ToolError::Execution(e.to_string()))?
             .text()
@@ -118,6 +157,7 @@ fn http_client() -> Result<&'static reqwest::Client, ToolError> {
     let c = reqwest::Client::builder()
         .user_agent("Mozilla/5.0 (compatible; Garudust/1.0)")
         .timeout(std::time::Duration::from_secs(10))
+        .dns_resolver(Arc::new(SafeResolver))
         .build()
         .map_err(|e| ToolError::Execution(format!("HTTP client init failed: {e}")))?;
     Ok(HTTP_CLIENT.get_or_init(|| c))

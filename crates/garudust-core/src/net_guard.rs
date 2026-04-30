@@ -67,15 +67,19 @@ pub fn is_safe_url(url: &str) -> Result<(), ToolError> {
     Ok(())
 }
 
-fn check_ip(ip: IpAddr, host: &str) -> Result<(), ToolError> {
-    let blocked = match ip {
+/// Returns `true` if the IP is private, loopback, link-local, or unspecified
+/// and must therefore be blocked to prevent SSRF.
+pub fn is_blocked_ip(ip: IpAddr) -> bool {
+    match ip {
         IpAddr::V4(v4) => {
             is_private_v4(v4) || v4.is_loopback() || v4.is_unspecified() || v4.is_link_local()
         }
         IpAddr::V6(v6) => is_private_v6(v6) || v6.is_loopback() || v6.is_unspecified(),
-    };
+    }
+}
 
-    if blocked {
+fn check_ip(ip: IpAddr, host: &str) -> Result<(), ToolError> {
+    if is_blocked_ip(ip) {
         return Err(ToolError::Execution(format!(
             "blocked: '{host}' resolves to a private/reserved address ({ip})"
         )));
