@@ -62,10 +62,22 @@ pub struct AgentConfig {
     /// 0 = disabled. Default: 5.
     #[serde(default = "default_nudge_interval")]
     pub nudge_interval: u32,
+    /// Max retry attempts on transient LLM API errors (429, 5xx, network). 0 = disabled.
+    #[serde(default = "default_llm_max_retries")]
+    pub llm_max_retries: u32,
+    /// Base delay in milliseconds for exponential backoff between retries.
+    #[serde(default = "default_llm_retry_base_ms")]
+    pub llm_retry_base_ms: u64,
 }
 
 fn default_nudge_interval() -> u32 {
     5
+}
+fn default_llm_max_retries() -> u32 {
+    3
+}
+fn default_llm_retry_base_ms() -> u64 {
+    1000
 }
 
 /// Per-category retention policy for memory entries.
@@ -176,6 +188,8 @@ impl Default for AgentConfig {
             },
             memory_expiry: MemoryExpiryConfig::default(),
             nudge_interval: default_nudge_interval(),
+            llm_max_retries: default_llm_max_retries(),
+            llm_retry_base_ms: default_llm_retry_base_ms(),
         }
     }
 }

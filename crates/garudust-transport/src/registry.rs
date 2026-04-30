@@ -8,12 +8,13 @@ use crate::bedrock::BedrockTransport;
 use crate::chat_completions::ChatCompletionsTransport;
 use crate::codex::CodexTransport;
 use crate::ollama;
+use crate::retry::RetryTransport;
 
 pub fn build_transport(config: &AgentConfig) -> Arc<dyn ProviderTransport> {
     let base_url = config.base_url.clone();
     let api_key = config.api_key.clone().unwrap_or_default();
 
-    match config.provider.as_str() {
+    let base: Arc<dyn ProviderTransport> = match config.provider.as_str() {
         "anthropic" => Arc::new(AnthropicTransport::new(api_key)),
         "codex" => {
             let mut t = CodexTransport::new(api_key);
@@ -45,5 +46,11 @@ pub fn build_transport(config: &AgentConfig) -> Arc<dyn ProviderTransport> {
             base_url.unwrap_or_else(|| "https://openrouter.ai/api/v1".into()),
             api_key,
         )),
+    };
+
+    if config.llm_max_retries > 0 {
+        Arc::new(RetryTransport::new(base, config.llm_max_retries, config.llm_retry_base_ms))
+    } else {
+        base
     }
 }
