@@ -33,7 +33,15 @@ fn is_retryable(err: &TransportError) -> bool {
 
 fn delay_ms(err: &TransportError, attempt: u32, base_ms: u64) -> u64 {
     if let TransportError::RateLimit { retry_after_secs } = err {
-        return retry_after_secs * 1000;
+        const MAX_RATE_LIMIT_SECS: u64 = 300;
+        if *retry_after_secs > MAX_RATE_LIMIT_SECS {
+            tracing::warn!(
+                requested = retry_after_secs,
+                capped = MAX_RATE_LIMIT_SECS,
+                "Retry-After exceeds cap, clamping"
+            );
+        }
+        return retry_after_secs.min(&MAX_RATE_LIMIT_SECS).saturating_mul(1000);
     }
     let exp = base_ms.saturating_mul(1u64 << attempt.min(6));
     // cheap time-based jitter without external deps
