@@ -6,7 +6,7 @@ pub struct AutoApprover;
 
 #[async_trait]
 impl CommandApprover for AutoApprover {
-    async fn approve(&self, _command: &str, _description: &str) -> ApprovalDecision {
+    async fn approve(&self, _tool: &str, _params: &str) -> ApprovalDecision {
         ApprovalDecision::Approved
     }
 }
@@ -16,83 +16,30 @@ pub struct DenyApprover;
 
 #[async_trait]
 impl CommandApprover for DenyApprover {
-    async fn approve(&self, _command: &str, _description: &str) -> ApprovalDecision {
+    async fn approve(&self, _tool: &str, _params: &str) -> ApprovalDecision {
         ApprovalDecision::Denied
     }
 }
 
-/// Blocks commands that match known-dangerous patterns; approves everything else.
+/// Hermes-style approver: approves all destructive tools unconditionally.
 ///
-/// Substring matching is intentionally simple — it is a defense-in-depth layer,
-/// not a sandbox. Obfuscated commands (variable expansion, eval) can bypass it.
-pub struct SmartApprover;
-
-static DANGEROUS_PATTERNS: &[&str] = &[
-    // destructive rm — block force+recursive and high-value targets only.
-    // Plain "rm file.txt" and "rm *.log" are intentionally allowed so the
-    // agent can perform routine cleanup. "rm -r ./tmpdir" is also allowed.
-    "rm -rf",
-    "rm -fr",
-    "rm -r /", // recursive on absolute path (e.g. rm -r /home, rm -r /)
-    "rm -r ~", // recursive on home directory
-    "rm ~/",   // delete inside home
-    "sudo rm",
-    "; rm ",
-    "&& rm ",
-    "| rm ",
-    // disk / partition destruction
-    "> /dev/sd",
-    "mkfs",
-    "dd if=",
-    "shred ",
-    // database nukes
-    "drop table",
-    "drop database",
-    "truncate table",
-    // remote-code execution via pipe
-    "curl | sh",
-    "curl|sh",
-    "wget | sh",
-    "wget|sh",
-    "curl | bash",
-    "curl|bash",
-    "wget | bash",
-    "wget|bash",
-    "eval $(curl",
-    "eval $(wget",
-    "eval \"$(curl",
-    "eval \"$(wget",
-    // encoded payloads
-    "base64 -d |",
-    "base64 -d|",
-    // privilege escalation
-    "chmod 777",
-    "chown root",
-    "sudo dd",
-    // sensitive file writes
-    "> /etc/",
-    ">> /etc/",
-    "/etc/passwd",
-    "/etc/shadow",
-    // fork bomb / resource exhaustion
-    ":(){ :|:",
-    "fork bomb",
-];
+/// The primary safety gate is the constitutional constraints injected into the
+/// system prompt — the model is instructed to self-regulate before proposing
+/// any destructive action. This approver's role is:
+///
+/// 1. Provide the audit-log hook (logging is done in ToolRegistry::dispatch).
+/// 2. Act as the enforcement point for future policy extensions (e.g. an LLM
+///    self-check or user confirmation step) without changing call sites.
+///
+/// Pattern-matching blocklists are intentionally absent: any string-level check
+/// can be bypassed by obfuscation (variable expansion, base64, pipe chains).
+/// The model's semantic understanding of the constitutional constraints is a
+/// stronger and more general defence.
+pub struct ConstitutionalApprover;
 
 #[async_trait]
-impl CommandApprover for SmartApprover {
-    async fn approve(&self, command: &str, _description: &str) -> ApprovalDecision {
-        let lower = command.to_lowercase();
-        for pattern in DANGEROUS_PATTERNS {
-            if lower.contains(pattern) {
-                tracing::warn!(
-                    command = %command,
-                    pattern = %pattern,
-                    "SmartApprover: blocked dangerous command"
-                );
-                return ApprovalDecision::Denied;
-            }
-        }
+impl CommandApprover for ConstitutionalApprover {
+    async fn approve(&self, _tool: &str, _params: &str) -> ApprovalDecision {
         ApprovalDecision::Approved
     }
 }

@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use garudust_core::{
     error::ToolError,
-    tool::{Tool, ToolContext},
+    tool::{ApprovalDecision, Tool, ToolContext},
     types::{ToolResult, ToolSchema},
 };
 
@@ -48,6 +48,24 @@ impl ToolRegistry {
             .tools
             .get(name)
             .ok_or_else(|| ToolError::NotFound(name.into()))?;
+
+        // Property-based approval gate: check what the tool IS, not what the
+        // command string looks like. Destructive tools always produce an audit
+        // entry and run through the approver regardless of which tool calls them.
+        if tool.is_destructive() {
+            let decision = ctx.approver.approve(name, &params.to_string()).await;
+            tracing::info!(
+                session_id = %ctx.session_id,
+                tool       = %name,
+                params     = %params,
+                approved   = %(decision != ApprovalDecision::Denied),
+                "destructive tool call"
+            );
+            if decision == ApprovalDecision::Denied {
+                return Err(ToolError::ApprovalDenied);
+            }
+        }
+
         tool.execute(params, ctx).await
     }
 
@@ -110,7 +128,7 @@ mod tests {
     struct DenyAll;
     #[async_trait]
     impl CommandApprover for DenyAll {
-        async fn approve(&self, _: &str, _: &str) -> ApprovalDecision {
+        async fn approve(&self, _tool_name: &str, _params: &str) -> ApprovalDecision {
             ApprovalDecision::Denied
         }
     }

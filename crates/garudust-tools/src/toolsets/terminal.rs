@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use garudust_core::{
     error::ToolError,
-    tool::{ApprovalDecision, Tool, ToolContext},
+    tool::{Tool, ToolContext},
     types::ToolResult,
 };
 use serde_json::json;
@@ -38,6 +38,10 @@ impl Tool for Terminal {
         "terminal"
     }
 
+    fn is_destructive(&self) -> bool {
+        true
+    }
+
     fn schema(&self) -> serde_json::Value {
         json!({
             "type": "object",
@@ -53,12 +57,11 @@ impl Tool for Terminal {
     async fn execute(
         &self,
         params: serde_json::Value,
-        ctx: &ToolContext,
+        _ctx: &ToolContext,
     ) -> Result<ToolResult, ToolError> {
         let command = params["command"]
             .as_str()
             .ok_or_else(|| ToolError::InvalidArgs("command required".into()))?;
-        let description = params["description"].as_str().unwrap_or("run command");
         let timeout_secs = params["timeout_secs"].as_u64().unwrap_or(30);
 
         if references_secrets_file(command) {
@@ -67,10 +70,8 @@ impl Tool for Terminal {
             ));
         }
 
-        let decision = ctx.approver.approve(command, description).await;
-        if decision == ApprovalDecision::Denied {
-            return Err(ToolError::ApprovalDenied);
-        }
+        // Approval and audit logging are handled by ToolRegistry::dispatch()
+        // via the is_destructive() property — no per-tool check needed here.
 
         let mut cmd = Command::new("sh");
         cmd.arg("-c").arg(command);

@@ -101,6 +101,10 @@ impl Tool for WriteFile {
         "files"
     }
 
+    fn is_destructive(&self) -> bool {
+        true
+    }
+
     fn schema(&self) -> serde_json::Value {
         json!({
             "type": "object",

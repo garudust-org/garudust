@@ -3,7 +3,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use arc_swap::ArcSwap;
 use clap::Parser;
-use garudust_agent::{Agent, AutoApprover, DenyApprover, SmartApprover};
+use garudust_agent::{Agent, AutoApprover, ConstitutionalApprover, DenyApprover};
 use garudust_core::config::McpServerConfig;
 use garudust_core::{config::AgentConfig, platform::PlatformAdapter, tool::CommandApprover};
 use garudust_cron::CronScheduler;
@@ -98,18 +98,19 @@ struct Cli {
 
 #[derive(Clone, Debug, clap::ValueEnum)]
 enum ApprovalMode {
-    /// Approve all commands (use with caution)
+    /// Approve all commands without logging (use with caution)
     Auto,
-    /// Block known-dangerous command patterns (default)
+    /// Constitutional approval: audit-log every destructive tool call;
+    /// the system prompt's constitutional constraints are the primary gate
     Smart,
-    /// Deny all shell commands
+    /// Deny all destructive tool calls unconditionally
     Deny,
 }
 
 fn build_approver(mode: &ApprovalMode) -> Arc<dyn CommandApprover> {
     match mode {
         ApprovalMode::Auto => Arc::new(AutoApprover),
-        ApprovalMode::Smart => Arc::new(SmartApprover),
+        ApprovalMode::Smart => Arc::new(ConstitutionalApprover),
         ApprovalMode::Deny => Arc::new(DenyApprover),
     }
 }

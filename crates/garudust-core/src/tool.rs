@@ -17,6 +17,14 @@ pub trait Tool: Send + Sync + 'static {
     fn schema(&self) -> serde_json::Value;
     fn toolset(&self) -> &str;
 
+    /// Returns true for tools that write, delete, or execute — i.e. operations
+    /// that are hard to reverse. The registry uses this to gate approval and
+    /// emit an audit-log entry before dispatch, regardless of how the tool
+    /// encodes its arguments internally.
+    fn is_destructive(&self) -> bool {
+        false
+    }
+
     async fn execute(
         &self,
         params: serde_json::Value,
@@ -50,7 +58,10 @@ pub struct ToolContext {
 
 #[async_trait]
 pub trait CommandApprover: Send + Sync + 'static {
-    async fn approve(&self, command: &str, description: &str) -> ApprovalDecision;
+    /// Called by ToolRegistry::dispatch() for every destructive tool before
+    /// execute(). `tool_name` is the registered tool name; `params` is the
+    /// JSON-serialised parameter object passed by the model.
+    async fn approve(&self, tool_name: &str, params: &str) -> ApprovalDecision;
 }
 
 #[derive(Debug, Clone, PartialEq)]
