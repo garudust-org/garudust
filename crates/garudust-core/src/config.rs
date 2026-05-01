@@ -170,7 +170,7 @@ pub struct SecurityConfig {
     pub terminal_sandbox_image: String,
 
     /// Extra `docker run` flags appended after the hardened defaults.
-    /// Example: ["--network=none", "--memory=512m", "--cpus=0.5"]
+    /// Example: `["--network=none", "--memory=512m", "--cpus=0.5"]`
     #[serde(default)]
     pub terminal_sandbox_opts: Vec<String>,
 }
