@@ -467,7 +467,10 @@ mod tests {
         assert_eq!(args[1], "--rm");
         assert!(args.contains(&"--cap-drop".into()), "missing --cap-drop");
         assert!(args.contains(&"ALL".into()), "missing ALL after --cap-drop");
-        assert!(args.contains(&"--security-opt".into()), "missing --security-opt");
+        assert!(
+            args.contains(&"--security-opt".into()),
+            "missing --security-opt"
+        );
         assert!(
             args.contains(&"no-new-privileges:true".into()),
             "missing no-new-privileges:true"
