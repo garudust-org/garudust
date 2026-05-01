@@ -49,29 +49,69 @@ impl ToolRegistry {
             .get(name)
             .ok_or_else(|| ToolError::NotFound(name.into()))?;
 
-        // Property-based approval gate: check what the tool IS, not what the
-        // command string looks like. Destructive tools always produce an audit
-        // entry and run through the approver regardless of which tool calls them.
+        // Property-based approval gate for destructive tools.
         if tool.is_destructive() {
             let decision = ctx.approver.approve(name, &params.to_string()).await;
             tracing::info!(
                 session_id = %ctx.session_id,
                 tool       = %name,
-                params     = %params,
+                args       = %truncate(&params.to_string(), 500),
                 approved   = %(decision != ApprovalDecision::Denied),
-                "destructive tool call"
+                "tool approval"
             );
             if decision == ApprovalDecision::Denied {
                 return Err(ToolError::ApprovalDenied);
             }
         }
 
-        tool.execute(params, ctx).await
+        tracing::info!(
+            session_id = %ctx.session_id,
+            tool       = %name,
+            args       = %truncate(&params.to_string(), 500),
+            "tool call started"
+        );
+
+        let started = tokio::time::Instant::now();
+        let result = tool.execute(params, ctx).await;
+        let duration_ms = started.elapsed().as_millis();
+
+        match &result {
+            Ok(r) => tracing::info!(
+                session_id  = %ctx.session_id,
+                tool        = %name,
+                duration_ms = duration_ms,
+                success     = true,
+                tool_error  = r.is_error,
+                "tool call completed"
+            ),
+            Err(e) => tracing::info!(
+                session_id  = %ctx.session_id,
+                tool        = %name,
+                duration_ms = duration_ms,
+                success     = false,
+                error       = %e,
+                "tool call failed"
+            ),
+        }
+
+        result
     }
 
     pub fn names(&self) -> Vec<&str> {
         self.tools.keys().map(String::as_str).collect()
     }
+}
+
+/// Truncate a string to at most `max` bytes at a UTF-8 char boundary for safe logging.
+fn truncate(s: &str, max: usize) -> &str {
+    if s.len() <= max {
+        return s;
+    }
+    let mut end = max;
+    while !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
 }
 
 impl Default for ToolRegistry {
