@@ -73,7 +73,7 @@ impl Tool for MemoryTool {
                     .as_str()
                     .ok_or_else(|| ToolError::InvalidArgs("content required".into()))?;
                 let trimmed = content.trim();
-                validate_memory_content(trimmed).map_err(|e| ToolError::InvalidArgs(e.into()))?;
+                validate_memory_content(trimmed)?;
                 let cat = MemoryCategory::from_name(params["category"].as_str().unwrap_or("other"));
                 mem.entries.push(MemoryEntry::new(cat, trimmed.to_string()));
                 ctx.memory
@@ -103,7 +103,7 @@ impl Tool for MemoryTool {
                     .as_str()
                     .ok_or_else(|| ToolError::InvalidArgs("content required".into()))?;
                 let trimmed = content.trim();
-                validate_memory_content(trimmed).map_err(|e| ToolError::InvalidArgs(e.into()))?;
+                validate_memory_content(trimmed)?;
                 let mut replaced = 0;
                 for entry in &mut mem.entries {
                     if entry.content.contains(m) {
