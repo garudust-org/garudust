@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use garudust_core::{
+    config::TerminalSandbox,
     error::ToolError,
     tool::{Tool, ToolContext},
     types::ToolResult,
@@ -13,10 +14,189 @@ const ENV_ALLOWLIST: &[&str] = &[
     "PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "TMPDIR", "TEMP", "TMP", "TERM",
 ];
 
+/// Maximum combined stdout+stderr returned to the model (bytes).
+/// Prevents context bloat from runaway commands. Truncated as 40% head + 60% tail.
+const MAX_OUTPUT_BYTES: usize = 51_200; // 50 KB
+
 pub struct Terminal;
 
-/// Returns true if the command string contains a literal path to the garudust secrets file,
-/// which should never be directly accessible from the terminal tool.
+// ── Hardline safety checks ────────────────────────────────────────────────────
+
+/// Check `cmd` against unconditionally-blocked patterns.
+///
+/// These are blocked regardless of approval mode or sandbox configuration.
+/// The list covers the most destructive single-command attacks; defence-in-depth
+/// is provided by the sandbox, approval gate, and env filtering layers.
+pub fn check_hardline(cmd: &str) -> Result<(), ToolError> {
+    let lower = cmd.to_lowercase();
+
+    if is_recursive_root_deletion(&lower) {
+        return Err(ToolError::Execution(
+            "blocked: recursive root filesystem deletion".into(),
+        ));
+    }
+
+    // mkfs — formats a filesystem (any variant: mkfs.ext4, mkfs.vfat, …)
+    if any_segment_starts_with(&lower, &["mkfs"]) {
+        return Err(ToolError::Execution(
+            "blocked: filesystem format command (mkfs)".into(),
+        ));
+    }
+
+    // Fork bomb — classic :(){ :|:& };: and common whitespace variants
+    if lower.contains(":()")
+        && lower.contains(":|:")
+        && (lower.contains("};:") || lower.contains("}; :"))
+    {
+        return Err(ToolError::Execution("blocked: fork bomb pattern".into()));
+    }
+
+    // dd writing to a raw block device (of=/dev/sd*, /dev/hd*, /dev/nvme*, /dev/vd*)
+    if lower.contains("dd") && contains_block_device_write(&lower) {
+        return Err(ToolError::Execution(
+            "blocked: dd writing to raw block device".into(),
+        ));
+    }
+
+    // Redirecting directly to a block device (> /dev/sda style)
+    if contains_redirect_to_block_device(&lower) {
+        return Err(ToolError::Execution(
+            "blocked: shell redirect to raw block device".into(),
+        ));
+    }
+
+    // System shutdown / reboot
+    if any_segment_starts_with(
+        &lower,
+        &["shutdown", "reboot", "halt", "poweroff", "init 0", "init 6"],
+    ) {
+        return Err(ToolError::Execution(
+            "blocked: system shutdown or reboot command".into(),
+        ));
+    }
+
+    // systemctl power-management subcommands
+    if lower.contains("systemctl")
+        && (lower.contains("poweroff")
+            || lower.contains("reboot")
+            || lower.contains("halt")
+            || lower.contains("kexec"))
+    {
+        return Err(ToolError::Execution(
+            "blocked: systemctl power-management command".into(),
+        ));
+    }
+
+    Ok(())
+}
+
+/// Returns `true` if `cmd` (lowercase) contains `rm` with a recursive flag
+/// targeting `/` or `/*`.
+fn is_recursive_root_deletion(cmd: &str) -> bool {
+    // Tokenise every pipeline/sequence segment and check each independently.
+    for seg in split_shell_segments(cmd) {
+        let tokens: Vec<&str> = seg.split_whitespace().collect();
+
+        // Must have rm (or a path-prefixed rm like /bin/rm)
+        let has_rm = tokens.iter().any(|t| *t == "rm" || t.ends_with("/rm"));
+        if !has_rm {
+            continue;
+        }
+
+        // Must have a recursive flag
+        // Combined short flags containing r: -rf, -fr, -Rf, -fR, -rR …
+        let has_recursive = tokens.iter().any(|t| {
+            *t == "-r"
+                || *t == "--recursive"
+                || (t.starts_with('-') && !t.starts_with("--") && t.contains('r'))
+        });
+        if !has_recursive {
+            continue;
+        }
+
+        // Must target root path
+        let targets_root = tokens.iter().any(|t| *t == "/" || *t == "/*" || *t == "/.");
+        if targets_root {
+            return true;
+        }
+    }
+    false
+}
+
+/// Returns `true` if the (lowercase) command contains `of=/dev/<block-device>`.
+fn contains_block_device_write(cmd: &str) -> bool {
+    for prefix in &[
+        "of=/dev/sd",
+        "of=/dev/hd",
+        "of=/dev/nvme",
+        "of=/dev/vd",
+        "of=/dev/xvd",
+        "of=/dev/mmcblk",
+    ] {
+        if cmd.contains(prefix) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Returns `true` if the (lowercase) command redirects stdout to a block device.
+fn contains_redirect_to_block_device(cmd: &str) -> bool {
+    for prefix in &[
+        ">/dev/sd",
+        "> /dev/sd",
+        ">/dev/hd",
+        "> /dev/hd",
+        ">/dev/nvme",
+        "> /dev/nvme",
+    ] {
+        if cmd.contains(prefix) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Split `cmd` on common shell sequence operators (`; | & \n`) and return the
+/// first token of each resulting segment.
+fn any_segment_starts_with(cmd: &str, prefixes: &[&str]) -> bool {
+    for seg in split_shell_segments(cmd) {
+        let first = seg.split_whitespace().next().unwrap_or("");
+        // Strip leading path component (/sbin/shutdown → shutdown)
+        let name = first.rsplit('/').next().unwrap_or(first);
+        if prefixes
+            .iter()
+            .any(|p| name == *p || seg.trim_start().starts_with(p))
+        {
+            return true;
+        }
+    }
+    false
+}
+
+/// Split a shell command string into individual command segments at `;`, `|`, `&`, `\n`.
+fn split_shell_segments(cmd: &str) -> impl Iterator<Item = &str> {
+    cmd.split([';', '|', '&', '\n'])
+}
+
+// ── Output helpers ────────────────────────────────────────────────────────────
+
+/// Truncate output larger than `MAX_OUTPUT_BYTES` as 40% head + 60% tail with
+/// an omission notice, matching Hermes's approach.
+fn truncate_output(s: String) -> String {
+    if s.len() <= MAX_OUTPUT_BYTES {
+        return s;
+    }
+    let head_len = MAX_OUTPUT_BYTES * 2 / 5;
+    let tail_len = MAX_OUTPUT_BYTES - head_len;
+    let head = &s[..head_len];
+    let tail = &s[s.len() - tail_len..];
+    let omitted = s.len() - head_len - tail_len;
+    format!("{head}\n\n[... {omitted} bytes omitted ...]\n\n{tail}")
+}
+
+// ── Secrets file guard ────────────────────────────────────────────────────────
+
 fn references_secrets_file(command: &str) -> bool {
     let home = std::env::var("HOME").unwrap_or_default();
     let protected = format!("{home}/.garudust/.env");
@@ -25,6 +205,50 @@ fn references_secrets_file(command: &str) -> bool {
         || command.contains("$HOME/.garudust/.env")
         || command.contains("${HOME}/.garudust/.env")
 }
+
+// ── Docker command builder ────────────────────────────────────────────────────
+
+/// Build a `docker run` command that wraps `shell_cmd` with hardened defaults.
+fn build_docker_command(shell_cmd: &str, ctx: &ToolContext) -> Command {
+    let security = &ctx.config.security;
+    let mut cmd = Command::new("docker");
+
+    cmd.arg("run").arg("--rm");
+    // Capability hardening
+    cmd.args(["--cap-drop", "ALL"]);
+    cmd.arg("--no-new-privileges");
+    // Process limit
+    cmd.args(["--pids-limit", "256"]);
+    // Ephemeral /tmp
+    cmd.args(["--tmpfs", "/tmp:size=512m"]);
+
+    // Mount current working directory as /workspace
+    if let Ok(cwd) = std::env::current_dir() {
+        cmd.arg("-v");
+        cmd.arg(format!("{}:/workspace:rw", cwd.display()));
+        cmd.args(["-w", "/workspace"]);
+    }
+
+    // User-defined extra opts (e.g. --network=none, --memory=512m)
+    for opt in &security.terminal_sandbox_opts {
+        cmd.args(opt.split_whitespace());
+    }
+
+    cmd.arg(&security.terminal_sandbox_image);
+    cmd.args(["sh", "-c", shell_cmd]);
+
+    // Env-clear the docker process itself (secrets never reach the container via env)
+    cmd.env_clear();
+    for key in ENV_ALLOWLIST {
+        if let Ok(val) = std::env::var(key) {
+            cmd.env(key, val);
+        }
+    }
+
+    cmd
+}
+
+// ── Tool impl ─────────────────────────────────────────────────────────────────
 
 #[async_trait]
 impl Tool for Terminal {
@@ -57,13 +281,17 @@ impl Tool for Terminal {
     async fn execute(
         &self,
         params: serde_json::Value,
-        _ctx: &ToolContext,
+        ctx: &ToolContext,
     ) -> Result<ToolResult, ToolError> {
         let command = params["command"]
             .as_str()
             .ok_or_else(|| ToolError::InvalidArgs("command required".into()))?;
         let timeout_secs = params["timeout_secs"].as_u64().unwrap_or(30);
 
+        // Layer 1: unconditional hardline blocks (apply before any approval or sandbox)
+        check_hardline(command)?;
+
+        // Layer 2: secrets file guard
         if references_secrets_file(command) {
             return Err(ToolError::Execution(
                 "access to ~/.garudust/.env is not permitted".into(),
@@ -73,17 +301,21 @@ impl Tool for Terminal {
         // Approval and audit logging are handled by ToolRegistry::dispatch()
         // via the is_destructive() property — no per-tool check needed here.
 
-        let mut cmd = Command::new("sh");
-        cmd.arg("-c").arg(command);
-
-        // Clear all environment variables and only pass through the safe allowlist.
-        // This prevents secrets (API keys, tokens) from leaking into subprocesses.
-        cmd.env_clear();
-        for key in ENV_ALLOWLIST {
-            if let Ok(val) = std::env::var(key) {
-                cmd.env(key, val);
+        // Layer 3: sandbox or local execution
+        let mut cmd = match ctx.config.security.terminal_sandbox {
+            TerminalSandbox::Docker => build_docker_command(command, ctx),
+            TerminalSandbox::None => {
+                let mut c = Command::new("sh");
+                c.arg("-c").arg(command);
+                c.env_clear();
+                for key in ENV_ALLOWLIST {
+                    if let Ok(val) = std::env::var(key) {
+                        c.env(key, val);
+                    }
+                }
+                c
             }
-        }
+        };
 
         let output =
             tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), cmd.output())
@@ -102,11 +334,145 @@ impl Tool for Terminal {
             format!("{stdout}\n[stderr]\n{stderr}")
         };
 
+        let combined = truncate_output(combined);
         let is_error = !output.status.success();
         if is_error {
             Ok(ToolResult::err("", combined))
         } else {
             Ok(ToolResult::ok("", combined))
         }
+    }
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // helpers
+    fn ok(cmd: &str) {
+        assert!(
+            check_hardline(cmd).is_ok(),
+            "expected ok but was blocked: {cmd:?}"
+        );
+    }
+    fn blocked(cmd: &str) {
+        assert!(
+            check_hardline(cmd).is_err(),
+            "expected blocked but was allowed: {cmd:?}"
+        );
+    }
+
+    // ── recursive root deletion ───────────────────────────────────────────────
+
+    #[test]
+    fn blocks_rm_rf_root() {
+        blocked("rm -rf /");
+        blocked("rm -rf /  ");
+        blocked("rm -fr /");
+        blocked("rm -r -f /");
+        blocked("rm --recursive -f /");
+        blocked("rm -rf /*");
+    }
+
+    #[test]
+    fn allows_rm_rf_subdir() {
+        ok("rm -rf ./build");
+        ok("rm -rf /tmp/myproject");
+        ok("rm -rf ../dist");
+    }
+
+    #[test]
+    fn blocks_rm_rf_root_in_pipeline() {
+        blocked("echo done && rm -rf /");
+        blocked("ls; rm -rf /*");
+    }
+
+    // ── mkfs ─────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn blocks_mkfs_variants() {
+        blocked("mkfs /dev/sda1");
+        blocked("mkfs.ext4 /dev/sda1");
+        blocked("mkfs.vfat /dev/sdb");
+    }
+
+    #[test]
+    fn allows_strings_containing_mkfs_as_arg() {
+        // "mkfs" only blocked as a leading command token
+        ok("echo mkfs.ext4");
+        ok("grep mkfs /etc/fstab");
+    }
+
+    // ── fork bomb ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn blocks_fork_bomb() {
+        blocked(":(){:|:&};:");
+        blocked(":(){ :|:& };:");
+    }
+
+    // ── dd block device ──────────────────────────────────────────────────────
+
+    #[test]
+    fn blocks_dd_to_block_device() {
+        blocked("dd if=/dev/zero of=/dev/sda");
+        blocked("dd if=/dev/urandom of=/dev/nvme0n1");
+        blocked("dd if=disk.img of=/dev/mmcblk0");
+    }
+
+    #[test]
+    fn allows_dd_to_file() {
+        ok("dd if=/dev/zero of=/tmp/test.img bs=1M count=10");
+        ok("dd if=input.img of=output.img");
+    }
+
+    // ── redirect to block device ─────────────────────────────────────────────
+
+    #[test]
+    fn blocks_redirect_to_block_device() {
+        blocked("cat /dev/zero > /dev/sda");
+        blocked("echo foo >/dev/sda");
+    }
+
+    // ── shutdown / reboot ────────────────────────────────────────────────────
+
+    #[test]
+    fn blocks_shutdown_variants() {
+        blocked("shutdown -h now");
+        blocked("reboot");
+        blocked("halt");
+        blocked("poweroff");
+        blocked("/sbin/reboot");
+    }
+
+    #[test]
+    fn blocks_systemctl_power() {
+        blocked("systemctl poweroff");
+        blocked("systemctl reboot");
+        blocked("systemctl halt");
+    }
+
+    #[test]
+    fn allows_systemctl_other() {
+        ok("systemctl status nginx");
+        ok("systemctl restart nginx");
+    }
+
+    // ── output truncation ────────────────────────────────────────────────────
+
+    #[test]
+    fn truncate_output_short_passthrough() {
+        let s = "hello world".to_string();
+        assert_eq!(truncate_output(s.clone()), s);
+    }
+
+    #[test]
+    fn truncate_output_long_contains_notice() {
+        let s = "x".repeat(MAX_OUTPUT_BYTES + 1000);
+        let result = truncate_output(s);
+        assert!(result.contains("bytes omitted"));
+        assert!(result.len() < MAX_OUTPUT_BYTES + 200);
     }
 }

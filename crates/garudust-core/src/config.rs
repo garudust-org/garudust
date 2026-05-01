@@ -127,8 +127,19 @@ impl Default for MemoryExpiryConfig {
     }
 }
 
+/// Terminal execution sandbox mode.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum TerminalSandbox {
+    /// Direct host execution (default). Hardline blocks still apply.
+    #[default]
+    None,
+    /// Wrap every command in `docker run --rm` with hardened flags.
+    Docker,
+}
+
 /// Security-related settings grouped together (mirrors CompressionConfig / NetworkConfig pattern).
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecurityConfig {
     /// Bearer token required on /chat* endpoints. None = open (warn at startup).
     #[serde(skip)]
@@ -149,10 +160,42 @@ pub struct SecurityConfig {
     /// Per-IP rate limit in requests/minute. None = disabled.
     #[serde(default)]
     pub rate_limit_rpm: Option<u32>,
+
+    /// Terminal execution sandbox. Default "none" (direct host execution).
+    #[serde(default)]
+    pub terminal_sandbox: TerminalSandbox,
+
+    /// Docker image used when `terminal_sandbox = docker`. Default "ubuntu:24.04".
+    #[serde(default = "default_sandbox_image")]
+    pub terminal_sandbox_image: String,
+
+    /// Extra `docker run` flags appended after the hardened defaults.
+    /// Example: ["--network=none", "--memory=512m", "--cpus=0.5"]
+    #[serde(default)]
+    pub terminal_sandbox_opts: Vec<String>,
 }
 
 fn default_approval_mode() -> String {
     "smart".to_string()
+}
+
+fn default_sandbox_image() -> String {
+    "ubuntu:24.04".to_string()
+}
+
+impl Default for SecurityConfig {
+    fn default() -> Self {
+        Self {
+            gateway_api_key: None,
+            allowed_read_paths: Vec::new(),
+            allowed_write_paths: Vec::new(),
+            approval_mode: default_approval_mode(),
+            rate_limit_rpm: None,
+            terminal_sandbox: TerminalSandbox::None,
+            terminal_sandbox_image: default_sandbox_image(),
+            terminal_sandbox_opts: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -185,6 +228,9 @@ impl Default for AgentConfig {
                 allowed_write_paths: vec![cwd],
                 approval_mode: default_approval_mode(),
                 rate_limit_rpm: None,
+                terminal_sandbox: TerminalSandbox::None,
+                terminal_sandbox_image: default_sandbox_image(),
+                terminal_sandbox_opts: Vec::new(),
             },
             memory_expiry: MemoryExpiryConfig::default(),
             nudge_interval: default_nudge_interval(),
@@ -267,6 +313,15 @@ impl AgentConfig {
         }
         if let Some(mode) = env_or_dotenv("GARUDUST_APPROVAL_MODE", dotenv) {
             config.security.approval_mode = mode;
+        }
+        if let Some(sandbox) = env_or_dotenv("GARUDUST_TERMINAL_SANDBOX", dotenv) {
+            config.security.terminal_sandbox = match sandbox.to_lowercase().as_str() {
+                "docker" => TerminalSandbox::Docker,
+                _ => TerminalSandbox::None,
+            };
+        }
+        if let Some(image) = env_or_dotenv("GARUDUST_SANDBOX_IMAGE", dotenv) {
+            config.security.terminal_sandbox_image = image;
         }
 
         config
