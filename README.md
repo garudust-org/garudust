@@ -69,27 +69,22 @@ export PATH="$PATH:$(pwd)/target/release"
 
 ## Quick Start
 
-### 1. Configure and chat
-
 ```bash
-garudust setup   # pick provider (OpenRouter / Anthropic / vLLM / Ollama / custom) + save key
+garudust setup   # pick provider + save API key
 garudust         # launch interactive TUI
 ```
 
-### 2. Docker (server mode)
+Or run a one-shot task:
 
 ```bash
-# Cloud provider
-echo "OPENROUTER_API_KEY=sk-or-..." > .env
-docker compose up
-
-# Local model via Ollama
-echo "OLLAMA_BASE_URL=http://host.docker.internal:11434" > .env
-echo "GARUDUST_MODEL=llama3.2" >> .env
-docker compose up
+garudust "summarise the git log from the last 7 days into a changelog"
 ```
 
+**Server mode with Docker:**
+
 ```bash
+echo "OPENROUTER_API_KEY=sk-or-..." > .env
+docker compose up
 curl -X POST http://localhost:3000/chat \
   -H "Content-Type: application/json" \
   -d '{"message": "what is 2+2?"}'
@@ -114,24 +109,88 @@ garudust
 | `/help` | Show all slash commands |
 | `Ctrl+C` | Quit |
 
-### One-shot task
-
-```bash
-garudust "summarise the git log from the last 7 days into a changelog"
-garudust --model anthropic/claude-opus-4-7 "review this PR for security issues"
-```
-
 ### Config commands
 
 ```bash
-garudust setup                              # first-time wizard (Quick or Full mode)
+garudust setup                              # first-time wizard
 garudust doctor                             # check API key, connectivity, DB
 garudust config show                        # print active config
 garudust model                              # show current model, prompt for new
 garudust model anthropic/claude-opus-4-7   # switch model directly
-garudust config set OPENROUTER_API_KEY sk-or-...
 garudust config set ANTHROPIC_API_KEY sk-ant-...
 garudust config set VLLM_BASE_URL http://localhost:8000/v1
+```
+
+---
+
+## Configuration
+
+All persistent settings live in `~/.garudust/config.yaml`. Secrets and tokens go in `~/.garudust/.env` — they are loaded securely at startup and never forwarded to subprocesses.
+
+### `~/.garudust/config.yaml`
+
+```yaml
+model: anthropic/claude-sonnet-4-6   # model identifier
+provider: anthropic                  # auto-detected from API key if omitted
+
+security:
+  terminal_sandbox: docker           # none (default) | docker
+  terminal_sandbox_image: ubuntu:24.04
+  terminal_sandbox_opts:
+    - "--network=none"               # cut outbound network access inside container
+    - "--memory=512m"                # cap memory
+
+nudge_interval: 5                    # memory-save reminder every N iterations (0 = off)
+
+mcp_servers:
+  - name: filesystem
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+  - name: postgres
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/mydb"]
+```
+
+### `~/.garudust/.env`
+
+```bash
+# LLM provider — set the one you use (Anthropic takes priority over OpenRouter)
+ANTHROPIC_API_KEY=sk-ant-...
+OPENROUTER_API_KEY=sk-or-...
+
+# Optional tools
+BRAVE_SEARCH_API_KEY=BSA...          # enables web_search
+
+# Gateway security (strongly recommended in server mode)
+GARUDUST_API_KEY=my-secret-token     # Bearer token required on /chat* endpoints
+
+# Platform adapters — set only the ones you use
+TELEGRAM_TOKEN=123:ABC
+DISCORD_TOKEN=...
+SLACK_BOT_TOKEN=xoxb-...
+SLACK_APP_TOKEN=xapp-...
+MATRIX_HOMESERVER=https://matrix.org
+MATRIX_USER=@mybot:matrix.org
+MATRIX_PASSWORD=...
+```
+
+### Server launch
+
+Minimal:
+
+```bash
+garudust-server --port 3000
+```
+
+Production setup with sandbox, Telegram, and scheduled tasks:
+
+```bash
+GARUDUST_TERMINAL_SANDBOX=docker \
+GARUDUST_API_KEY=my-secret-token \
+TELEGRAM_TOKEN=123:ABC \
+GARUDUST_CRON_JOBS="0 9 * * *=Post a morning briefing to Telegram" \
+GARUDUST_MEMORY_CRON="0 3 * * *" \
+garudust-server --port 3000 --approval-mode smart
 ```
 
 ---
@@ -142,24 +201,7 @@ Garudust is designed to be safe when the agent has access to real tools — file
 
 ### Terminal sandbox
 
-Run every shell command inside an isolated Docker container by setting `terminal_sandbox: docker` in `~/.garudust/config.yaml`:
-
-```yaml
-security:
-  terminal_sandbox: docker
-  terminal_sandbox_image: ubuntu:24.04   # default
-  terminal_sandbox_opts:
-    - "--network=none"                   # optional: cut outbound network access
-    - "--memory=512m"                    # optional: cap memory
-```
-
-Or set it with an environment variable:
-
-```bash
-GARUDUST_TERMINAL_SANDBOX=docker garudust-server ...
-```
-
-The container runs with hardened defaults: `--cap-drop ALL`, `--security-opt no-new-privileges:true`, `--pids-limit 256`, and an ephemeral `/tmp`. Your current working directory is mounted at `/workspace` so file operations still work.
+When `terminal_sandbox: docker` is set, every shell command runs inside an isolated container with hardened defaults: `--cap-drop ALL`, `--security-opt no-new-privileges:true`, `--pids-limit 256`, and an ephemeral `/tmp`. The current working directory is mounted at `/workspace` so file operations still work.
 
 > **Note:** Docker must be installed and running. A clear error is raised at startup and at tool-call time if it is missing.
 
@@ -211,11 +253,7 @@ Agent: [saves to memory] Got it — I'll use 2-space indent for JSON from now on
 
 On the next session, that preference is already loaded. You never need to repeat yourself.
 
-A built-in nudge fires every few iterations during long tasks, prompting the agent to persist any new facts before the session ends. Configure the interval (or disable it) in `~/.garudust/config.yaml`:
-
-```yaml
-nudge_interval: 5   # inject memory reminder every 5 LLM iterations (0 = off)
-```
+A built-in nudge fires every few iterations during long tasks, prompting the agent to persist any new facts before the session ends. Configure the interval in `config.yaml` with `nudge_interval` (0 = off).
 
 ### What gets saved
 
@@ -307,10 +345,10 @@ curl http://localhost:3000/metrics   # Prometheus-compatible
 
 ## Platform Adapters
 
-Set the relevant env vars and start `garudust-server`. Every adapter can run together in the same process.
+Set the relevant tokens in `~/.garudust/.env` and start `garudust-server`. Every adapter runs together in the same process.
 
-| Platform | Required env vars |
-|----------|-------------------|
+| Platform | Required tokens |
+|----------|-----------------|
 | Telegram | `TELEGRAM_TOKEN` |
 | Discord | `DISCORD_TOKEN` |
 | Slack | `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN` |
@@ -324,13 +362,6 @@ Set the relevant env vars and start `garudust-server`. Every adapter can run tog
 **Slack** — create an app at [api.slack.com/apps](https://api.slack.com/apps), enable **Socket Mode**, add scopes `chat:write channels:history im:history`, install to workspace.
 
 **Matrix** — works with any homeserver (matrix.org, Synapse, Dendrite, etc.).
-
-```bash
-TELEGRAM_TOKEN=123:ABC \
-SLACK_BOT_TOKEN=xoxb-... \
-SLACK_APP_TOKEN=xapp-... \
-garudust-server --anthropic-key sk-ant-...
-```
 
 ---
 
@@ -346,20 +377,7 @@ garudust-server --anthropic-key sk-ant-...
 | vLLM | Set `VLLM_BASE_URL` | Local OpenAI-compatible server |
 | Any OpenAI-compat | Set `GARUDUST_BASE_URL` | Generic transport |
 
-```bash
-# Ollama (local, no key)
-OLLAMA_BASE_URL=http://localhost:11434
-GARUDUST_MODEL=llama3.2
-
-# vLLM
-VLLM_BASE_URL=http://localhost:8000/v1
-VLLM_API_KEY=token-abc123          # only if server requires --api-key
-GARUDUST_MODEL=meta-llama/Llama-3.1-8B-Instruct
-
-# AWS Bedrock
-garudust config set provider bedrock
-garudust config set model anthropic.claude-3-5-sonnet-20241022-v2:0
-```
+Set the relevant key in `~/.garudust/.env`, then switch models with `garudust model` or by setting `GARUDUST_MODEL`.
 
 ---
 
@@ -381,58 +399,7 @@ garudust config set model anthropic.claude-3-5-sonnet-20241022-v2:0
 | `skill_view` | Load a skill's full instructions by name |
 | `write_skill` | Create or update a skill in `~/.garudust/skills/` |
 
-### MCP Tools
-
-Connect any [MCP](https://modelcontextprotocol.io) server in `~/.garudust/config.yaml`:
-
-```yaml
-mcp_servers:
-  - name: filesystem
-    command: npx
-    args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
-  - name: postgres
-    command: npx
-    args: ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/mydb"]
-```
-
----
-
-## All Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ANTHROPIC_API_KEY` | — | Anthropic key (auto-selects Anthropic transport) |
-| `OPENROUTER_API_KEY` | — | OpenRouter key (default provider) |
-| `OLLAMA_BASE_URL` | — | Ollama base URL — auto-selects Ollama, no key needed |
-| `VLLM_BASE_URL` | — | vLLM base URL — auto-selects vLLM transport |
-| `VLLM_API_KEY` | — | vLLM API key (optional) |
-| `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` | — | Bedrock credentials |
-| `BRAVE_SEARCH_API_KEY` | — | Enables `web_search` tool |
-| `GARUDUST_MODEL` | `anthropic/claude-sonnet-4-6` | Model identifier |
-| `GARUDUST_PORT` | `3000` | HTTP gateway port |
-| `GARUDUST_WEBHOOK_PORT` | `3001` | Webhook adapter port (`0` = disabled) |
-| `GARUDUST_BASE_URL` | — | Override LLM base URL (any OpenAI-compatible) |
-| `GARUDUST_API_KEY` | — | Bearer token for `/chat*` endpoints (recommended in production) |
-| `GARUDUST_APPROVAL_MODE` | `smart` | Command approval: `auto` \| `smart` \| `deny` |
-| `GARUDUST_TERMINAL_SANDBOX` | `none` | Terminal sandbox: `none` (host) or `docker` |
-| `GARUDUST_SANDBOX_IMAGE` | `ubuntu:24.04` | Docker image used when `terminal_sandbox = docker` |
-| `GARUDUST_RATE_LIMIT` | — | Per-IP rate limit in requests/minute |
-| `TELEGRAM_TOKEN` | — | Telegram bot token |
-| `DISCORD_TOKEN` | — | Discord bot token |
-| `SLACK_BOT_TOKEN` | — | Slack bot token (`xoxb-…`) |
-| `SLACK_APP_TOKEN` | — | Slack app token for Socket Mode (`xapp-…`) |
-| `MATRIX_HOMESERVER` | — | Matrix homeserver URL |
-| `MATRIX_USER` | — | Matrix username (`@bot:matrix.org`) |
-| `MATRIX_PASSWORD` | — | Matrix password |
-| `GARUDUST_CRON_JOBS` | — | Comma-separated `"cron_expr=task"` pairs |
-| `RUST_LOG` | `info` | Log level (`debug` for verbose) |
-
-### Cron jobs
-
-```bash
-GARUDUST_CRON_JOBS="0 9 * * *=Write a morning briefing and save to ~/briefing.md" \
-garudust-server --anthropic-key sk-ant-...
-```
+**MCP tools** — connect any [MCP](https://modelcontextprotocol.io) server by adding it to the `mcp_servers` list in `config.yaml` (see Configuration).
 
 ---
 
