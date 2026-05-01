@@ -9,6 +9,8 @@ use garudust_core::{
 };
 use serde_json::json;
 
+use crate::security::is_sensitive_write_path;
+
 /// Returns the canonical form of `path` for existence checks.
 /// For a path that does not yet exist, canonicalizes the parent and re-joins the filename.
 fn try_canonicalize(path: &Path) -> Option<PathBuf> {
@@ -131,6 +133,12 @@ impl Tool for WriteFile {
         if !is_path_allowed(Path::new(path), &ctx.config.security.allowed_write_paths) {
             return Err(ToolError::Execution(format!(
                 "path '{path}' is outside allowed write directories"
+            )));
+        }
+
+        if is_sensitive_write_path(Path::new(path)) {
+            return Err(ToolError::Execution(format!(
+                "path '{path}' is a protected credential or system file"
             )));
         }
 
