@@ -12,3 +12,6 @@ pub mod slack;
 
 #[cfg(feature = "matrix")]
 pub mod matrix;
+
+#[cfg(feature = "line")]
+pub mod line;
