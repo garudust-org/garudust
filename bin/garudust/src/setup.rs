@@ -133,6 +133,8 @@ pub async fn run() -> anyhow::Result<()> {
             ("Matrix homeserver URL", "MATRIX_HOMESERVER"),
             ("Matrix user (@bot:example.com)", "MATRIX_USER"),
             ("Matrix password", "MATRIX_PASSWORD"),
+            ("LINE channel access token", "LINE_CHANNEL_TOKEN"),
+            ("LINE channel secret", "LINE_CHANNEL_SECRET"),
         ];
         for (label, var) in platform_fields {
             let val = prompt(label, Some(""));
