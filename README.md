@@ -161,17 +161,13 @@ mcp_servers:
 
 ## Security
 
-Garudust is designed to be safe when the agent has access to real tools — filesystem, terminal, and the web.
-
 ### Terminal sandbox
 
-When `terminal_sandbox: docker` is set, every shell command runs inside an isolated container with hardened defaults: `--cap-drop ALL`, `--security-opt no-new-privileges:true`, `--pids-limit 256`, and an ephemeral `/tmp`. The current working directory is mounted at `/workspace` so file operations still work.
-
-> **Note:** Docker must be installed and running. A clear error is raised at startup and at tool-call time if it is missing.
+Set `terminal_sandbox: docker` in `config.yaml` to run every shell command inside an isolated container (`--cap-drop ALL`, `--pids-limit 256`, working directory mounted at `/workspace`). Requires Docker.
 
 ### Hardline command blocks
 
-The following patterns are blocked unconditionally, regardless of approval mode or sandbox:
+Blocked unconditionally, regardless of approval mode:
 
 | Pattern | Example |
 |---------|---------|
@@ -186,40 +182,24 @@ The following patterns are blocked unconditionally, regardless of approval mode 
 
 | Mode | Behaviour |
 |------|-----------|
-| `smart` *(default)* | Approves all tools; system prompt's constitutional constraints are the primary gate; every destructive call is audit-logged |
-| `auto` | Same as `smart` — use in trusted automation pipelines where logging overhead matters |
-| `deny` | Blocks all destructive tool calls unconditionally — ideal for read-only agents |
+| `smart` *(default)* | All tools allowed; constitutional constraints are the primary gate; destructive calls are audit-logged |
+| `auto` | Same as `smart` — for trusted automation pipelines |
+| `deny` | Blocks all destructive calls — for read-only agents |
 
 Set via `GARUDUST_APPROVAL_MODE` or `--approval-mode`.
 
-### Memory protection
-
-Memory entries retrieved from previous sessions are wrapped in `<untrusted_memory>` tags so the model treats them as user-controlled data rather than trusted instructions. This prevents memory-poisoning attacks where a malicious tool output plants a jailbreak into persistent memory. Write-time validation also rejects entries that contain XML control tags.
-
-### Output redaction
-
-API keys and secrets loaded at startup are automatically scrubbed from terminal command output before it reaches the model. Output is also truncated to 50 KB (40% head + 60% tail) to prevent context flooding.
+Memory entries from previous sessions are wrapped in `<untrusted_memory>` tags to prevent memory-poisoning attacks. API keys are scrubbed from tool output automatically; output is truncated to 50 KB to prevent context flooding.
 
 ---
 
 ## Memory & Self-Improvement
 
-Garudust remembers facts across sessions and gets smarter the more you use it.
-
-### How memory works
-
-The agent automatically saves durable knowledge to `~/.garudust/memory/` — user preferences, project conventions, corrections you make to its behaviour:
+The agent saves durable knowledge to `~/.garudust/memory/` and loads it at the start of every session — you never need to repeat yourself:
 
 ```
 You: always format JSON with 2-space indent
 Agent: [saves to memory] Got it — I'll use 2-space indent for JSON from now on.
 ```
-
-On the next session, that preference is already loaded. You never need to repeat yourself.
-
-A built-in nudge fires every few iterations during long tasks, prompting the agent to persist any new facts before the session ends. Configure the interval in `config.yaml` with `nudge_interval` (0 = off).
-
-### What gets saved
 
 | Category | Examples |
 |----------|---------|
@@ -227,13 +207,13 @@ A built-in nudge fires every few iterations during long tasks, prompting the age
 | Project details | paths, configs, conventions, known quirks |
 | Corrections | anything you tell the agent to stop doing — saved immediately |
 
-The agent does **not** save session logs, task progress, or one-off details — only facts that will matter in future sessions.
+Configure the memory-save nudge interval with `nudge_interval` in `config.yaml` (0 = off).
 
 ---
 
 ## Skills
 
-Skills are reusable instruction sets the agent loads before acting. They live in `~/.garudust/skills/` and are hot-reloaded on every call — edit a file and the next message picks up the change immediately.
+Reusable instruction sets stored in `~/.garudust/skills/`, hot-reloaded on every call.
 
 ```
 ~/.garudust/skills/
@@ -242,20 +222,7 @@ Skills are reusable instruction sets the agent loads before acting. They live in
   rust-code-review/SKILL.md
 ```
 
-### Proactive skill loading
-
-Before processing any message, the agent scans all available skills. If a skill is relevant — even partially — it calls `skill_view` to load the full instructions before proceeding. This ensures established workflows are always followed, regardless of the language you write in.
-
-### Creating skills
-
-The agent creates skills automatically when it discovers a multi-step workflow:
-
-```
-You: write a skill for reviewing Rust PRs
-Agent: [calls write_skill] Saved skill 'rust-code-review' to ~/.garudust/skills/rust-code-review/SKILL.md
-```
-
-You can also create them directly with the `write_skill` tool, or write `SKILL.md` files by hand.
+The agent scans all skills before every message and loads any that are relevant. It creates and patches skill files automatically when it discovers or corrects a workflow.
 
 Minimal `SKILL.md`:
 
@@ -269,10 +236,6 @@ version: 1.0.0
 Always write conventional commits. Always run tests before pushing.
 Open a draft PR first, then mark ready when CI is green.
 ```
-
-### Updating skills
-
-If the agent finds a skill's steps are outdated or wrong during a task, it patches the file immediately — no need to ask. Skills stay accurate automatically.
 
 ---
 
