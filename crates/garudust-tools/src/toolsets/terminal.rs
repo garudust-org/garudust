@@ -437,12 +437,14 @@ mod tests {
     }
 
     fn make_ctx(sandbox: TerminalSandbox) -> ToolContext {
-        let mut config = AgentConfig::default();
-        config.security = SecurityConfig {
-            terminal_sandbox: sandbox,
-            terminal_sandbox_image: "ubuntu:24.04".into(),
-            terminal_sandbox_opts: vec![],
-            ..Default::default()
+        let config = AgentConfig {
+            security: SecurityConfig {
+                terminal_sandbox: sandbox,
+                terminal_sandbox_image: "ubuntu:24.04".into(),
+                terminal_sandbox_opts: vec![],
+                ..Default::default()
+            },
+            ..AgentConfig::default()
         };
         ToolContext {
             session_id: "test".into(),

@@ -10,7 +10,8 @@ discord  = ["dep:serenity"]
 webhook  = ["dep:axum"]
 slack    = ["dep:tokio-tungstenite"]
 matrix   = ["dep:matrix-sdk"]
-all      = ["telegram", "discord", "webhook", "slack", "matrix"]
+line     = ["dep:hmac", "dep:sha2", "dep:base64", "dep:axum", "dep:dashmap"]
+all      = ["telegram", "discord", "webhook", "slack", "matrix", "line"]
 
 [dependencies]
 garudust-core  = { path = "../garudust-core" }
@@ -29,3 +30,7 @@ teloxide          = { workspace = true, optional = true }
 serenity          = { workspace = true, optional = true }
 tokio-tungstenite = { workspace = true, optional = true }
 matrix-sdk        = { workspace = true, optional = true }
+dashmap           = { workspace = true, optional = true }
+hmac              = { workspace = true, optional = true }
+sha2              = { workspace = true, optional = true }
+base64            = { workspace = true, optional = true }

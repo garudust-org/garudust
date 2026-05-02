@@ -10,8 +10,8 @@ use garudust_cron::CronScheduler;
 use garudust_gateway::{create_router, AppState, GatewayHandler, Metrics, SessionRegistry};
 use garudust_memory::{FileMemoryStore, SessionDb};
 use garudust_platforms::{
-    discord::DiscordAdapter, matrix::MatrixAdapter, slack::SlackAdapter, telegram::TelegramAdapter,
-    webhook::WebhookAdapter,
+    discord::DiscordAdapter, line::LineAdapter, matrix::MatrixAdapter, slack::SlackAdapter,
+    telegram::TelegramAdapter, webhook::WebhookAdapter,
 };
 use garudust_tools::{
     security::docker_available,
@@ -76,6 +76,16 @@ struct Cli {
 
     #[arg(long, env = "MATRIX_PASSWORD")]
     matrix_password: Option<String>,
+
+    #[arg(long, env = "LINE_CHANNEL_TOKEN")]
+    line_channel_token: Option<String>,
+
+    #[arg(long, env = "LINE_CHANNEL_SECRET")]
+    line_channel_secret: Option<String>,
+
+    /// Port for the LINE webhook receiver (0 = disabled)
+    #[arg(long, env = "GARUDUST_LINE_PORT", default_value = "3002")]
+    line_port: u16,
 
     /// Comma-separated list of cron jobs: "cron_expr=task" pairs
     /// e.g. "0 9 * * *=Good morning report"
@@ -357,6 +367,24 @@ async fn main() -> Result<()> {
             config.clone(),
         )
         .await?;
+    }
+
+    if let (Some(token), Some(secret)) = (&cli.line_channel_token, &cli.line_channel_secret) {
+        if cli.line_port > 0 {
+            let platform: Arc<dyn PlatformAdapter> = Arc::new(LineAdapter::new(
+                token.clone(),
+                secret.clone(),
+                cli.line_port,
+            ));
+            start_platform(
+                platform,
+                agent.load_full(),
+                sessions.clone(),
+                approver.clone(),
+                config.clone(),
+            )
+            .await?;
+        }
     }
 
     // ── Cron scheduler ────────────────────────────────────────────────────────
