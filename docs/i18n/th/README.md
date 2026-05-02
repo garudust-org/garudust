@@ -69,15 +69,11 @@ export PATH="$PATH:$(pwd)/target/release"
 garudust setup   # wizard ตั้งค่าครั้งแรก — เลือก provider, บันทึก API key
 ```
 
-Garudust มีสอง binary เลือกแบบที่เหมาะกับการใช้งาน:
-
-| | `garudust` | `garudust-server` |
-|---|---|---|
-| **ใช้เมื่อ** | ใช้งานส่วนตัวบน terminal | Deploy bot หรือเปิด HTTP API |
-| **อินเทอร์เฟซ** | TUI โต้ตอบ / CLI แบบ one-shot | Background process / Docker |
-| **Chat app** | — | Telegram, Discord, Slack, Matrix, LINE |
-| **HTTP API** | — | REST, SSE, WebSocket |
-| **Cron job** | — | มี scheduler ในตัว |
+| | **1 — TUI** | **2 — One-shot** | **3 — Server / Docker** |
+|---|---|---|---|
+| **คำสั่ง** | `garudust` | `garudust "task"` | `garudust-server` |
+| **ใช้เมื่อ** | แชทโต้ตอบส่วนตัว | Script / pipe / CI | Bot, API, cron job |
+| **อินเทอร์เฟซ** | Terminal UI | stdout + exit code | HTTP + chat platform |
 
 ### 1 — TUI แบบโต้ตอบ
 

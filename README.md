@@ -73,15 +73,11 @@ export PATH="$PATH:$(pwd)/target/release"
 garudust setup   # first-time wizard — pick provider, save API key
 ```
 
-Garudust ships two binaries. Pick the mode that fits:
-
-| | `garudust` | `garudust-server` |
-|---|---|---|
-| **Use when** | Personal use on your terminal | Deploy bots or expose an HTTP API |
-| **Interface** | TUI / one-shot CLI | Background process / Docker |
-| **Chat apps** | — | Telegram, Discord, Slack, Matrix, LINE |
-| **HTTP API** | — | REST, SSE, WebSocket |
-| **Cron jobs** | — | Built-in scheduler |
+| | **1 — TUI** | **2 — One-shot** | **3 — Server / Docker** |
+|---|---|---|---|
+| **Command** | `garudust` | `garudust "task"` | `garudust-server` |
+| **Use when** | Personal interactive chat | Script / pipe / CI | Bots, API, cron jobs |
+| **Interface** | Terminal UI | stdout + exit code | HTTP + chat platforms |
 
 ### 1 — Interactive TUI
 

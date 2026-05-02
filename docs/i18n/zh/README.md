@@ -69,15 +69,11 @@ export PATH="$PATH:$(pwd)/target/release"
 garudust setup   # 首次配置向导 — 选择提供商并保存 API key
 ```
 
-Garudust 提供两个可执行文件，按需选择：
-
-| | `garudust` | `garudust-server` |
-|---|---|---|
-| **适用场景** | 个人在终端使用 | 部署机器人或对外提供 HTTP API |
-| **交互方式** | 交互式 TUI / 单次 CLI | 后台进程 / Docker |
-| **聊天应用** | — | Telegram、Discord、Slack、Matrix、LINE |
-| **HTTP API** | — | REST、SSE、WebSocket |
-| **定时任务** | — | 内置调度器 |
+| | **1 — TUI** | **2 — 单次执行** | **3 — 服务器 / Docker** |
+|---|---|---|---|
+| **命令** | `garudust` | `garudust "任务"` | `garudust-server` |
+| **适用场景** | 个人交互式聊天 | 脚本 / 管道 / CI | 机器人、API、定时任务 |
+| **交互方式** | 终端 UI | stdout + 退出码 | HTTP + 聊天平台 |
 
 ### 1 — 交互式 TUI
 
