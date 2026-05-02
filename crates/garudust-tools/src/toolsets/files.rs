@@ -12,6 +12,10 @@ use serde_json::json;
 
 use crate::security::is_sensitive_write_path;
 
+/// Maximum bytes returned from a single file read.
+/// Prevents large files from flooding the context window.
+const MAX_FILE_READ_BYTES: usize = 512 * 1_024; // 512 KB
+
 /// Returns the canonical form of `path` for existence checks.
 /// For a path that does not yet exist, canonicalizes the parent and re-joins the filename.
 fn try_canonicalize(path: &Path) -> Option<PathBuf> {
@@ -82,9 +86,20 @@ impl Tool for ReadFile {
             )));
         }
 
-        let content = tokio::fs::read_to_string(path)
+        let bytes = tokio::fs::read(path)
             .await
             .map_err(|e| ToolError::Execution(e.to_string()))?;
+
+        let content = if bytes.len() > MAX_FILE_READ_BYTES {
+            format!(
+                "{}\n[truncated — file is {} bytes, showing first {} KB]",
+                String::from_utf8_lossy(&bytes[..MAX_FILE_READ_BYTES]),
+                bytes.len(),
+                MAX_FILE_READ_BYTES / 1_024,
+            )
+        } else {
+            String::from_utf8_lossy(&bytes).into_owned()
+        };
 
         Ok(ToolResult::ok("", content))
     }
@@ -471,5 +486,68 @@ mod tests {
                 .unwrap_err();
             assert!(matches!(err, ToolError::Execution(_)));
         }
+    }
+
+    #[tokio::test]
+    async fn read_file_truncates_large_content() {
+        use std::io::Write;
+        let mut tmp = tempfile::NamedTempFile::new().unwrap();
+        // Write slightly more than the cap so truncation fires
+        let big = "x".repeat(MAX_FILE_READ_BYTES + 1_024);
+        tmp.write_all(big.as_bytes()).unwrap();
+
+        let mut config = AgentConfig::default();
+        config.security.allowed_read_paths = vec![tmp.path().parent().unwrap().to_path_buf()];
+        let ctx = ToolContext {
+            session_id: "s".into(),
+            agent_id: "a".into(),
+            iteration: 0,
+            budget: Arc::new(IterationBudget::new(10)),
+            memory: Arc::new(NopMemory),
+            config: Arc::new(config),
+            approver: Arc::new(AutoApprove),
+            sub_agent: None,
+        };
+
+        let result = ReadFile
+            .execute(json!({ "path": tmp.path().to_str().unwrap() }), &ctx)
+            .await
+            .unwrap();
+
+        assert!(
+            result.content.contains("[truncated"),
+            "expected truncation notice"
+        );
+        assert!(
+            result.content.len() < big.len(),
+            "output should be shorter than input"
+        );
+    }
+
+    #[tokio::test]
+    async fn read_file_small_file_untruncated() {
+        use std::io::Write;
+        let mut tmp = tempfile::NamedTempFile::new().unwrap();
+        tmp.write_all(b"hello world").unwrap();
+
+        let mut config = AgentConfig::default();
+        config.security.allowed_read_paths = vec![tmp.path().parent().unwrap().to_path_buf()];
+        let ctx = ToolContext {
+            session_id: "s".into(),
+            agent_id: "a".into(),
+            iteration: 0,
+            budget: Arc::new(IterationBudget::new(10)),
+            memory: Arc::new(NopMemory),
+            config: Arc::new(config),
+            approver: Arc::new(AutoApprove),
+            sub_agent: None,
+        };
+
+        let result = ReadFile
+            .execute(json!({ "path": tmp.path().to_str().unwrap() }), &ctx)
+            .await
+            .unwrap();
+
+        assert_eq!(result.content, "hello world");
     }
 }

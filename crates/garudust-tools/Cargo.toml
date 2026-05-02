@@ -21,3 +21,6 @@ chromiumoxide   = { workspace = true }
 jsonschema      = { workspace = true }
 walkdir         = { workspace = true }
 globset         = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

@@ -83,14 +83,25 @@ impl Tool for WebFetch {
 
         net_guard::is_safe_url(url)?;
 
-        let body = http_client()?
+        let bytes = http_client()?
             .get(url)
             .send()
             .await
             .map_err(|e| ToolError::Execution(e.to_string()))?
-            .text()
+            .bytes()
             .await
             .map_err(|e| ToolError::Execution(e.to_string()))?;
+
+        let body = if bytes.len() > RESPONSE_BODY_LIMIT {
+            format!(
+                "{}\n[truncated — response was {} bytes, showing first {} KB]",
+                String::from_utf8_lossy(&bytes[..RESPONSE_BODY_LIMIT]),
+                bytes.len(),
+                RESPONSE_BODY_LIMIT / 1_024,
+            )
+        } else {
+            String::from_utf8_lossy(&bytes).into_owned()
+        };
 
         Ok(ToolResult::ok("", body))
     }
