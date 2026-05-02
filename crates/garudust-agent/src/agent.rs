@@ -395,6 +395,32 @@ impl Agent {
                 };
 
                 self.persist_session(&session_id, platform, started_at, &history, &result);
+
+                // Automated skill-reflection pipeline: if the task was complex enough,
+                // spawn a background LLM call that reviews the conversation and writes
+                // a skill file if the workflow is reusable. Non-blocking — user gets
+                // their reply immediately.
+                let threshold = self.config.auto_skill_threshold;
+                if threshold > 0 && iters >= threshold {
+                    let task_owned = task.to_string();
+                    let history_snap = history.clone();
+                    let transport = self.transport.clone();
+                    let tools = self.tools.clone();
+                    let config = self.config.clone();
+                    let memory = self.memory.clone();
+                    tokio::spawn(async move {
+                        reflect_and_save_skill(
+                            &task_owned,
+                            history_snap,
+                            transport,
+                            tools,
+                            config,
+                            memory,
+                        )
+                        .await;
+                    });
+                }
+
                 return Ok(result);
             }
 
@@ -506,5 +532,160 @@ impl Agent {
         if let Err(e) = db.append_messages(session_id, &rows) {
             warn!("failed to save messages: {e}");
         }
+    }
+}
+
+// ── Automated skill reflection ────────────────────────────────────────────────
+
+/// Builds a compact, token-efficient transcript from a conversation history.
+/// Only includes User and Assistant text turns; skips System and Tool result
+/// messages which are verbose and not useful for skill extraction.
+fn build_reflection_transcript(history: &[Message]) -> String {
+    const MAX_CHARS: usize = 12_000;
+
+    let mut out = String::new();
+    for msg in history {
+        let (label, text) = match msg.role {
+            Role::User => {
+                let t = msg
+                    .content
+                    .iter()
+                    .filter_map(|p| {
+                        if let ContentPart::Text(s) = p {
+                            Some(s.as_str())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                ("User", t)
+            }
+            Role::Assistant => {
+                let t = msg
+                    .content
+                    .iter()
+                    .filter_map(|p| {
+                        if let ContentPart::Text(s) = p {
+                            Some(s.as_str())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                ("Assistant", t)
+            }
+            _ => continue,
+        };
+        if text.trim().is_empty() {
+            continue;
+        }
+        let line = format!("[{label}]: {text}\n");
+        if out.len() + line.len() > MAX_CHARS {
+            out.push_str("... (transcript truncated)\n");
+            break;
+        }
+        out.push_str(&line);
+    }
+    out
+}
+
+/// Background skill-reflection pass. Reviews the conversation history after a
+/// complex task and calls `write_skill` if the workflow is worth preserving.
+/// Runs in a detached tokio task — never blocks the user's response.
+async fn reflect_and_save_skill(
+    task: &str,
+    history: Vec<Message>,
+    transport: Arc<dyn ProviderTransport>,
+    tools: Arc<ToolRegistry>,
+    config: Arc<AgentConfig>,
+    memory: Arc<dyn MemoryStore>,
+) {
+    let transcript = build_reflection_transcript(&history);
+
+    // List existing skill names so the model can avoid duplicates.
+    let skills_dir = config.home_dir.join("skills");
+    let existing = garudust_tools::toolsets::skills::load_skills_from_dir(&skills_dir).await;
+    let existing_names: Vec<&str> = existing.iter().map(|s| s.name.as_str()).collect();
+    let existing_list = if existing_names.is_empty() {
+        "None".to_string()
+    } else {
+        existing_names.join(", ")
+    };
+
+    let system = "You are a skill-extraction assistant. \
+        Your only job is to decide whether the workflow in the transcript is worth \
+        saving as a reusable skill, and if so, call write_skill exactly once. \
+        Be concise and selective — only save genuinely reusable patterns.";
+
+    let prompt = format!(
+        "Review the conversation below and decide if the workflow deserves to be saved \
+         as a reusable skill.\n\n\
+         Save a skill ONLY if ALL of these are true:\n\
+         - The task involved multiple non-trivial steps or tool calls\n\
+         - The steps form a clear, repeatable pattern applicable to future tasks\n\
+         - No existing skill already covers this workflow\n\n\
+         Do NOT save a skill if:\n\
+         - The task was trivial or a single lookup\n\
+         - The content is too specific to this user's data (e.g. personal filenames, IDs)\n\
+         - An existing skill already covers it\n\n\
+         Existing skills (do not duplicate): {existing_list}\n\n\
+         If you decide to save: call write_skill once with a concise name \
+         (alphanumeric/hyphens only), a one-line description, and clear step-by-step body.\n\
+         If not worth saving: reply with only the word \"no_skill\".\n\n\
+         Original task: {task}\n\n\
+         Transcript:\n{transcript}"
+    );
+
+    let write_skill_schemas = tools.schemas(&["skills"]);
+    if write_skill_schemas.is_empty() {
+        warn!("skill reflection: skills toolset not registered");
+        return;
+    }
+
+    let inf_config = InferenceConfig {
+        model: config.model.clone(),
+        max_tokens: Some(2048),
+        temperature: None,
+        reasoning_effort: None,
+    };
+
+    let messages = vec![Message::system(system), Message::user(&prompt)];
+
+    let resp = match transport
+        .chat(&messages, &inf_config, &write_skill_schemas)
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            warn!("skill reflection LLM call failed: {e}");
+            return;
+        }
+    };
+
+    // If model decided to save a skill, execute write_skill.
+    for tc in &resp.tool_calls {
+        if tc.name != "write_skill" {
+            continue;
+        }
+        let ctx = ToolContext {
+            session_id: Uuid::new_v4().to_string(),
+            agent_id: "skill-reflection".to_string(),
+            iteration: 1,
+            budget: Arc::new(garudust_core::budget::IterationBudget::new(2)),
+            memory: memory.clone(),
+            config: config.clone(),
+            approver: Arc::new(crate::approver::AutoApprover),
+            sub_agent: None,
+        };
+        match tools
+            .dispatch("write_skill", tc.arguments.clone(), &ctx)
+            .await
+        {
+            Ok(r) => info!("skill reflection saved skill: {}", r.content),
+            Err(e) => warn!("skill reflection write_skill failed: {e}"),
+        }
+        break; // only one skill per reflection
     }
 }
