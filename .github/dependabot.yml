@@ -1,0 +1,31 @@
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: "Asia/Bangkok"
+    open-pull-requests-limit: 5
+    groups:
+      async-runtime:
+        patterns: ["tokio*", "futures*", "async-*", "tokio-stream"]
+      axum-tower:
+        patterns: ["axum*", "tower*", "tower-http", "tower_governor"]
+      serde:
+        patterns: ["serde*"]
+      tracing:
+        patterns: ["tracing*"]
+    labels:
+      - dependencies
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: "Asia/Bangkok"
+    labels:
+      - dependencies
