@@ -308,7 +308,7 @@ mod tests {
     }
 
     fn test_state_with_key(key: &str) -> AppState {
-        use garudust_core::config::{AgentConfig, SecurityConfig};
+        use garudust_core::config::SecurityConfig;
         use std::sync::Arc;
 
         let mut state = test_state();
