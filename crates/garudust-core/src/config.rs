@@ -71,9 +71,17 @@ pub struct AgentConfig {
     /// Platform-level access controls (whitelist, mention gate, session isolation).
     #[serde(default)]
     pub platform: PlatformConfig,
+    /// Minimum tool-use iterations that trigger an automatic skill-reflection pass after a task.
+    /// The agent reviews the conversation and calls write_skill if the workflow is reusable.
+    /// Set to 0 to disable. Default: 5.
+    #[serde(default = "default_auto_skill_threshold")]
+    pub auto_skill_threshold: u32,
 }
 
 fn default_nudge_interval() -> u32 {
+    5
+}
+fn default_auto_skill_threshold() -> u32 {
     5
 }
 fn default_llm_max_retries() -> u32 {
@@ -280,6 +288,7 @@ impl Default for AgentConfig {
             llm_max_retries: default_llm_max_retries(),
             llm_retry_base_ms: default_llm_retry_base_ms(),
             platform: PlatformConfig::default(),
+            auto_skill_threshold: default_auto_skill_threshold(),
         }
     }
 }
