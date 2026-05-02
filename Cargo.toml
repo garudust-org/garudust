@@ -89,7 +89,7 @@ rmcp = { version = "1", features = ["client", "transport-child-process"] }
 
 # Hot-reload
 arc-swap = "1"
-notify   = { version = "6", features = ["macos_fsevent"] }
+notify   = { version = "8", features = ["macos_fsevent"] }
 
 # Rate limiting
 tower_governor = { version = "0.8", features = ["axum"] }
