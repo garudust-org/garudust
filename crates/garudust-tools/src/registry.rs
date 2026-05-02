@@ -9,26 +9,26 @@ use garudust_core::{
 use jsonschema::Validator;
 
 pub struct ToolRegistry {
-    tools:      HashMap<String, Arc<dyn Tool>>,
+    tools: HashMap<String, Arc<dyn Tool>>,
     validators: HashMap<String, Arc<Validator>>,
 }
 
 impl ToolRegistry {
     pub fn new() -> Self {
         Self {
-            tools:      HashMap::new(),
+            tools: HashMap::new(),
             validators: HashMap::new(),
         }
     }
 
     pub fn register(&mut self, tool: impl Tool + 'static) {
-        let name   = tool.name().to_string();
+        let name = tool.name().to_string();
         let schema = tool.schema();
         self.insert_validated(name, Arc::new(tool), &schema);
     }
 
     pub fn register_arc(&mut self, tool: Arc<dyn Tool>) {
-        let name   = tool.name().to_string();
+        let name = tool.name().to_string();
         let schema = tool.schema();
         self.insert_validated(name, tool, &schema);
     }
@@ -148,7 +148,7 @@ impl Default for ToolRegistry {
 }
 
 #[cfg(test)]
-fn make_schema(required: &[&str], props: serde_json::Value) -> serde_json::Value {
+fn make_schema(required: &[&str], props: &serde_json::Value) -> serde_json::Value {
     serde_json::json!({
         "type": "object",
         "properties": props,
@@ -290,19 +290,29 @@ mod tests {
 
     #[async_trait]
     impl Tool for Typed {
-        fn name(&self) -> &str { "typed" }
-        fn description(&self) -> &str { "typed tool" }
-        fn toolset(&self) -> &str { "test" }
+        fn name(&self) -> &'static str {
+            "typed"
+        }
+        fn description(&self) -> &'static str {
+            "typed tool"
+        }
+        fn toolset(&self) -> &'static str {
+            "test"
+        }
         fn schema(&self) -> serde_json::Value {
             super::make_schema(
                 &["path"],
-                serde_json::json!({
+                &serde_json::json!({
                     "path":  { "type": "string" },
                     "limit": { "type": "integer" }
                 }),
             )
         }
-        async fn execute(&self, _p: serde_json::Value, _ctx: &ToolContext) -> Result<ToolResult, ToolError> {
+        async fn execute(
+            &self,
+            _p: serde_json::Value,
+            _ctx: &ToolContext,
+        ) -> Result<ToolResult, ToolError> {
             Ok(ToolResult::ok("id", "ok"))
         }
     }
