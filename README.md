@@ -73,12 +73,6 @@ export PATH="$PATH:$(pwd)/target/release"
 garudust setup   # first-time wizard — pick provider, save API key
 ```
 
-| | **1 — TUI** | **2 — One-shot** | **3 — Server / Docker** |
-|---|---|---|---|
-| **Command** | `garudust` | `garudust "task"` | `garudust-server` |
-| **Use when** | Personal interactive chat | Script / pipe / CI | Bots, API, cron jobs |
-| **Interface** | Terminal UI | stdout + exit code | HTTP + chat platforms |
-
 ### 1 — Interactive TUI
 
 ```bash
