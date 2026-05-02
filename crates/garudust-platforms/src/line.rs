@@ -11,7 +11,7 @@ use axum::{
     Router,
 };
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
-use dashmap::DashMap;
+use dashmap::{DashMap, DashSet};
 use futures::{Stream, StreamExt};
 use hmac::{Hmac, Mac};
 use serde::Deserialize;
@@ -29,6 +29,8 @@ const LINE_PUSH_URL: &str = "https://api.line.me/v2/bot/message/push";
 const LINE_PROFILE_URL: &str = "https://api.line.me/v2/bot/profile";
 /// Reply token is valid for 30 s; leave a 5 s safety margin.
 const REPLY_TTL: Duration = Duration::from_secs(25);
+/// LINE text message limit in characters.
+const LINE_TEXT_LIMIT: usize = 5_000;
 
 // ── LINE webhook deserialization ──────────────────────────────────────────────
 
@@ -72,19 +74,32 @@ struct ProfileResp {
     display_name: String,
 }
 
+// ── Error type for push API results ──────────────────────────────────────────
+
+enum PushOutcome {
+    Ok,
+    QuotaExceeded,
+    Err(PlatformError),
+}
+
 // ── Shared state ──────────────────────────────────────────────────────────────
 
 struct Inner {
     channel_token: String,
     channel_secret: String,
+    client: reqwest::Client,
     /// chat_id → (reply_token, received_at)
     reply_store: DashMap<String, (String, Instant)>,
     /// chat_id → push target (groupId/roomId for groups, userId for DMs)
     push_store: DashMap<String, String>,
     /// chat_id → is_group flag
     group_flag: DashMap<String, bool>,
+    /// chat_id → last sender's user_id (used for @mention in groups)
+    last_sender: DashMap<String, String>,
     /// user_id → display name (fetched lazily from profile API)
     name_cache: DashMap<String, String>,
+    /// user_ids currently being fetched — prevents redundant profile API calls
+    fetching: DashSet<String>,
 }
 
 struct AppState {
@@ -123,7 +138,10 @@ async fn handle_webhook(
         }
         let Some(text) = msg.text else { continue };
 
-        let user_id = ev.source.user_id.clone().unwrap_or_default();
+        // Events without userId (e.g. some bot-event types) are unusable
+        let Some(user_id) = ev.source.user_id.clone() else {
+            continue;
+        };
 
         let (chat_id, push_target, is_group) = match ev.source.kind.as_str() {
             "group" => {
@@ -141,7 +159,6 @@ async fn handle_webhook(
             _ => (user_id.clone(), user_id.clone(), false),
         };
 
-        // Persist reply token and routing info for send_message
         if let Some(token) = ev.reply_token {
             state
                 .inner
@@ -150,16 +167,23 @@ async fn handle_webhook(
         }
         state.inner.push_store.insert(chat_id.clone(), push_target);
         state.inner.group_flag.insert(chat_id.clone(), is_group);
+        state.inner.last_sender.insert(chat_id.clone(), user_id.clone());
 
-        // Lazily fetch and cache display name (fire-and-forget)
-        if !state.inner.name_cache.contains_key(&user_id) {
+        // Deduplicated lazy profile fetch: fetching set ensures only one in-flight
+        // request per user even under concurrent webhook events.
+        if !state.inner.name_cache.contains_key(&user_id)
+            && state.inner.fetching.insert(user_id.clone())
+        {
             let token = state.inner.channel_token.clone();
             let uid = user_id.clone();
             let cache = state.inner.name_cache.clone();
+            let in_flight = state.inner.fetching.clone();
+            let client = state.inner.client.clone();
             tokio::spawn(async move {
-                if let Some(name) = fetch_display_name(&token, &uid).await {
-                    cache.insert(uid, name);
+                if let Some(name) = fetch_display_name(&client, &token, &uid).await {
+                    cache.insert(uid.clone(), name);
                 }
+                in_flight.remove(&uid);
             });
         }
 
@@ -202,8 +226,22 @@ fn verify_sig(secret: &str, body: &[u8], signature: &str) -> bool {
     B64.encode(mac.finalize().into_bytes()) == signature
 }
 
-async fn fetch_display_name(token: &str, user_id: &str) -> Option<String> {
-    let resp = reqwest::Client::new()
+fn truncate_to_line_limit(text: String) -> String {
+    if text.chars().count() <= LINE_TEXT_LIMIT {
+        return text;
+    }
+    let suffix = "… [ข้อความถูกตัดให้อยู่ในขีดจำกัดของ LINE]";
+    let keep = LINE_TEXT_LIMIT.saturating_sub(suffix.chars().count());
+    let truncated: String = text.chars().take(keep).collect();
+    format!("{truncated}{suffix}")
+}
+
+async fn fetch_display_name(
+    client: &reqwest::Client,
+    token: &str,
+    user_id: &str,
+) -> Option<String> {
+    let resp = client
         .get(format!("{LINE_PROFILE_URL}/{user_id}"))
         .header("Authorization", format!("Bearer {token}"))
         .send()
@@ -215,12 +253,17 @@ async fn fetch_display_name(token: &str, user_id: &str) -> Option<String> {
         .map(|p| p.display_name)
 }
 
-async fn api_reply(token: &str, reply_token: &str, text: &str) -> Result<(), PlatformError> {
+async fn api_reply(
+    client: &reqwest::Client,
+    token: &str,
+    reply_token: &str,
+    text: &str,
+) -> Result<(), PlatformError> {
     let body = serde_json::json!({
         "replyToken": reply_token,
         "messages": [{ "type": "text", "text": text }],
     });
-    let resp = reqwest::Client::new()
+    let resp = client
         .post(LINE_REPLY_URL)
         .header("Authorization", format!("Bearer {token}"))
         .json(&body)
@@ -236,29 +279,37 @@ async fn api_reply(token: &str, reply_token: &str, text: &str) -> Result<(), Pla
     Err(PlatformError::Send(format!("LINE reply {status}: {err}")))
 }
 
-async fn api_push(token: &str, to: &str, text: &str) -> Result<(), PlatformError> {
+async fn api_push(
+    client: &reqwest::Client,
+    token: &str,
+    to: &str,
+    text: &str,
+) -> PushOutcome {
     let body = serde_json::json!({
         "to": to,
         "messages": [{ "type": "text", "text": text }],
     });
-    let resp = reqwest::Client::new()
+    let resp = match client
         .post(LINE_PUSH_URL)
         .header("Authorization", format!("Bearer {token}"))
         .json(&body)
         .send()
         .await
-        .map_err(|e| PlatformError::Send(e.to_string()))?;
+    {
+        Ok(r) => r,
+        Err(e) => return PushOutcome::Err(PlatformError::Send(e.to_string())),
+    };
 
     if resp.status().is_success() {
-        return Ok(());
+        return PushOutcome::Ok;
     }
     let status = resp.status().as_u16();
     let err = resp.text().await.unwrap_or_default();
 
     if status == 429 || err.contains("quota") || err.contains("monthly limit") {
-        return Err(PlatformError::Send(format!("quota:{err}")));
+        return PushOutcome::QuotaExceeded;
     }
-    Err(PlatformError::Send(format!("LINE push {status}: {err}")))
+    PushOutcome::Err(PlatformError::Send(format!("LINE push {status}: {err}")))
 }
 
 // ── LineAdapter ───────────────────────────────────────────────────────────────
@@ -275,10 +326,13 @@ impl LineAdapter {
             inner: Arc::new(Inner {
                 channel_token,
                 channel_secret,
+                client: reqwest::Client::new(),
                 reply_store: DashMap::new(),
                 push_store: DashMap::new(),
                 group_flag: DashMap::new(),
+                last_sender: DashMap::new(),
                 name_cache: DashMap::new(),
+                fetching: DashSet::new(),
             }),
         }
     }
@@ -286,29 +340,34 @@ impl LineAdapter {
     async fn do_send(&self, channel: &ChannelId, mut text: String) -> Result<(), PlatformError> {
         let chat_id = &channel.chat_id;
 
-        // Group: prepend @display_name so the target user is notified
+        text = truncate_to_line_limit(text);
+
+        // Prepend @mention in group chats using last sender's display name
         if self.inner.group_flag.get(chat_id).is_some_and(|v| *v) {
-            // push_store holds userId for DMs and groupId for groups; for groups we need the
-            // userId who sent the last message, stored in name_cache keyed by userId.
-            // We scan name_cache entries to find the right name — fine for small groups.
-            if let Some(push) = self.inner.push_store.get(chat_id) {
-                if let Some(name) = self.inner.name_cache.get(push.as_str()) {
+            if let Some(uid) = self.inner.last_sender.get(chat_id) {
+                if let Some(name) = self.inner.name_cache.get(uid.as_str()) {
                     text = format!("@{} {}", *name, text);
                 }
             }
         }
 
-        // 1. Try reply token (free, one-shot, 25 s window)
+        // Reply API first (free, one-shot, 25 s window)
         if let Some(entry) = self.inner.reply_store.remove(chat_id) {
             let (reply_token, received_at) = entry.1;
             if received_at.elapsed() < REPLY_TTL {
                 tracing::debug!(chat_id, "LINE: reply API");
-                return api_reply(&self.inner.channel_token, &reply_token, &text).await;
+                return api_reply(
+                    &self.inner.client,
+                    &self.inner.channel_token,
+                    &reply_token,
+                    &text,
+                )
+                .await;
             }
             tracing::debug!(chat_id, "LINE: reply token expired, falling back to push");
         }
 
-        // 2. Push fallback (free tier monthly quota)
+        // Push fallback (free tier monthly quota)
         let push_target = self
             .inner
             .push_store
@@ -316,15 +375,23 @@ impl LineAdapter {
             .map_or_else(|| chat_id.clone(), |v| v.clone());
 
         tracing::debug!(chat_id, "LINE: push API");
-        match api_push(&self.inner.channel_token, &push_target, &text).await {
-            Ok(()) => Ok(()),
-            Err(PlatformError::Send(ref e)) if e.starts_with("quota:") => {
+        match api_push(
+            &self.inner.client,
+            &self.inner.channel_token,
+            &push_target,
+            &text,
+        )
+        .await
+        {
+            PushOutcome::Ok => Ok(()),
+            PushOutcome::QuotaExceeded => {
                 tracing::error!(chat_id, "LINE push quota exceeded");
                 Err(PlatformError::Send(
-                    "ขออภัย บอทใช้งานเกินโควต้าข้อความรายเดือนแล้ว กรุณาลองใหม่เดือนหน้า".into(),
+                    "ขออภัย บอทใช้งานเกินโควต้าข้อความรายเดือนแล้ว กรุณาลองใหม่เดือนหน้า"
+                        .into(),
                 ))
             }
-            Err(e) => Err(e),
+            PushOutcome::Err(e) => Err(e),
         }
     }
 }
@@ -353,9 +420,9 @@ impl PlatformAdapter for LineAdapter {
         tracing::info!("LINE webhook listening on 0.0.0.0:{port}/line");
 
         tokio::spawn(async move {
-            axum::serve(listener, app)
-                .await
-                .expect("LINE server failed");
+            if let Err(e) = axum::serve(listener, app).await {
+                tracing::error!("LINE server exited: {e}");
+            }
         });
 
         Ok(())
@@ -391,7 +458,6 @@ mod tests {
     #[test]
     fn verify_sig_correct() {
         type HmacSha256 = Hmac<Sha256>;
-        // HMAC-SHA256("secret", "body") base64 = known value
         let secret = "secret";
         let body = b"body";
         let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).unwrap();
@@ -406,8 +472,22 @@ mod tests {
     }
 
     #[test]
-    fn verify_sig_empty_secret_fails_gracefully() {
-        // empty key is invalid for HMAC — should return false, not panic
+    fn verify_sig_empty_secret() {
+        // hmac accepts empty keys; the generated signature simply won't match "anything"
         assert!(!verify_sig("", b"body", "anything"));
+    }
+
+    #[test]
+    fn truncate_short_text_unchanged() {
+        let s = "สวัสดี".to_string();
+        assert_eq!(truncate_to_line_limit(s.clone()), s);
+    }
+
+    #[test]
+    fn truncate_long_text_fits_limit() {
+        let long: String = "a".repeat(6_000);
+        let result = truncate_to_line_limit(long);
+        assert!(result.chars().count() <= LINE_TEXT_LIMIT);
+        assert!(result.contains("LINE"));
     }
 }
