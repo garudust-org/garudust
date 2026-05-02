@@ -7,6 +7,7 @@ use garudust_core::{
     tool::{Tool, ToolContext},
     types::ToolResult,
 };
+use serde::Deserialize;
 use serde_json::json;
 
 use crate::security::is_sensitive_write_path;
@@ -152,5 +153,320 @@ impl Tool for WriteFile {
             .map_err(|e| ToolError::Execution(e.to_string()))?;
 
         Ok(ToolResult::ok("", format!("Written to {path}")))
+    }
+}
+
+// ── ListDirectory ─────────────────────────────────────────────────────────────
+
+const MAX_ENTRIES: usize = 200;
+
+fn format_size(bytes: u64) -> String {
+    if bytes < 1_024 {
+        format!("{bytes} B")
+    } else if bytes < 1_024 * 1_024 {
+        format!("{:.1} KB", bytes as f64 / 1_024.0)
+    } else {
+        format!("{:.1} MB", bytes as f64 / (1_024.0 * 1_024.0))
+    }
+}
+
+pub struct ListDirectory;
+
+#[async_trait]
+impl Tool for ListDirectory {
+    fn name(&self) -> &'static str {
+        "list_directory"
+    }
+    fn description(&self) -> &'static str {
+        "List files and directories at a given path. Supports glob patterns and depth limits."
+    }
+    fn toolset(&self) -> &'static str {
+        "files"
+    }
+
+    fn schema(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Directory path to list"
+                },
+                "pattern": {
+                    "type": "string",
+                    "description": "Glob filter applied to relative paths (e.g. '**/*.rs', '*.toml')"
+                },
+                "max_depth": {
+                    "type": "integer",
+                    "description": "Recursion depth limit (default 3, max 10)",
+                    "default": 3
+                }
+            },
+            "required": ["path"]
+        })
+    }
+
+    async fn execute(
+        &self,
+        params: serde_json::Value,
+        ctx: &ToolContext,
+    ) -> Result<ToolResult, ToolError> {
+        #[derive(Deserialize)]
+        struct Input {
+            path: String,
+            pattern: Option<String>,
+            max_depth: Option<usize>,
+        }
+
+        let input: Input =
+            serde_json::from_value(params).map_err(|e| ToolError::InvalidArgs(e.to_string()))?;
+
+        let dir = Path::new(&input.path);
+        let max_depth = input.max_depth.unwrap_or(3).min(10);
+
+        if !is_path_allowed(dir, &ctx.config.security.allowed_read_paths) {
+            return Err(ToolError::Execution(format!(
+                "path '{}' is outside allowed read directories",
+                input.path
+            )));
+        }
+        if !dir.exists() {
+            return Err(ToolError::Execution(format!(
+                "path '{}' does not exist",
+                input.path
+            )));
+        }
+        if !dir.is_dir() {
+            return Err(ToolError::Execution(format!(
+                "path '{}' is not a directory",
+                input.path
+            )));
+        }
+
+        // Build glob matcher if a pattern was supplied.
+        let glob_matcher = input
+            .pattern
+            .as_deref()
+            .map(|p| {
+                let glob = globset::Glob::new(p)
+                    .map_err(|e| ToolError::InvalidArgs(format!("invalid glob pattern: {e}")))?;
+                globset::GlobSet::builder()
+                    .add(glob)
+                    .build()
+                    .map_err(|e| ToolError::InvalidArgs(format!("invalid glob pattern: {e}")))
+            })
+            .transpose()?;
+
+        // Walk the directory tree.
+        struct Entry {
+            rel_path: String,
+            is_dir: bool,
+            size: Option<u64>,
+        }
+
+        let mut entries: Vec<Entry> = Vec::new();
+        let mut truncated = false;
+
+        for result in walkdir::WalkDir::new(dir)
+            .max_depth(max_depth)
+            .sort_by_file_name()
+            .into_iter()
+        {
+            let entry = result.map_err(|e| ToolError::Execution(e.to_string()))?;
+
+            // Skip the root itself.
+            if entry.path() == dir {
+                continue;
+            }
+
+            let rel = entry
+                .path()
+                .strip_prefix(dir)
+                .unwrap_or(entry.path())
+                .to_string_lossy()
+                .to_string();
+
+            // Apply glob filter when provided.
+            if let Some(ref m) = glob_matcher {
+                if !m.is_match(&rel) {
+                    continue;
+                }
+            }
+
+            if entries.len() >= MAX_ENTRIES {
+                truncated = true;
+                break;
+            }
+
+            let is_dir = entry.file_type().is_dir();
+            let size = if is_dir {
+                None
+            } else {
+                entry.metadata().ok().map(|m| m.len())
+            };
+
+            entries.push(Entry {
+                rel_path: rel,
+                is_dir,
+                size,
+            });
+        }
+
+        if entries.is_empty() {
+            return Ok(ToolResult::ok(
+                "",
+                format!("{} — no items found", input.path),
+            ));
+        }
+
+        let header = format!(
+            "{} ({} items{})\n",
+            input.path,
+            entries.len(),
+            if truncated {
+                format!(", showing first {MAX_ENTRIES}")
+            } else {
+                String::new()
+            }
+        );
+
+        let lines: Vec<String> = entries
+            .iter()
+            .map(|e| {
+                if e.is_dir {
+                    format!("[dir]  {}/", e.rel_path)
+                } else {
+                    let sz = e.size.map(format_size).unwrap_or_default();
+                    format!("[file] {}  {}", e.rel_path, sz)
+                }
+            })
+            .collect();
+
+        Ok(ToolResult::ok(
+            "",
+            format!("{header}\n{}", lines.join("\n")),
+        ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use garudust_core::{
+        budget::IterationBudget,
+        config::AgentConfig,
+        tool::{ApprovalDecision, CommandApprover, ToolContext},
+    };
+
+    use super::*;
+
+    struct AutoApprove;
+    #[async_trait]
+    impl CommandApprover for AutoApprove {
+        async fn approve(&self, _: &str, _: &str) -> ApprovalDecision {
+            ApprovalDecision::Approved
+        }
+    }
+
+    struct NopMemory;
+    #[async_trait]
+    impl garudust_core::memory::MemoryStore for NopMemory {
+        async fn read_memory(
+            &self,
+        ) -> Result<garudust_core::memory::MemoryContent, garudust_core::AgentError> {
+            Ok(garudust_core::memory::MemoryContent::default())
+        }
+        async fn write_memory(
+            &self,
+            _: &garudust_core::memory::MemoryContent,
+        ) -> Result<(), garudust_core::AgentError> {
+            Ok(())
+        }
+        async fn read_user_profile(&self) -> Result<String, garudust_core::AgentError> {
+            Ok(String::new())
+        }
+        async fn write_user_profile(&self, _: &str) -> Result<(), garudust_core::AgentError> {
+            Ok(())
+        }
+    }
+
+    fn make_ctx() -> ToolContext {
+        let cwd = std::env::current_dir().unwrap_or_default();
+        let mut config = AgentConfig::default();
+        // Allow the entire workspace root for test reads.
+        let workspace_root = cwd
+            .ancestors()
+            .find(|p| p.join("Cargo.toml").exists() && p.join("crates").exists())
+            .unwrap_or(&cwd)
+            .to_path_buf();
+        config.security.allowed_read_paths = vec![workspace_root];
+        ToolContext {
+            session_id: "s".into(),
+            agent_id: "a".into(),
+            iteration: 0,
+            budget: Arc::new(IterationBudget::new(10)),
+            memory: Arc::new(NopMemory),
+            config: Arc::new(config),
+            approver: Arc::new(AutoApprove),
+            sub_agent: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn lists_current_directory() {
+        let ctx = make_ctx();
+        let cwd = std::env::current_dir().unwrap();
+        let result = ListDirectory
+            .execute(json!({ "path": cwd.to_str().unwrap() }), &ctx)
+            .await
+            .unwrap();
+        assert!(!result.is_error);
+        assert!(result.content.contains("["));
+    }
+
+    #[tokio::test]
+    async fn glob_pattern_filters_results() {
+        let ctx = make_ctx();
+        let cwd = std::env::current_dir().unwrap();
+        let result = ListDirectory
+            .execute(
+                json!({ "path": cwd.to_str().unwrap(), "pattern": "**/*.toml" }),
+                &ctx,
+            )
+            .await
+            .unwrap();
+        assert!(!result.is_error);
+        // Every file line should end with .toml (dirs may still appear if matched)
+        for line in result.content.lines() {
+            if line.starts_with("[file]") {
+                assert!(line.contains(".toml"), "unexpected file: {line}");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn rejects_nonexistent_path() {
+        let ctx = make_ctx();
+        let err = ListDirectory
+            .execute(json!({ "path": "/nonexistent/path/xyz" }), &ctx)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ToolError::Execution(_)));
+    }
+
+    #[tokio::test]
+    async fn rejects_file_path() {
+        let ctx = make_ctx();
+        let cwd = std::env::current_dir().unwrap();
+        // Cargo.toml exists in workspace root
+        let file_path = cwd.join("Cargo.toml");
+        if file_path.exists() {
+            let err = ListDirectory
+                .execute(json!({ "path": file_path.to_str().unwrap() }), &ctx)
+                .await
+                .unwrap_err();
+            assert!(matches!(err, ToolError::Execution(_)));
+        }
     }
 }

@@ -18,7 +18,7 @@ use garudust_tools::{
     toolsets::{
         browser::BrowserTool,
         delegate::DelegateTask,
-        files::{ReadFile, WriteFile},
+        files::{ListDirectory, ReadFile, WriteFile},
         mcp::connect_mcp_server,
         memory::{MemoryTool, UserProfileTool},
         search::SessionSearch,
@@ -158,6 +158,7 @@ async fn build_agent(config: Arc<AgentConfig>, db: Arc<SessionDb>) -> Arc<Agent>
     registry.register(WebSearch);
     registry.register(ReadFile);
     registry.register(WriteFile);
+    registry.register(ListDirectory);
     registry.register(Terminal);
     registry.register(MemoryTool);
     registry.register(UserProfileTool);

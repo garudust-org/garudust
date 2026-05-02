@@ -69,6 +69,10 @@ base64    = "0.22"
 # JSON Schema validation
 jsonschema = { version = "0.29", default-features = false }
 
+# Filesystem utilities
+walkdir = "2"
+globset = "0.4"
+
 # File locking
 fs4 = "1.1"
 

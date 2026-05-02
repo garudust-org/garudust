@@ -19,3 +19,5 @@ serde_yaml      = { workspace = true }
 rmcp            = { workspace = true }
 chromiumoxide   = { workspace = true }
 jsonschema      = { workspace = true }
+walkdir         = { workspace = true }
+globset         = { workspace = true }
