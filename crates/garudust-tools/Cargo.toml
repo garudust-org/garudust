@@ -18,3 +18,4 @@ futures         = { workspace = true }
 serde_yaml      = { workspace = true }
 rmcp            = { workspace = true }
 chromiumoxide   = { workspace = true }
+jsonschema      = { workspace = true }

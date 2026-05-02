@@ -6,24 +6,40 @@ use garudust_core::{
     tool::{ApprovalDecision, Tool, ToolContext},
     types::{ToolResult, ToolSchema},
 };
+use jsonschema::Validator;
 
 pub struct ToolRegistry {
-    tools: HashMap<String, Arc<dyn Tool>>,
+    tools:      HashMap<String, Arc<dyn Tool>>,
+    validators: HashMap<String, Arc<Validator>>,
 }
 
 impl ToolRegistry {
     pub fn new() -> Self {
         Self {
-            tools: HashMap::new(),
+            tools:      HashMap::new(),
+            validators: HashMap::new(),
         }
     }
 
     pub fn register(&mut self, tool: impl Tool + 'static) {
-        self.tools.insert(tool.name().to_string(), Arc::new(tool));
+        let name   = tool.name().to_string();
+        let schema = tool.schema();
+        self.insert_validated(name, Arc::new(tool), &schema);
     }
 
     pub fn register_arc(&mut self, tool: Arc<dyn Tool>) {
-        self.tools.insert(tool.name().to_string(), tool);
+        let name   = tool.name().to_string();
+        let schema = tool.schema();
+        self.insert_validated(name, tool, &schema);
+    }
+
+    fn insert_validated(&mut self, name: String, tool: Arc<dyn Tool>, schema: &serde_json::Value) {
+        if let Ok(v) = jsonschema::validator_for(schema) {
+            self.validators.insert(name.clone(), Arc::new(v));
+        } else {
+            tracing::warn!(tool = %name, "tool schema failed to compile — param validation skipped");
+        }
+        self.tools.insert(name, tool);
     }
 
     pub fn schemas(&self, toolsets: &[&str]) -> Vec<ToolSchema> {
@@ -48,6 +64,17 @@ impl ToolRegistry {
             .tools
             .get(name)
             .ok_or_else(|| ToolError::NotFound(name.into()))?;
+
+        // Validate params against the tool's declared JSON Schema.
+        if let Some(validator) = self.validators.get(name) {
+            let errors: Vec<String> = validator
+                .iter_errors(&params)
+                .map(|e| format!("{e}"))
+                .collect();
+            if !errors.is_empty() {
+                return Err(ToolError::InvalidArgs(errors.join("; ")));
+            }
+        }
 
         // Property-based approval gate for destructive tools.
         if tool.is_destructive() {
@@ -118,6 +145,15 @@ impl Default for ToolRegistry {
     fn default() -> Self {
         Self::new()
     }
+}
+
+#[cfg(test)]
+fn make_schema(required: &[&str], props: serde_json::Value) -> serde_json::Value {
+    serde_json::json!({
+        "type": "object",
+        "properties": props,
+        "required": required
+    })
 }
 
 #[cfg(test)]
@@ -246,5 +282,62 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, ToolError::NotFound(_)));
+    }
+
+    // ── Schema validation tests ───────────────────────────────────────────────
+
+    struct Typed;
+
+    #[async_trait]
+    impl Tool for Typed {
+        fn name(&self) -> &str { "typed" }
+        fn description(&self) -> &str { "typed tool" }
+        fn toolset(&self) -> &str { "test" }
+        fn schema(&self) -> serde_json::Value {
+            super::make_schema(
+                &["path"],
+                serde_json::json!({
+                    "path":  { "type": "string" },
+                    "limit": { "type": "integer" }
+                }),
+            )
+        }
+        async fn execute(&self, _p: serde_json::Value, _ctx: &ToolContext) -> Result<ToolResult, ToolError> {
+            Ok(ToolResult::ok("id", "ok"))
+        }
+    }
+
+    #[tokio::test]
+    async fn dispatch_valid_params_passes() {
+        let mut r = ToolRegistry::new();
+        r.register(Typed);
+        let ctx = make_ctx();
+        r.dispatch("typed", serde_json::json!({ "path": "/tmp/x" }), &ctx)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn dispatch_missing_required_field_fails() {
+        let mut r = ToolRegistry::new();
+        r.register(Typed);
+        let ctx = make_ctx();
+        let err = r
+            .dispatch("typed", serde_json::json!({}), &ctx)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ToolError::InvalidArgs(_)));
+    }
+
+    #[tokio::test]
+    async fn dispatch_wrong_type_fails() {
+        let mut r = ToolRegistry::new();
+        r.register(Typed);
+        let ctx = make_ctx();
+        let err = r
+            .dispatch("typed", serde_json::json!({ "path": 42 }), &ctx)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ToolError::InvalidArgs(_)));
     }
 }
