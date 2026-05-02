@@ -80,6 +80,14 @@ cargo test --workspace
 
 All four must be green. CI runs the same commands with `RUSTFLAGS=-D warnings`.
 
+If you changed `Cargo.toml` (added/removed/bumped a dependency), stage `Cargo.lock` too:
+
+```bash
+git add Cargo.lock
+```
+
+`Cargo.lock` is committed in this repo because it pins exact dependency versions for reproducible builds. Leaving it out of the PR causes a stale-lock diff on `main`.
+
 ### Opening the PR
 
 - Title: one Conventional Commit line (`feat(tools): add http_request tool`)
