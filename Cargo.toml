@@ -47,7 +47,7 @@ serde_yaml   = "0.9"
 async-openai = "0.28"
 
 # Database
-rusqlite     = { version = "0.31", features = ["bundled"] }
+rusqlite     = { version = "0.39", features = ["bundled"] }
 
 # Error handling
 anyhow  = "1"
