@@ -215,7 +215,7 @@ impl Agent {
             transport: self.transport.clone(),
             tools: self.tools.clone(),
             memory: self.memory.clone(),
-            budget: self.budget.clone(),
+            budget: Arc::new(IterationBudget::new(self.config.max_iterations)),
             config: self.config.clone(),
             compressor: ContextCompressor::new(self.transport.clone(), comp_model),
             session_db: self.session_db.clone(),
