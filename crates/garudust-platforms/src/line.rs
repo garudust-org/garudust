@@ -288,7 +288,7 @@ impl LineAdapter {
         let chat_id = &channel.chat_id;
 
         // Group: prepend @display_name so the target user is notified
-        if self.inner.group_flag.get(chat_id).map_or(false, |v| *v) {
+        if self.inner.group_flag.get(chat_id).is_some_and(|v| *v) {
             // push_store holds userId for DMs and groupId for groups; for groups we need the
             // userId who sent the last message, stored in name_cache keyed by userId.
             // We scan name_cache entries to find the right name — fine for small groups.
