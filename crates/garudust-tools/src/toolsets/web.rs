@@ -153,6 +153,7 @@ impl Tool for WebSearch {
 // ─── HttpRequest ─────────────────────────────────────────────────────────────
 
 const RESPONSE_BODY_LIMIT: usize = 512 * 1_024; // 512 KB
+const ALLOWED_METHODS: &[&str] = &["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"];
 
 #[derive(Deserialize)]
 struct HttpRequestInput {
@@ -220,7 +221,6 @@ impl Tool for HttpRequest {
             serde_json::from_value(params).map_err(|e| ToolError::InvalidArgs(e.to_string()))?;
 
         let method = input.method.to_uppercase();
-        const ALLOWED_METHODS: &[&str] = &["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"];
         if !ALLOWED_METHODS.contains(&method.as_str()) {
             return Err(ToolError::InvalidArgs(format!(
                 "method must be one of: {}",
