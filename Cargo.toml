@@ -62,8 +62,8 @@ dotenvy   = "0.15"
 bytes     = "1"
 parking_lot = "0.12"
 dashmap   = "6"
-hmac      = "0.12"
-sha2      = "0.10"
+hmac      = "0.13"
+sha2      = "0.11"
 base64    = "0.22"
 
 # File locking

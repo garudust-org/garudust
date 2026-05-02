@@ -13,7 +13,7 @@ use axum::{
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use dashmap::{DashMap, DashSet};
 use futures::{Stream, StreamExt};
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use serde::Deserialize;
 use sha2::Sha256;
 use tokio::net::TcpListener;
