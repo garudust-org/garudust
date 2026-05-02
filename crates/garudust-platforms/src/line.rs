@@ -444,7 +444,7 @@ impl PlatformAdapter for LineAdapter {
         // cache when it exceeds MAX_CACHE_ENTRIES (names are cheap to re-fetch).
         let inner_gc = self.inner.clone();
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(60));
+            let mut interval = tokio::time::interval(Duration::from_mins(1));
             loop {
                 interval.tick().await;
                 inner_gc
