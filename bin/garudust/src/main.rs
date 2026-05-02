@@ -128,6 +128,8 @@ async fn build_agent(config: Arc<AgentConfig>) -> (Arc<Agent>, McpHandles) {
         );
     }
 
+    let db = SessionDb::open(&config.home_dir).ok().map(Arc::new);
+
     let mut registry = ToolRegistry::new();
     registry.register(WebFetch);
     registry.register(WebSearch);
@@ -138,7 +140,9 @@ async fn build_agent(config: Arc<AgentConfig>) -> (Arc<Agent>, McpHandles) {
     registry.register(Terminal);
     registry.register(MemoryTool);
     registry.register(UserProfileTool);
-    registry.register(SessionSearch);
+    if let Some(ref db) = db {
+        registry.register(SessionSearch::new(db.clone()));
+    }
     registry.register(SkillsList);
     registry.register(SkillView);
     registry.register(WriteSkill);
@@ -147,7 +151,6 @@ async fn build_agent(config: Arc<AgentConfig>) -> (Arc<Agent>, McpHandles) {
 
     let mcp_handles = attach_mcp_servers(&mut registry, &config.mcp_servers).await;
 
-    let db = SessionDb::open(&config.home_dir).ok().map(Arc::new);
     let agent = Agent::new(transport, Arc::new(registry), memory, config);
     let agent = match db {
         Some(db) => agent.with_session_db(db),
