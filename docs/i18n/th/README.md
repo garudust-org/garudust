@@ -322,6 +322,7 @@ curl http://localhost:3000/metrics   # รองรับ Prometheus
 | `browser` | ควบคุม Chrome/Chromium ผ่าน CDP — navigate, คลิก, พิมพ์, screenshot, รัน JS |
 | `read_file` | อ่านไฟล์จากระบบไฟล์ |
 | `write_file` | เขียนไฟล์ไปยังระบบไฟล์; credential path ที่ละเอียดอ่อนถูกบล็อคเสมอ |
+| `list_directory` | แสดงรายการไฟล์และโฟลเดอร์; รองรับ glob pattern (`**/*.rs`) และจำกัดความลึก |
 | `terminal` | รันคำสั่ง shell; ทำงานใน Docker sandbox เมื่อตั้งค่า `terminal_sandbox: docker` |
 | `memory` | หน่วยความจำถาวรแบบ key-value (add / read / replace / remove) |
 | `user_profile` | อ่านและอัปเดต user profile ที่ถาวร |

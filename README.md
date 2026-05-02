@@ -320,6 +320,7 @@ Set the relevant key in `~/.garudust/.env`, then switch models with `garudust mo
 | `browser` | Control Chrome/Chromium via CDP — navigate, click, type, screenshot, run JS |
 | `read_file` | Read a file from the filesystem |
 | `write_file` | Write a file to the filesystem; sensitive credential paths are always blocked |
+| `list_directory` | List files and directories; supports glob patterns (`**/*.rs`) and depth limits |
 | `terminal` | Run a shell command; sandboxed in Docker when `terminal_sandbox: docker` is set |
 | `memory` | Persistent key-value memory (add / read / replace / remove) |
 | `user_profile` | Read and update the persistent user profile |

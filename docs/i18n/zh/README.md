@@ -320,6 +320,7 @@ curl http://localhost:3000/metrics   # Prometheus 兼容
 | `browser` | 通过 CDP 控制 Chrome/Chromium — 导航、点击、输入、截图、运行 JS |
 | `read_file` | 从文件系统读取文件 |
 | `write_file` | 向文件系统写入文件；敏感凭证路径始终被拦截 |
+| `list_directory` | 列出文件和目录；支持 glob 模式（`**/*.rs`）和深度限制 |
 | `terminal` | 运行 shell 命令；设置 `terminal_sandbox: docker` 后在 Docker 沙箱中执行 |
 | `memory` | 持久化键值记忆（add / read / replace / remove） |
 | `user_profile` | 读取和更新持久化用户档案 |
