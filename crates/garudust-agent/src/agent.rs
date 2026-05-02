@@ -322,7 +322,6 @@ impl Agent {
         } else {
             user_msg
         };
-
         let mut history: Vec<Message> =
             vec![Message::system(&system_prompt), Message::user(&user_msg)];
 
