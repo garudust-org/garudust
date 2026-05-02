@@ -100,7 +100,7 @@ async fn socket_loop(wss_url: &str, handler: Arc<dyn MessageHandler>) {
 
     while let Some(Ok(msg)) = read.next().await {
         let text = match msg {
-            Message::Text(t) => t,
+            Message::Text(t) => t.to_string(),
             Message::Close(_) => break,
             _ => continue,
         };
@@ -112,7 +112,7 @@ async fn socket_loop(wss_url: &str, handler: Arc<dyn MessageHandler>) {
         // Acknowledge every envelope immediately
         if let Some(eid) = &env.envelope_id {
             let ack = format!(r#"{{"envelope_id":"{eid}"}}"#);
-            let _ = write.send(Message::Text(ack)).await;
+            let _ = write.send(Message::Text(ack.into())).await;
         }
 
         if env.kind != "events_api" {

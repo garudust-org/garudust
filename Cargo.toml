@@ -78,7 +78,7 @@ ratatui   = "0.29"
 crossterm = "0.28"
 
 # Cron
-tokio-cron-scheduler = "0.13"
+tokio-cron-scheduler = "0.15"
 
 # Platform SDKs (optional flag set per-crate, not here)
 teloxide  = { version = "0.13", default-features = false, features = ["macros", "rustls", "ctrlc_handler"] }
@@ -98,5 +98,5 @@ tower_governor = { version = "0.8", features = ["axum"] }
 chromiumoxide = { version = "0.7", default-features = false, features = ["tokio-runtime"] }
 
 # Platform SDKs (Slack / Matrix)
-tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
+tokio-tungstenite = { version = "0.29", features = ["rustls-tls-webpki-roots"] }
 matrix-sdk        = { version = "0.7", default-features = false, features = ["rustls-tls"] }
