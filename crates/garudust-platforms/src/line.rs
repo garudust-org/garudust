@@ -102,7 +102,7 @@ struct Inner {
     fetching: DashSet<String>,
 }
 
-struct AppState {
+struct LineState {
     inner: Arc<Inner>,
     handler: Arc<dyn MessageHandler>,
 }
@@ -110,7 +110,7 @@ struct AppState {
 // ── Webhook axum handler ──────────────────────────────────────────────────────
 
 async fn handle_webhook(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<LineState>>,
     headers: HeaderMap,
     body: Bytes,
 ) -> StatusCode {
@@ -145,15 +145,17 @@ async fn handle_webhook(
 
         let (chat_id, push_target, is_group) = match ev.source.kind.as_str() {
             "group" => {
-                let gid = ev
-                    .source
-                    .group_id
-                    .clone()
-                    .unwrap_or_else(|| user_id.clone());
+                let Some(gid) = ev.source.group_id.clone() else {
+                    tracing::warn!("LINE: group event missing groupId — skipping");
+                    continue;
+                };
                 (gid.clone(), gid, true)
             }
             "room" => {
-                let rid = ev.source.room_id.clone().unwrap_or_else(|| user_id.clone());
+                let Some(rid) = ev.source.room_id.clone() else {
+                    tracing::warn!("LINE: room event missing roomId — skipping");
+                    continue;
+                };
                 (rid.clone(), rid, true)
             }
             _ => (user_id.clone(), user_id.clone(), false),
@@ -304,7 +306,7 @@ async fn api_push(client: &reqwest::Client, token: &str, to: &str, text: &str) -
     let status = resp.status().as_u16();
     let err = resp.text().await.unwrap_or_default();
 
-    if status == 429 || err.contains("quota") || err.contains("monthly limit") {
+    if status == 429 {
         return PushOutcome::QuotaExceeded;
     }
     PushOutcome::Err(PlatformError::Send(format!("LINE push {status}: {err}")))
@@ -340,12 +342,15 @@ impl LineAdapter {
 
         text = truncate_to_line_limit(text);
 
-        // Prepend @mention in group chats using last sender's display name
+        // Prepend @mention in group chats; fall back to @user_id while name is being fetched
         if self.inner.group_flag.get(chat_id).is_some_and(|v| *v) {
             if let Some(uid) = self.inner.last_sender.get(chat_id) {
-                if let Some(name) = self.inner.name_cache.get(uid.as_str()) {
-                    text = format!("@{} {}", *name, text);
-                }
+                let mention = self
+                    .inner
+                    .name_cache
+                    .get(uid.as_str())
+                    .map_or_else(|| uid.clone(), |n| n.clone());
+                text = format!("@{mention} {text}");
             }
         }
 
@@ -400,7 +405,7 @@ impl PlatformAdapter for LineAdapter {
     }
 
     async fn start(&self, handler: Arc<dyn MessageHandler>) -> Result<(), PlatformError> {
-        let state = Arc::new(AppState {
+        let state = Arc::new(LineState {
             inner: self.inner.clone(),
             handler,
         });
