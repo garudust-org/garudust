@@ -22,7 +22,7 @@ use garudust_tools::{
         search::SessionSearch,
         skills::{SkillView, SkillsList, WriteSkill},
         terminal::Terminal,
-        web::{WebFetch, WebSearch},
+        web::{HttpRequest, WebFetch, WebSearch},
     },
     ToolRegistry,
 };
@@ -131,6 +131,7 @@ async fn build_agent(config: Arc<AgentConfig>) -> (Arc<Agent>, McpHandles) {
     let mut registry = ToolRegistry::new();
     registry.register(WebFetch);
     registry.register(WebSearch);
+    registry.register(HttpRequest);
     registry.register(ReadFile);
     registry.register(WriteFile);
     registry.register(ListDirectory);
