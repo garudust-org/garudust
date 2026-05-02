@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use garudust_core::{
     error::ToolError,
@@ -7,7 +9,15 @@ use garudust_core::{
 use garudust_memory::SessionDb;
 use serde_json::json;
 
-pub struct SessionSearch;
+pub struct SessionSearch {
+    db: Arc<SessionDb>,
+}
+
+impl SessionSearch {
+    pub fn new(db: Arc<SessionDb>) -> Self {
+        Self { db }
+    }
+}
 
 #[async_trait]
 impl Tool for SessionSearch {
@@ -42,7 +52,7 @@ impl Tool for SessionSearch {
     async fn execute(
         &self,
         params: serde_json::Value,
-        ctx: &ToolContext,
+        _ctx: &ToolContext,
     ) -> Result<ToolResult, ToolError> {
         let query = params["query"]
             .as_str()
@@ -50,10 +60,8 @@ impl Tool for SessionSearch {
 
         let limit = params["limit"].as_u64().unwrap_or(10).min(50) as usize;
 
-        let db = SessionDb::open(&ctx.config.home_dir)
-            .map_err(|e| ToolError::Execution(e.to_string()))?;
-
-        let results = db
+        let results = self
+            .db
             .search(query, limit)
             .map_err(|e| ToolError::Execution(e.to_string()))?;
 

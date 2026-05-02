@@ -163,7 +163,7 @@ async fn build_agent(config: Arc<AgentConfig>, db: Arc<SessionDb>) -> Arc<Agent>
     registry.register(Terminal);
     registry.register(MemoryTool);
     registry.register(UserProfileTool);
-    registry.register(SessionSearch);
+    registry.register(SessionSearch::new(db.clone()));
     registry.register(SkillsList);
     registry.register(SkillView);
     registry.register(WriteSkill);
