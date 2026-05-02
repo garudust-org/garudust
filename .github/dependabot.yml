@@ -19,6 +19,8 @@ updates:
         patterns: ["tracing*"]
     labels:
       - dependencies
+    assignees:
+      - ninenox
 
   - package-ecosystem: github-actions
     directory: "/"
@@ -29,3 +31,5 @@ updates:
       timezone: "Asia/Bangkok"
     labels:
       - dependencies
+    assignees:
+      - ninenox
