@@ -57,8 +57,8 @@ impl MessageHandler for GatewayHandler {
             }
         }
 
-        // Per-user session isolation
-        if pcfg.session_per_user {
+        // Per-user session isolation (skipped for webhook — caller controls session_key via payload)
+        if pcfg.session_per_user && msg.channel.platform != "webhook" {
             msg.session_key = format!(
                 "{}:{}:{}",
                 msg.channel.platform, msg.channel.chat_id, msg.user_id

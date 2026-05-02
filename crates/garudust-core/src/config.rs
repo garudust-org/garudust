@@ -202,7 +202,7 @@ impl Default for SecurityConfig {
 }
 
 /// Platform-level access and behaviour controls (whitelist, mention gate, session isolation).
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlatformConfig {
     /// User IDs allowed to send messages to the agent.
     /// Empty list means everyone is allowed.
@@ -219,10 +219,26 @@ pub struct PlatformConfig {
     #[serde(default)]
     pub bot_username: String,
 
-    /// Give each user their own conversation session.
-    /// When false (default), all users in a channel share one session.
-    #[serde(default)]
+    /// Give each user their own conversation session (default: true).
+    /// Set to false only when you want all users in a channel to share one session.
+    /// Not applied to the webhook platform — webhook callers control session routing via payload.
+    #[serde(default = "default_true")]
     pub session_per_user: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl Default for PlatformConfig {
+    fn default() -> Self {
+        Self {
+            allowed_user_ids: Vec::new(),
+            require_mention: false,
+            bot_username: String::new(),
+            session_per_user: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
