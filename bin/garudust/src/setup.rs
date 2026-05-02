@@ -234,10 +234,8 @@ fn multi_select(items: &[&str]) -> anyhow::Result<Vec<bool>> {
                 KeyCode::Up | KeyCode::Char('k') => {
                     cursor_pos = cursor_pos.saturating_sub(1);
                 }
-                KeyCode::Down | KeyCode::Char('j') => {
-                    if cursor_pos + 1 < items.len() {
-                        cursor_pos += 1;
-                    }
+                KeyCode::Down | KeyCode::Char('j') if cursor_pos + 1 < items.len() => {
+                    cursor_pos += 1;
                 }
                 KeyCode::Char(' ') => {
                     selected[cursor_pos] = !selected[cursor_pos];
@@ -273,7 +271,7 @@ fn draw_checkboxes(
     if items.len() > 1 {
         queue!(
             stdout,
-            cursor::MoveUp((items.len() - 1) as u16),
+            cursor::MoveUp(u16::try_from(items.len() - 1).unwrap_or(u16::MAX)),
             cursor::MoveToColumn(0),
         )?;
     } else {
