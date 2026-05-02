@@ -164,10 +164,27 @@ fn format_size(bytes: u64) -> String {
     if bytes < 1_024 {
         format!("{bytes} B")
     } else if bytes < 1_024 * 1_024 {
-        format!("{:.1} KB", bytes as f64 / 1_024.0)
+        format!("{}.{} KB", bytes / 1_024, (bytes % 1_024) * 10 / 1_024)
     } else {
-        format!("{:.1} MB", bytes as f64 / (1_024.0 * 1_024.0))
+        format!(
+            "{}.{} MB",
+            bytes / (1_024 * 1_024),
+            (bytes % (1_024 * 1_024)) * 10 / (1_024 * 1_024)
+        )
     }
+}
+
+#[derive(Deserialize)]
+struct ListDirInput {
+    path: String,
+    pattern: Option<String>,
+    max_depth: Option<usize>,
+}
+
+struct DirEntry {
+    rel_path: String,
+    is_dir: bool,
+    size: Option<u64>,
 }
 
 pub struct ListDirectory;
@@ -211,14 +228,7 @@ impl Tool for ListDirectory {
         params: serde_json::Value,
         ctx: &ToolContext,
     ) -> Result<ToolResult, ToolError> {
-        #[derive(Deserialize)]
-        struct Input {
-            path: String,
-            pattern: Option<String>,
-            max_depth: Option<usize>,
-        }
-
-        let input: Input =
+        let input: ListDirInput =
             serde_json::from_value(params).map_err(|e| ToolError::InvalidArgs(e.to_string()))?;
 
         let dir = Path::new(&input.path);
@@ -258,19 +268,12 @@ impl Tool for ListDirectory {
             .transpose()?;
 
         // Walk the directory tree.
-        struct Entry {
-            rel_path: String,
-            is_dir: bool,
-            size: Option<u64>,
-        }
-
-        let mut entries: Vec<Entry> = Vec::new();
+        let mut entries: Vec<DirEntry> = Vec::new();
         let mut truncated = false;
 
         for result in walkdir::WalkDir::new(dir)
             .max_depth(max_depth)
             .sort_by_file_name()
-            .into_iter()
         {
             let entry = result.map_err(|e| ToolError::Execution(e.to_string()))?;
 
@@ -305,7 +308,7 @@ impl Tool for ListDirectory {
                 entry.metadata().ok().map(|m| m.len())
             };
 
-            entries.push(Entry {
+            entries.push(DirEntry {
                 rel_path: rel,
                 is_dir,
                 size,
@@ -422,7 +425,7 @@ mod tests {
             .await
             .unwrap();
         assert!(!result.is_error);
-        assert!(result.content.contains("["));
+        assert!(result.content.contains('['));
     }
 
     #[tokio::test]

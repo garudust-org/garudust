@@ -48,20 +48,44 @@ Each crate has a single focused responsibility. Keep those boundaries clean.
 - Issues labeled `good first issue` are great starting points
 - Comment on an issue before starting work to avoid duplicate effort
 
-## Pull Request Process
+## Branch & Pull Request Workflow
 
-1. Fork the repository and create a feature branch from `main`
-   ```bash
-   git checkout -b feat/my-feature
-   ```
-2. Make your changes
-3. Ensure all checks pass:
-   ```bash
-   cargo check --workspace --all-targets
-   cargo clippy --workspace --all-targets
-   cargo fmt --all -- --check
-   ```
-4. Submit a PR with a clear description of what changed and why
+**All changes go through a branch and a PR — no direct pushes to `main`, including from maintainers.**
+
+### Branch naming
+
+| Prefix | Use for |
+|--------|---------|
+| `feat/` | New feature or tool |
+| `fix/` | Bug fix or clippy/fmt correction |
+| `refactor/` | Code restructuring without behaviour change |
+| `docs/` | Documentation only |
+| `chore/` | Dependency bumps, CI config, repo hygiene |
+| `perf/` | Performance improvement |
+
+```bash
+# Create and switch to a new branch from main
+git checkout main && git pull
+git checkout -b feat/my-feature
+```
+
+### Checklist before opening a PR
+
+```bash
+cargo check --workspace --all-targets
+cargo clippy --workspace --all-targets -- -W clippy::all -W clippy::pedantic
+cargo fmt --all -- --check
+cargo test --workspace
+```
+
+All four must be green. CI runs the same commands with `RUSTFLAGS=-D warnings`.
+
+### Opening the PR
+
+- Title: one Conventional Commit line (`feat(tools): add http_request tool`)
+- Body: what changed, why, and how to test it
+- Link the issue it closes (`Closes #67`)
+- CI must be green before merge
 
 ## Code Guidelines
 
@@ -87,31 +111,40 @@ Create `crates/garudust-tools/src/toolsets/your_tool.rs`:
 ```rust
 use async_trait::async_trait;
 use garudust_core::{error::ToolError, tool::{Tool, ToolContext}, types::ToolResult};
+use serde::Deserialize;
 use serde_json::{json, Value};
+
+// Use a typed struct for params — avoids manual `.as_str()` / `.ok_or_else()` boilerplate
+// and gives you free validation before execute() is called.
+#[derive(Deserialize)]
+struct YourToolInput {
+    input: String,
+    optional_flag: Option<bool>,
+}
 
 pub struct YourTool;
 
 #[async_trait]
 impl Tool for YourTool {
-    fn name(&self) -> &str { "your_tool" }
-    fn description(&self) -> &str { "Does something useful" }
-    fn toolset(&self) -> &str { "your_toolset" }
+    fn name(&self) -> &'static str { "your_tool" }
+    fn description(&self) -> &'static str { "Does something useful" }
+    fn toolset(&self) -> &'static str { "your_toolset" }
 
     fn schema(&self) -> Value {
         json!({
             "type": "object",
             "properties": {
-                "input": { "type": "string", "description": "The input" }
+                "input": { "type": "string", "description": "The input" },
+                "optional_flag": { "type": "boolean" }
             },
             "required": ["input"]
         })
     }
 
     async fn execute(&self, params: Value, _ctx: &ToolContext) -> Result<ToolResult, ToolError> {
-        let input = params["input"]
-            .as_str()
-            .ok_or_else(|| ToolError::InvalidArgs("'input' required".into()))?;
-        Ok(ToolResult::ok("", format!("Processed: {input}")))
+        let input: YourToolInput = serde_json::from_value(params)
+            .map_err(|e| ToolError::InvalidArgs(e.to_string()))?;
+        Ok(ToolResult::ok("", format!("Processed: {}", input.input)))
     }
 }
 ```
