@@ -91,6 +91,10 @@ impl CommandApprover for AutoApprove {
 
 fn make_agent(reply: &str) -> Arc<Agent> {
     let config = Arc::new(AgentConfig::default());
+    make_agent_with_config(reply, config)
+}
+
+fn make_agent_with_config(reply: &str, config: Arc<AgentConfig>) -> Arc<Agent> {
     let transport = Arc::new(StaticTransport {
         reply: reply.to_string(),
     });
@@ -100,6 +104,32 @@ fn make_agent(reply: &str) -> Arc<Agent> {
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[test]
+fn spawn_child_has_independent_budget() {
+    let config = AgentConfig {
+        max_iterations: 5,
+        ..AgentConfig::default()
+    };
+    let parent = make_agent_with_config("hi", Arc::new(config));
+
+    parent.consume_budget(); // parent uses 1 → 4 remaining
+    let child = parent.spawn_child();
+
+    assert_eq!(child.budget_remaining(), 5, "child starts with full budget");
+    assert_eq!(
+        parent.budget_remaining(),
+        4,
+        "parent budget unaffected by child creation"
+    );
+
+    child.consume_budget(); // child uses 1 → 4 remaining
+    assert_eq!(
+        parent.budget_remaining(),
+        4,
+        "parent unaffected by child consumption"
+    );
+}
 
 #[tokio::test]
 async fn run_returns_reply() {

@@ -144,6 +144,9 @@ pub struct Agent {
 
 impl Clone for Agent {
     fn clone(&self) -> Self {
+        // Intentionally shares the budget Arc — clone() produces an alias of the
+        // same logical agent (e.g. for the TUI's model-switch flow), not a child.
+        // Use spawn_child() when isolation is required.
         let comp_model = self
             .config
             .compression
@@ -203,6 +206,16 @@ impl Agent {
         self
     }
 
+    #[cfg(test)]
+    pub(crate) fn budget_remaining(&self) -> u32 {
+        self.budget.remaining()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn consume_budget(&self) {
+        let _ = self.budget.consume();
+    }
+
     pub fn spawn_child(&self) -> Self {
         let comp_model = self
             .config
@@ -215,7 +228,7 @@ impl Agent {
             transport: self.transport.clone(),
             tools: self.tools.clone(),
             memory: self.memory.clone(),
-            budget: self.budget.clone(),
+            budget: Arc::new(IterationBudget::new(self.config.max_iterations)),
             config: self.config.clone(),
             compressor: ContextCompressor::new(self.transport.clone(), comp_model),
             session_db: self.session_db.clone(),
@@ -426,11 +439,15 @@ impl Agent {
             }
 
             // Parallel tool dispatch via tokio::join_all
-            let sub_agent: Arc<dyn SubAgentRunner> = Arc::new(self.clone());
+            // spawn_child() gives the sub-agent its own fresh budget so delegate_task
+            // iterations do not consume the parent's quota.
+            let sub_agent: Arc<dyn SubAgentRunner> = Arc::new(self.spawn_child());
             let ctx = Arc::new(ToolContext {
                 session_id: session_id.clone(),
                 agent_id: self.id.clone(),
                 iteration: iters,
+                // Tool calls themselves (web_fetch, terminal, etc.) count against
+                // the parent's budget; only delegate_task runs an isolated child.
                 budget: self.budget.clone(),
                 memory: self.memory.clone(),
                 config: self.config.clone(),
