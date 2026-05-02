@@ -317,6 +317,7 @@ Set the relevant key in `~/.garudust/.env`, then switch models with `garudust mo
 |------|-------------|
 | `web_fetch` | Fetch a URL (static pages) |
 | `web_search` | Search via Brave Search API (`BRAVE_SEARCH_API_KEY`) |
+| `http_request` | Make arbitrary HTTP requests (GET/POST/PUT/PATCH/DELETE/HEAD) with custom headers and body; returns status, headers, and body |
 | `browser` | Control Chrome/Chromium via CDP — navigate, click, type, screenshot, run JS |
 | `read_file` | Read a file from the filesystem |
 | `write_file` | Write a file to the filesystem; sensitive credential paths are always blocked |

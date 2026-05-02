@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -9,6 +10,7 @@ use garudust_core::{
     types::ToolResult,
 };
 use reqwest::dns::{Addrs, Name, Resolve, Resolving};
+use serde::Deserialize;
 use serde_json::json;
 
 // ─── Safe DNS resolver ────────────────────────────────────────────────────────
@@ -147,6 +149,153 @@ impl Tool for WebSearch {
         }
     }
 }
+
+// ─── HttpRequest ─────────────────────────────────────────────────────────────
+
+const RESPONSE_BODY_LIMIT: usize = 512 * 1_024; // 512 KB
+const ALLOWED_METHODS: &[&str] = &["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"];
+
+#[derive(Deserialize)]
+struct HttpRequestInput {
+    method: String,
+    url: String,
+    headers: Option<HashMap<String, String>>,
+    body: Option<String>,
+    timeout_secs: Option<u64>,
+}
+
+pub struct HttpRequest;
+
+#[async_trait]
+impl Tool for HttpRequest {
+    fn name(&self) -> &'static str {
+        "http_request"
+    }
+    fn description(&self) -> &'static str {
+        "Make an HTTP request with a custom method, headers, and body. \
+         Returns the status code, response headers, and response body. \
+         Prefer this over `terminal curl` for REST API calls."
+    }
+    fn toolset(&self) -> &'static str {
+        "web"
+    }
+
+    fn schema(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "method": {
+                    "type": "string",
+                    "enum": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"],
+                    "description": "HTTP method"
+                },
+                "url": {
+                    "type": "string",
+                    "description": "Request URL"
+                },
+                "headers": {
+                    "type": "object",
+                    "description": "Request headers as key-value pairs, e.g. {\"Authorization\": \"Bearer sk-...\", \"Content-Type\": \"application/json\"}",
+                    "additionalProperties": { "type": "string" }
+                },
+                "body": {
+                    "type": "string",
+                    "description": "Request body string (for POST/PUT/PATCH). Set Content-Type header to match the format."
+                },
+                "timeout_secs": {
+                    "type": "integer",
+                    "description": "Timeout in seconds (default 30, max 120)",
+                    "default": 30
+                }
+            },
+            "required": ["method", "url"]
+        })
+    }
+
+    async fn execute(
+        &self,
+        params: serde_json::Value,
+        _ctx: &ToolContext,
+    ) -> Result<ToolResult, ToolError> {
+        let input: HttpRequestInput =
+            serde_json::from_value(params).map_err(|e| ToolError::InvalidArgs(e.to_string()))?;
+
+        let method = input.method.to_uppercase();
+        if !ALLOWED_METHODS.contains(&method.as_str()) {
+            return Err(ToolError::InvalidArgs(format!(
+                "method must be one of: {}",
+                ALLOWED_METHODS.join(", ")
+            )));
+        }
+
+        net_guard::is_safe_url(&input.url)?;
+
+        let timeout_secs = input.timeout_secs.unwrap_or(30).clamp(1, 120);
+        let reqwest_method = reqwest::Method::from_bytes(method.as_bytes())
+            .map_err(|_| ToolError::InvalidArgs(format!("invalid method: {method}")))?;
+
+        let mut builder = http_client()?
+            .request(reqwest_method, &input.url)
+            .timeout(std::time::Duration::from_secs(timeout_secs));
+
+        if let Some(headers) = &input.headers {
+            for (k, v) in headers {
+                let name = reqwest::header::HeaderName::from_bytes(k.as_bytes())
+                    .map_err(|_| ToolError::InvalidArgs(format!("invalid header name: {k}")))?;
+                let value = reqwest::header::HeaderValue::from_str(v).map_err(|_| {
+                    ToolError::InvalidArgs(format!("invalid value for header '{k}'"))
+                })?;
+                builder = builder.header(name, value);
+            }
+        }
+
+        if let Some(body) = input.body {
+            builder = builder.body(body);
+        }
+
+        let resp = builder
+            .send()
+            .await
+            .map_err(|e| ToolError::Execution(e.to_string()))?;
+
+        let status = resp.status().as_u16();
+
+        let resp_headers: HashMap<String, String> = resp
+            .headers()
+            .iter()
+            .filter_map(|(k, v)| Some((k.to_string(), v.to_str().ok()?.to_string())))
+            .take(20)
+            .collect();
+
+        let body_bytes = resp
+            .bytes()
+            .await
+            .map_err(|e| ToolError::Execution(e.to_string()))?;
+
+        let body_str = if body_bytes.len() > RESPONSE_BODY_LIMIT {
+            format!(
+                "{}\n[truncated — response was {} bytes, showing first {} KB]",
+                String::from_utf8_lossy(&body_bytes[..RESPONSE_BODY_LIMIT]),
+                body_bytes.len(),
+                RESPONSE_BODY_LIMIT / 1_024,
+            )
+        } else {
+            String::from_utf8_lossy(&body_bytes).into_owned()
+        };
+
+        Ok(ToolResult::ok(
+            "",
+            json!({
+                "status": status,
+                "headers": resp_headers,
+                "body": body_str,
+            })
+            .to_string(),
+        ))
+    }
+}
+
+// ─── Shared HTTP client ───────────────────────────────────────────────────────
 
 static HTTP_CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
 
@@ -370,7 +519,120 @@ fn percent_decode(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use garudust_core::{
+        budget::IterationBudget,
+        config::AgentConfig,
+        tool::{ApprovalDecision, CommandApprover, ToolContext},
+    };
+
     use super::*;
+
+    struct AutoApprove;
+    #[async_trait]
+    impl CommandApprover for AutoApprove {
+        async fn approve(&self, _: &str, _: &str) -> ApprovalDecision {
+            ApprovalDecision::Approved
+        }
+    }
+
+    struct NopMemory;
+    #[async_trait]
+    impl garudust_core::memory::MemoryStore for NopMemory {
+        async fn read_memory(
+            &self,
+        ) -> Result<garudust_core::memory::MemoryContent, garudust_core::AgentError> {
+            Ok(garudust_core::memory::MemoryContent::default())
+        }
+        async fn write_memory(
+            &self,
+            _: &garudust_core::memory::MemoryContent,
+        ) -> Result<(), garudust_core::AgentError> {
+            Ok(())
+        }
+        async fn read_user_profile(&self) -> Result<String, garudust_core::AgentError> {
+            Ok(String::new())
+        }
+        async fn write_user_profile(&self, _: &str) -> Result<(), garudust_core::AgentError> {
+            Ok(())
+        }
+    }
+
+    fn make_ctx() -> ToolContext {
+        ToolContext {
+            session_id: "s".into(),
+            agent_id: "a".into(),
+            iteration: 0,
+            budget: Arc::new(IterationBudget::new(10)),
+            memory: Arc::new(NopMemory),
+            config: Arc::new(AgentConfig::default()),
+            approver: Arc::new(AutoApprove),
+            sub_agent: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn rejects_invalid_method() {
+        let ctx = make_ctx();
+        let err = HttpRequest
+            .execute(
+                json!({ "method": "INVALID", "url": "https://example.com" }),
+                &ctx,
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ToolError::InvalidArgs(_)));
+    }
+
+    #[tokio::test]
+    async fn rejects_private_ip_url() {
+        let ctx = make_ctx();
+        let err = HttpRequest
+            .execute(
+                json!({ "method": "GET", "url": "http://192.168.1.1/api" }),
+                &ctx,
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            ToolError::InvalidArgs(_) | ToolError::Execution(_)
+        ));
+    }
+
+    #[tokio::test]
+    async fn rejects_localhost_url() {
+        let ctx = make_ctx();
+        let err = HttpRequest
+            .execute(
+                json!({ "method": "GET", "url": "http://localhost:8080/api" }),
+                &ctx,
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            ToolError::InvalidArgs(_) | ToolError::Execution(_)
+        ));
+    }
+
+    #[tokio::test]
+    async fn rejects_invalid_header_name() {
+        let ctx = make_ctx();
+        let err = HttpRequest
+            .execute(
+                json!({
+                    "method": "GET",
+                    "url": "https://example.com",
+                    "headers": { "bad header!": "value" }
+                }),
+                &ctx,
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ToolError::InvalidArgs(_)));
+    }
 
     #[test]
     fn percent_decode_ascii() {
