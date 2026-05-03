@@ -76,6 +76,16 @@ pub struct AgentConfig {
     /// Set to 0 to disable. Default: 5.
     #[serde(default = "default_auto_skill_threshold")]
     pub auto_skill_threshold: u32,
+    /// Timeout in seconds for a single LLM API call (chat or stream). 0 = no timeout. Default: 120.
+    #[serde(default = "default_llm_timeout_secs")]
+    pub llm_timeout_secs: u64,
+    /// Timeout in seconds applied to every non-terminal tool dispatch. 0 = no timeout. Default: 60.
+    #[serde(default = "default_tool_timeout_secs")]
+    pub tool_timeout_secs: u64,
+    /// Drain window in seconds for graceful shutdown — server waits this long for in-flight
+    /// requests to complete before forcing exit. Default: 30.
+    #[serde(default = "default_shutdown_timeout_secs")]
+    pub shutdown_timeout_secs: u64,
 }
 
 fn default_nudge_interval() -> u32 {
@@ -89,6 +99,15 @@ fn default_llm_max_retries() -> u32 {
 }
 fn default_llm_retry_base_ms() -> u64 {
     1000
+}
+fn default_llm_timeout_secs() -> u64 {
+    120
+}
+fn default_tool_timeout_secs() -> u64 {
+    60
+}
+fn default_shutdown_timeout_secs() -> u64 {
+    30
 }
 
 /// Per-category retention policy for memory entries.
@@ -289,6 +308,9 @@ impl Default for AgentConfig {
             llm_retry_base_ms: default_llm_retry_base_ms(),
             platform: PlatformConfig::default(),
             auto_skill_threshold: default_auto_skill_threshold(),
+            llm_timeout_secs: default_llm_timeout_secs(),
+            tool_timeout_secs: default_tool_timeout_secs(),
+            shutdown_timeout_secs: default_shutdown_timeout_secs(),
         }
     }
 }

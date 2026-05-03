@@ -263,6 +263,20 @@ async fn main() -> Result<()> {
         let approver2 = approver.clone();
         let tx_agent2 = tx_agent.clone();
 
+        // Send TuiEvent::Quit on SIGTERM so the TUI can restore the terminal cleanly.
+        #[cfg(unix)]
+        {
+            let tx_quit = tx_event.clone();
+            tokio::spawn(async move {
+                if let Ok(mut sig) =
+                    tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                {
+                    sig.recv().await;
+                    let _ = tx_quit.send(TuiEvent::Quit).await;
+                }
+            });
+        }
+
         tokio::spawn(async move {
             while let Some(ev) = rx_event.recv().await {
                 match ev {

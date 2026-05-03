@@ -18,6 +18,7 @@ use garudust_memory::SessionDb;
 use garudust_tools::ToolRegistry;
 use serde_json::Value;
 use tokio::sync::mpsc;
+use tokio::time::{timeout, Duration};
 
 /// Tools whose output originates from external, untrusted sources.
 /// Results from these tools are wrapped in XML tags to help the model
@@ -366,10 +367,38 @@ impl Agent {
             iters += 1;
             info!(agent_id = %self.id, iteration = iters, "agent turn");
 
+            let secs = self.config.llm_timeout_secs;
             let resp = if let Some(tx) = &chunk_tx {
-                stream_turn(self.transport.as_ref(), &history, &inf_config, &schemas, tx).await?
+                let fut = stream_turn(self.transport.as_ref(), &history, &inf_config, &schemas, tx);
+                if secs > 0 {
+                    timeout(Duration::from_secs(secs), fut)
+                        .await
+                        .map_err(|_| {
+                            AgentError::Transport(garudust_core::error::TransportError::Timeout(
+                                secs,
+                            ))
+                        })??
+                } else {
+                    fut.await?
+                }
             } else {
-                self.transport.chat(&history, &inf_config, &schemas).await?
+                let fut = async {
+                    self.transport
+                        .chat(&history, &inf_config, &schemas)
+                        .await
+                        .map_err(AgentError::from)
+                };
+                if secs > 0 {
+                    timeout(Duration::from_secs(secs), fut)
+                        .await
+                        .map_err(|_| {
+                            AgentError::Transport(garudust_core::error::TransportError::Timeout(
+                                secs,
+                            ))
+                        })??
+                } else {
+                    fut.await?
+                }
             };
             total_in += resp.usage.input_tokens;
             total_out += resp.usage.output_tokens;
@@ -455,6 +484,7 @@ impl Agent {
                 sub_agent: Some(sub_agent),
             });
 
+            let tool_timeout_secs = self.config.tool_timeout_secs;
             let tool_futs: Vec<_> = resp
                 .tool_calls
                 .iter()
@@ -466,7 +496,19 @@ impl Agent {
                     let id = tc.id.clone();
                     async move {
                         debug!(tool = %name, "dispatching");
-                        let res = tools.dispatch(&name, args, &ctx).await;
+                        let res = if tool_timeout_secs > 0 && !tools.bypass_dispatch_timeout(&name)
+                        {
+                            timeout(
+                                Duration::from_secs(tool_timeout_secs),
+                                tools.dispatch(&name, args, &ctx),
+                            )
+                            .await
+                            .unwrap_or_else(|_| {
+                                Err(garudust_core::error::ToolError::Timeout(tool_timeout_secs))
+                            })
+                        } else {
+                            tools.dispatch(&name, args, &ctx).await
+                        };
                         let tr = match res {
                             Ok(r) => r,
                             Err(e) => ToolResult::err(&id, e.to_string()),

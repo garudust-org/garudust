@@ -33,6 +33,12 @@ pub trait Tool: Send + Sync + 'static {
         self.is_destructive()
     }
 
+    /// Return `true` to opt out of the agent's global `tool_timeout_secs` budget.
+    /// Override on tools that manage their own timeout internally (e.g. `Terminal`).
+    fn bypass_dispatch_timeout(&self) -> bool {
+        false
+    }
+
     async fn execute(
         &self,
         params: serde_json::Value,

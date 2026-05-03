@@ -32,6 +32,9 @@ use garudust_tools::{
 use garudust_transport::build_transport;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 
+// Each element is held only for its Drop impl — dropping terminates the MCP child process.
+type McpHandles = Vec<Box<dyn std::any::Any + Send>>;
+
 #[derive(Parser)]
 #[command(
     name = "garudust-server",
@@ -141,7 +144,7 @@ fn build_config(cli: &Cli) -> Arc<AgentConfig> {
     Arc::new(config)
 }
 
-async fn build_agent(config: Arc<AgentConfig>, db: Arc<SessionDb>) -> Arc<Agent> {
+async fn build_agent(config: Arc<AgentConfig>, db: Arc<SessionDb>) -> (Arc<Agent>, McpHandles) {
     let memory = Arc::new(FileMemoryStore::new(&config.home_dir));
     let transport = build_transport(&config);
 
@@ -173,9 +176,9 @@ async fn build_agent(config: Arc<AgentConfig>, db: Arc<SessionDb>) -> Arc<Agent>
     registry.register(BrowserTool::new());
 
     let mcp_handles = attach_mcp_servers(&mut registry, &config.mcp_servers).await;
-    std::mem::forget(mcp_handles);
-
-    Arc::new(Agent::new(transport, Arc::new(registry), memory, config).with_session_db(db))
+    let agent =
+        Arc::new(Agent::new(transport, Arc::new(registry), memory, config).with_session_db(db));
+    (agent, mcp_handles)
 }
 
 async fn attach_mcp_servers(
@@ -224,6 +227,7 @@ fn spawn_config_watcher(
     config_path: std::path::PathBuf,
     agent_swap: Arc<ArcSwap<Agent>>,
     db: Arc<SessionDb>,
+    handles_lock: Arc<tokio::sync::Mutex<McpHandles>>,
 ) {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<()>();
 
@@ -261,13 +265,53 @@ fn spawn_config_watcher(
 
             tracing::info!("config changed — reloading agent");
             let new_config = Arc::new(AgentConfig::load());
-            let new_agent = build_agent(new_config, db.clone()).await;
+            let (new_agent, new_handles) = build_agent(new_config, db.clone()).await;
+            // Swap agent first so new requests immediately use the new config, then
+            // drop old handles. This narrows (but does not eliminate) the window where
+            // in-flight MCP tool calls from the old agent hit terminated child processes;
+            // fully quiescing the old agent would require request-level draining which is
+            // not yet implemented. The race is acceptable for the hot-reload use case.
             agent_swap.store(new_agent);
+            *handles_lock.lock().await = new_handles;
             tracing::info!("agent hot-reloaded successfully");
         }
 
         drop(watcher);
     });
+}
+
+/// Resolves when SIGINT (Ctrl-C) or SIGTERM is received.
+/// If a signal handler cannot be installed, falls back to pending() for that
+/// signal so the server degrades gracefully (Ctrl-C only) rather than shutting
+/// down immediately at startup.
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        if let Err(e) = tokio::signal::ctrl_c().await {
+            tracing::warn!("Ctrl-C handler unavailable: {e}");
+            std::future::pending::<()>().await;
+        }
+    };
+
+    #[cfg(unix)]
+    let sigterm: std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> =
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut s) => Box::pin(async move {
+                // Some(()) = SIGTERM received; None = stream closed — both resolve the select.
+                s.recv().await;
+            }),
+            Err(e) => {
+                tracing::warn!("SIGTERM handler unavailable, falling back to Ctrl-C only: {e}");
+                Box::pin(std::future::pending())
+            }
+        };
+
+    #[cfg(not(unix))]
+    let sigterm = std::future::pending::<()>();
+
+    tokio::select! {
+        () = ctrl_c  => { tracing::info!("received SIGINT, initiating graceful shutdown"); }
+        () = sigterm => { tracing::info!("received SIGTERM, initiating graceful shutdown"); }
+    }
 }
 
 #[tokio::main]
@@ -292,7 +336,9 @@ async fn main() -> Result<()> {
         cli.port,
     );
     let db = Arc::new(SessionDb::open(&config.home_dir)?);
-    let agent = Arc::new(ArcSwap::from(build_agent(config.clone(), db.clone()).await));
+    let (agent_inner, mcp_handles) = build_agent(config.clone(), db.clone()).await;
+    let agent = Arc::new(ArcSwap::from(agent_inner));
+    let mcp_handles = Arc::new(tokio::sync::Mutex::new(mcp_handles));
     let sessions = SessionRegistry::new();
     let approver = build_approver(&cli.approval_mode);
 
@@ -305,7 +351,7 @@ async fn main() -> Result<()> {
 
     // ── Hot-reload watcher ────────────────────────────────────────────────────
     let config_file = config.home_dir.join("config.yaml");
-    spawn_config_watcher(config_file, agent.clone(), db.clone());
+    spawn_config_watcher(config_file, agent.clone(), db.clone(), mcp_handles.clone());
 
     // ── Platform adapters ─────────────────────────────────────────────────────
     if let Some(token) = &cli.telegram_token {
@@ -448,6 +494,7 @@ async fn main() -> Result<()> {
     }
 
     // ── HTTP gateway ──────────────────────────────────────────────────────────
+    let shutdown_secs = config.shutdown_timeout_secs;
     let state = AppState {
         config,
         session_db: db,
@@ -459,7 +506,32 @@ async fn main() -> Result<()> {
     let addr = format!("0.0.0.0:{}", cli.port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     tracing::info!("garudust-server listening on {addr}");
-    axum::serve(listener, router).await?;
+
+    // Signal the drain-timeout task only after shutdown_signal() resolves so the
+    // countdown starts when the signal fires, not when the server starts listening.
+    let (drain_tx, mut drain_rx) = tokio::sync::watch::channel(false);
+    let serve = axum::serve(listener, router).with_graceful_shutdown(async move {
+        shutdown_signal().await;
+        tracing::info!(drain_secs = shutdown_secs, "draining in-flight requests");
+        let _ = drain_tx.send(true);
+    });
+    tokio::spawn(async move {
+        // Wait until the graceful-shutdown future has fired the signal.
+        let _ = drain_rx.wait_for(|v| *v).await;
+        if shutdown_secs > 0 {
+            tokio::time::sleep(tokio::time::Duration::from_secs(shutdown_secs)).await;
+            tracing::warn!(
+                drain_secs = shutdown_secs,
+                "drain timeout exceeded — forcing exit; MCP child processes may need manual cleanup"
+            );
+            std::process::exit(1);
+        }
+    });
+    serve.await?;
+
+    // Explicit drop ensures MCP child processes exit before the server process does.
+    drop(mcp_handles);
+    tracing::info!("shutdown complete");
 
     Ok(())
 }
