@@ -18,7 +18,7 @@ RUN cargo build --release --bin garudust-server
 FROM debian:bookworm-slim AS runtime
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
+    ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -26,6 +26,6 @@ WORKDIR /app
 COPY --from=builder /app/target/release/garudust-server /usr/local/bin/garudust-server
 
 ENV GARUDUST_PORT=3000
-EXPOSE 3000
+EXPOSE 3000 3001 3002
 
 ENTRYPOINT ["/usr/local/bin/garudust-server"]
