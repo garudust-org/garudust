@@ -10,7 +10,6 @@ use crossterm::{
 };
 use garudust_core::config::AgentConfig;
 
-// (display name, [(label, env_var)])
 const PLATFORMS: &[(&str, &[(&str, &str)])] = &[
     ("Telegram", &[("Telegram bot token", "TELEGRAM_TOKEN")]),
     ("Discord", &[("Discord bot token", "DISCORD_TOKEN")]),
@@ -66,12 +65,16 @@ pub async fn run() -> anyhow::Result<()> {
     let ollama_detected = std::net::TcpStream::connect("127.0.0.1:11434").is_ok();
     let ollama_hint = if ollama_detected { " ✓ detected" } else { "" };
 
-    let current_num = match existing.provider.as_str() {
-        "openrouter" => "2",
-        "anthropic" => "3",
-        "vllm" => "4",
-        "custom" => "5",
-        _ => "1",
+    let current_num = if is_reconfigure {
+        match existing.provider.as_str() {
+            "openrouter" => "2",
+            "anthropic" => "3",
+            "vllm" => "4",
+            "custom" => "5",
+            _ => "1",
+        }
+    } else {
+        "1"
     };
 
     println!("LLM Provider:");
@@ -97,7 +100,7 @@ pub async fn run() -> anyhow::Result<()> {
     match provider {
         "anthropic" => {
             let cur = read_env_file(&home_dir, "ANTHROPIC_API_KEY");
-            if let Some(v) = prompt_secret("ANTHROPIC_API_KEY", cur.as_deref()) {
+            if let Some(v) = prompt_secret("ANTHROPIC_API_KEY", cur.as_deref())? {
                 env_vars.push(("ANTHROPIC_API_KEY", v));
             }
         }
@@ -109,7 +112,7 @@ pub async fn run() -> anyhow::Result<()> {
             env_vars.push(("VLLM_BASE_URL", url));
 
             let cur_key = read_env_file(&home_dir, "VLLM_API_KEY");
-            if let Some(v) = prompt_secret("VLLM_API_KEY (Enter to skip)", cur_key.as_deref()) {
+            if let Some(v) = prompt_secret("VLLM_API_KEY (Enter to skip)", cur_key.as_deref())? {
                 env_vars.push(("VLLM_API_KEY", v));
             }
         }
@@ -129,14 +132,13 @@ pub async fn run() -> anyhow::Result<()> {
                 custom_base_url = Some(u);
             }
             let cur_key = read_env_file(&home_dir, "OPENROUTER_API_KEY");
-            if let Some(v) = prompt_secret("API key (Enter to skip)", cur_key.as_deref()) {
+            if let Some(v) = prompt_secret("API key (Enter to skip)", cur_key.as_deref())? {
                 env_vars.push(("OPENROUTER_API_KEY", v));
             }
         }
         _ => {
-            // openrouter
             let cur = read_env_file(&home_dir, "OPENROUTER_API_KEY");
-            if let Some(v) = prompt_secret("OPENROUTER_API_KEY", cur.as_deref()) {
+            if let Some(v) = prompt_secret("OPENROUTER_API_KEY", cur.as_deref())? {
                 env_vars.push(("OPENROUTER_API_KEY", v));
             }
         }
@@ -176,7 +178,7 @@ pub async fn run() -> anyhow::Result<()> {
         if let Some(v) = prompt_secret(
             "Brave Search API key (web_search tool)",
             cur_brave.as_deref(),
-        ) {
+        )? {
             env_vars.push(("BRAVE_SEARCH_API_KEY", v));
         }
         println!();
@@ -204,7 +206,7 @@ pub async fn run() -> anyhow::Result<()> {
             }
             for (label, var) in *fields {
                 let cur = read_env_file(&home_dir, var);
-                if let Some(v) = prompt_secret(label, cur.as_deref()) {
+                if let Some(v) = prompt_secret(label, cur.as_deref())? {
                     env_vars.push((var, v));
                 }
             }
@@ -267,11 +269,19 @@ fn read_env_file(home_dir: &Path, key: &str) -> Option<String> {
 
 /// Mask a secret: `sk-ant-api03-abcdef…xyz` → `sk-an••••wxyz`.
 fn mask_secret(s: &str) -> String {
-    if s.len() < 8 {
+    let chars: Vec<char> = s.chars().collect();
+    if chars.len() < 8 {
         return "••••".to_string();
     }
-    let prefix = &s[..4.min(s.len())];
-    let suffix = &s[s.len().saturating_sub(4)..];
+    let prefix: String = chars.iter().take(4).collect();
+    let suffix: String = chars
+        .iter()
+        .rev()
+        .take(4)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect();
     format!("{prefix}••••{suffix}")
 }
 
@@ -279,23 +289,23 @@ fn mask_secret(s: &str) -> String {
 /// Shows `[current: ••••]` when an existing value is present.
 /// Returns `None` (keep existing) if the user presses Enter with no input.
 /// Returns `Some(new_value)` when the user types a new value.
-fn prompt_secret(label: &str, existing: Option<&str>) -> Option<String> {
+fn prompt_secret(label: &str, existing: Option<&str>) -> anyhow::Result<Option<String>> {
     if let Some(cur) = existing {
         print!("  {label} [current: {}]: ", mask_secret(cur));
     } else {
         print!("  {label}: ");
     }
-    io::stdout().flush().ok();
+    io::stdout().flush()?;
 
     let mut buf = String::new();
-    io::stdin().read_line(&mut buf).unwrap_or(0);
+    io::stdin().read_line(&mut buf)?;
     let trimmed = buf.trim().to_string();
 
-    if trimmed.is_empty() {
+    Ok(if trimmed.is_empty() {
         None
     } else {
         Some(trimmed)
-    }
+    })
 }
 
 /// Prompt for a non-secret value. Shows `[default]` in brackets.
