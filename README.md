@@ -338,44 +338,54 @@ Set the relevant key in `~/.garudust/.env`, then switch models with `garudust mo
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                        garudust-server                           │
-│                                                                  │
-│  HTTP /chat ────┐                                                │
-│  HTTP /stream   │                                                │
-│  WebSocket ─────┼──► GatewayHandler ──► ArcSwap<Agent>          │
-│  Telegram       │                            │                   │
-│  Discord        │                            ▼                   │
-│  Slack ─────────┘                       run_loop()               │
-│  Matrix                                  │         │             │
-│  LINE                                                             │
-│  Cron ──────────────────────────►   Transport   ToolRegistry     │
-│                                    (Anthropic    (web, browser,  │
-│                                     OpenRouter   file, terminal, │
-│                                     Bedrock      memory, MCP,    │
-│                                     Codex        delegate, ...)  │
-│                                     Ollama                       │
-│                                     vLLM)                        │
-└──────────────────────────────────────────────────────────────────┘
+  garudust (CLI)              garudust-server
+  ┌────────────────────┐    ┌─────────────────────────────────────────────┐
+  │  TUI / one-shot    │    │  HTTP /chat · /stream · /ws                 │
+  │  setup · config    ├──┐ │  Telegram · Discord · Slack · Matrix · LINE │
+  │  doctor · model    │  │ │  Webhook · Cron                             │
+  └────────────────────┘  │ └──────────────────────────┬──────────────────┘
+                          │                            │
+                          └─────────────┬──────────────┘
+                                        ▼
+                               ┌─────────────────┐
+                               │      Agent       │
+                               │   run_loop()     │
+                               └────────┬─────────┘
+                            ┌───────────┴───────────┐
+                            ▼                       ▼
+              ┌──────────────────────┐  ┌─────────────────────────────────┐
+              │      Transport       │  │        ToolRegistry              │
+              │  Anthropic           │  │  web_fetch · web_search          │
+              │  OpenRouter          │  │  http_request · browser          │
+              │  AWS Bedrock         │  │  read_file · write_file          │
+              │  Codex               │  │  list_directory · terminal       │
+              │  Ollama · vLLM       │  │  memory · user_profile           │
+              └──────────────────────┘  │  session_search · delegate_task  │
+                                        │  skills · + MCP (external)       │
+                                        └─────────────┬───────────────────┘
+                                                      │
+                                          ┌───────────┴───────────┐
+                                          ▼                       ▼
+                                ┌──────────────────┐  ┌──────────────────────┐
+                                │ FileMemoryStore   │  │      SessionDb       │
+                                │ memory/ · skills/ │  │   SQLite + FTS5      │
+                                └──────────────────┘  └──────────────────────┘
 ```
 
 ### Crate layout
 
-```
-crates/
-  garudust-core        Shared traits & types — zero I/O
-  garudust-transport   LLM adapters: Anthropic, OpenAI-compat, Codex, Bedrock, Ollama, vLLM
-  garudust-tools       Tool registry + built-in toolsets (web, browser, file, …)
-  garudust-memory      FileMemoryStore (markdown) + SessionDb (SQLite + FTS5)
-  garudust-agent       Agent run loop, context compressor, prompt builder
-  garudust-platforms   Telegram, Discord, Slack, Matrix, LINE, Webhook
-  garudust-cron        Cron scheduler
-  garudust-gateway     axum HTTP gateway — /chat, /chat/stream, /chat/ws, /metrics
-
-bin/
-  garudust             CLI: interactive TUI, one-shot, setup, doctor, config, model
-  garudust-server      Headless: all platforms + HTTP + cron in one process
-```
+| Crate / Binary | Role |
+|---|---|
+| `garudust-core` | Shared traits & types — zero I/O |
+| `garudust-transport` | LLM adapters: Anthropic, OpenAI-compat, Bedrock, Codex, Ollama, vLLM |
+| `garudust-tools` | Tool registry + built-in toolsets (web, files, terminal, browser, …) |
+| `garudust-memory` | `FileMemoryStore` (markdown) + `SessionDb` (SQLite + FTS5) |
+| `garudust-agent` | Agent run loop, context compressor, prompt builder |
+| `garudust-platforms` | Telegram, Discord, Slack, Matrix, LINE, Webhook |
+| `garudust-cron` | Cron scheduler |
+| `garudust-gateway` | axum HTTP gateway — `/chat`, `/chat/stream`, `/chat/ws`, `/metrics` |
+| `bin/garudust` | CLI: interactive TUI, one-shot, `setup`, `config`, `doctor`, `model` |
+| `bin/garudust-server` | Headless: all platforms + HTTP gateway + cron in one process |
 
 ---
 

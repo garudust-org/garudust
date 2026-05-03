@@ -339,44 +339,54 @@ curl http://localhost:3000/metrics   # รองรับ Prometheus
 ## สถาปัตยกรรม
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                        garudust-server                           │
-│                                                                  │
-│  HTTP /chat ────┐                                                │
-│  HTTP /stream   │                                                │
-│  WebSocket ─────┼──► GatewayHandler ──► ArcSwap<Agent>          │
-│  Telegram       │                            │                   │
-│  Discord        │                            ▼                   │
-│  Slack ─────────┘                       run_loop()               │
-│  Matrix                                  │         │             │
-│  LINE                                                             │
-│  Cron ──────────────────────────►   Transport   ToolRegistry     │
-│                                    (Anthropic    (web, browser,  │
-│                                     OpenRouter   file, terminal, │
-│                                     Bedrock      memory, MCP,    │
-│                                     Codex        delegate, ...)  │
-│                                     Ollama                       │
-│                                     vLLM)                        │
-└──────────────────────────────────────────────────────────────────┘
+  garudust (CLI)              garudust-server
+  ┌────────────────────┐    ┌─────────────────────────────────────────────┐
+  │  TUI / one-shot    │    │  HTTP /chat · /stream · /ws                 │
+  │  setup · config    ├──┐ │  Telegram · Discord · Slack · Matrix · LINE │
+  │  doctor · model    │  │ │  Webhook · Cron                             │
+  └────────────────────┘  │ └──────────────────────────┬──────────────────┘
+                          │                            │
+                          └─────────────┬──────────────┘
+                                        ▼
+                               ┌─────────────────┐
+                               │      Agent       │
+                               │   run_loop()     │
+                               └────────┬─────────┘
+                            ┌───────────┴───────────┐
+                            ▼                       ▼
+              ┌──────────────────────┐  ┌─────────────────────────────────┐
+              │      Transport       │  │        ToolRegistry              │
+              │  Anthropic           │  │  web_fetch · web_search          │
+              │  OpenRouter          │  │  http_request · browser          │
+              │  AWS Bedrock         │  │  read_file · write_file          │
+              │  Codex               │  │  list_directory · terminal       │
+              │  Ollama · vLLM       │  │  memory · user_profile           │
+              └──────────────────────┘  │  session_search · delegate_task  │
+                                        │  skills · + MCP (external)       │
+                                        └─────────────┬───────────────────┘
+                                                      │
+                                          ┌───────────┴───────────┐
+                                          ▼                       ▼
+                                ┌──────────────────┐  ┌──────────────────────┐
+                                │ FileMemoryStore   │  │      SessionDb       │
+                                │ memory/ · skills/ │  │   SQLite + FTS5      │
+                                └──────────────────┘  └──────────────────────┘
 ```
 
 ### โครงสร้าง Crate
 
-```
-crates/
-  garudust-core        trait และ type ที่ใช้ร่วมกัน — ไม่มี I/O
-  garudust-transport   LLM adapter: Anthropic, OpenAI-compat, Codex, Bedrock, Ollama, vLLM
-  garudust-tools       Tool registry + toolset ในตัว (web, browser, file, …)
-  garudust-memory      FileMemoryStore (markdown) + SessionDb (SQLite + FTS5)
-  garudust-agent       Agent run loop, context compressor, prompt builder
-  garudust-platforms   Telegram, Discord, Slack, Matrix, LINE, Webhook
-  garudust-cron        Cron scheduler
-  garudust-gateway     axum HTTP gateway — /chat, /chat/stream, /chat/ws, /metrics
-
-bin/
-  garudust             CLI: TUI โต้ตอบ, one-shot, setup, doctor, config, model
-  garudust-server      Headless: ทุกแพลตฟอร์ม + HTTP + cron ในกระบวนการเดียว
-```
+| Crate / Binary | บทบาท |
+|---|---|
+| `garudust-core` | Trait และ type ที่ใช้ร่วมกัน — ไม่มี I/O |
+| `garudust-transport` | LLM adapter: Anthropic, OpenAI-compat, Bedrock, Codex, Ollama, vLLM |
+| `garudust-tools` | Tool registry + toolset ในตัว (web, files, terminal, browser, …) |
+| `garudust-memory` | `FileMemoryStore` (markdown) + `SessionDb` (SQLite + FTS5) |
+| `garudust-agent` | Agent run loop, context compressor, prompt builder |
+| `garudust-platforms` | Telegram, Discord, Slack, Matrix, LINE, Webhook |
+| `garudust-cron` | Cron scheduler |
+| `garudust-gateway` | axum HTTP gateway — `/chat`, `/chat/stream`, `/chat/ws`, `/metrics` |
+| `bin/garudust` | CLI: TUI โต้ตอบ, one-shot, `setup`, `config`, `doctor`, `model` |
+| `bin/garudust-server` | Headless: ทุกแพลตฟอร์ม + HTTP gateway + cron ในกระบวนการเดียว |
 
 ---
 
