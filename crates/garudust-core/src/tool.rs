@@ -25,6 +25,14 @@ pub trait Tool: Send + Sync + 'static {
         false
     }
 
+    /// Parameter-aware variant called by the registry. Override this when
+    /// destructiveness depends on the specific arguments (e.g. a terminal tool
+    /// that can also run read-only commands). The default delegates to
+    /// `is_destructive()` so existing tools need no changes.
+    fn is_destructive_for(&self, _params: &serde_json::Value) -> bool {
+        self.is_destructive()
+    }
+
     async fn execute(
         &self,
         params: serde_json::Value,

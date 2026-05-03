@@ -77,7 +77,7 @@ impl ToolRegistry {
         }
 
         // Property-based approval gate for destructive tools.
-        if tool.is_destructive() {
+        if tool.is_destructive_for(&params) {
             let decision = ctx.approver.approve(name, &params.to_string()).await;
             tracing::info!(
                 session_id = %ctx.session_id,

@@ -10,6 +10,11 @@ use tokio::process::Command;
 
 use crate::security::{command_references_sensitive_path, redact_secrets};
 
+/// Read-only git command prefixes that bypass the approval gate.
+/// A command matches if it equals one of these exactly or starts with
+/// one of them followed by a space (e.g. "git log --oneline").
+const READONLY_GIT_PREFIXES: &[&str] = &["git status", "git diff", "git log", "git show"];
+
 /// Only these variables are forwarded to subprocesses.
 /// Secrets (API keys, tokens, passwords) are deliberately excluded.
 const ENV_ALLOWLIST: &[&str] = &[
@@ -299,6 +304,13 @@ impl Tool for Terminal {
 
     fn is_destructive(&self) -> bool {
         true
+    }
+
+    fn is_destructive_for(&self, params: &serde_json::Value) -> bool {
+        let cmd = params["command"].as_str().unwrap_or("").trim();
+        !READONLY_GIT_PREFIXES
+            .iter()
+            .any(|&prefix| cmd == prefix || cmd.starts_with(&format!("{prefix} ")))
     }
 
     fn schema(&self) -> serde_json::Value {
@@ -696,6 +708,58 @@ mod tests {
     fn allows_read_of_home_directory() {
         ok("ls ~");
         ok("cat ~/README.md");
+    }
+
+    // ── is_destructive_for ───────────────────────────────────────────────────
+
+    #[test]
+    fn readonly_git_commands_are_not_destructive() {
+        let t = Terminal;
+        for cmd in &[
+            "git status",
+            "git status --short",
+            "git diff",
+            "git diff HEAD~1",
+            "git diff --stat",
+            "git log",
+            "git log --oneline",
+            "git log --oneline -10",
+            "git show",
+            "git show HEAD",
+        ] {
+            let params = serde_json::json!({ "command": cmd, "description": "test" });
+            assert!(
+                !t.is_destructive_for(&params),
+                "{cmd:?} should not be destructive"
+            );
+        }
+    }
+
+    #[test]
+    fn write_commands_are_destructive() {
+        let t = Terminal;
+        for cmd in &[
+            "git commit -m 'msg'",
+            "git push",
+            "git reset --hard HEAD~1",
+            "git checkout -b new-branch",
+            "rm -rf ./build",
+            "cargo build",
+            "echo hello",
+        ] {
+            let params = serde_json::json!({ "command": cmd, "description": "test" });
+            assert!(
+                t.is_destructive_for(&params),
+                "{cmd:?} should be destructive"
+            );
+        }
+    }
+
+    #[test]
+    fn missing_command_param_is_destructive() {
+        let t = Terminal;
+        let params = serde_json::json!({ "description": "test" });
+        assert!(t.is_destructive_for(&params));
     }
 
     // ── output truncation ────────────────────────────────────────────────────
