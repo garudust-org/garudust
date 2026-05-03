@@ -382,7 +382,12 @@ impl Agent {
                     fut.await?
                 }
             } else {
-                let fut = self.transport.chat(&history, &inf_config, &schemas);
+                let fut = async {
+                    self.transport
+                        .chat(&history, &inf_config, &schemas)
+                        .await
+                        .map_err(AgentError::from)
+                };
                 if secs > 0 {
                     timeout(Duration::from_secs(secs), fut)
                         .await
@@ -390,8 +395,7 @@ impl Agent {
                             AgentError::Transport(garudust_core::error::TransportError::Timeout(
                                 secs,
                             ))
-                        })?
-                        .map_err(AgentError::from)?
+                        })??
                 } else {
                     fut.await?
                 }

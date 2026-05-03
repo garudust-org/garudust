@@ -296,11 +296,9 @@ async fn shutdown_signal() {
     let sigterm: std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> =
         match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
             Ok(mut s) => Box::pin(async move {
-                loop {
-                    if s.recv().await.is_some() {
-                        break;
-                    }
-                }
+                while s.recv().await.is_some() {}
+                // Stream closed before signal arrived — degrade to ctrl_c only.
+                std::future::pending::<()>().await
             }),
             Err(e) => {
                 tracing::warn!("SIGTERM handler unavailable, falling back to Ctrl-C only: {e}");
@@ -525,7 +523,7 @@ async fn main() -> Result<()> {
             tokio::time::sleep(tokio::time::Duration::from_secs(shutdown_secs)).await;
             tracing::warn!(
                 drain_secs = shutdown_secs,
-                "drain timeout exceeded — forcing exit"
+                "drain timeout exceeded — forcing exit; MCP child processes may need manual cleanup"
             );
             std::process::exit(1);
         }

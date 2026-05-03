@@ -304,7 +304,7 @@ impl Tool for Terminal {
     }
 
     fn bypass_dispatch_timeout(&self) -> bool {
-        true // Terminal manages its own per-command timeout via the timeout_secs param.
+        true
     }
 
     fn is_destructive_for(&self, params: &serde_json::Value) -> bool {
