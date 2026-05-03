@@ -279,32 +279,37 @@ fn spawn_config_watcher(
     });
 }
 
-/// Resolves on SIGINT (Ctrl-C) or SIGTERM, whichever arrives first.
-/// Returns an error if a signal handler cannot be installed.
-async fn shutdown_signal() -> anyhow::Result<()> {
+/// Resolves when SIGINT (Ctrl-C) or SIGTERM is received.
+/// If a signal handler cannot be installed, falls back to pending() for that
+/// signal so the server degrades gracefully (Ctrl-C only) rather than shutting
+/// down immediately at startup.
+async fn shutdown_signal() {
     let ctrl_c = async {
-        tokio::signal::ctrl_c()
-            .await
-            .map_err(|e| anyhow::anyhow!("failed to install Ctrl-C handler: {e}"))
+        if let Err(e) = tokio::signal::ctrl_c().await {
+            tracing::warn!("Ctrl-C handler unavailable: {e}");
+            std::future::pending::<()>().await;
+        }
     };
 
     #[cfg(unix)]
-    let sigterm = async {
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .map_err(|e| anyhow::anyhow!("failed to install SIGTERM handler: {e}"))?
-            .recv()
-            .await;
-        Ok::<_, anyhow::Error>(())
-    };
+    let sigterm: std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> =
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut s) => Box::pin(async move {
+                s.recv().await;
+            }),
+            Err(e) => {
+                tracing::warn!("SIGTERM handler unavailable, falling back to Ctrl-C only: {e}");
+                Box::pin(std::future::pending())
+            }
+        };
 
     #[cfg(not(unix))]
-    let sigterm = std::future::pending::<anyhow::Result<()>>();
+    let sigterm = std::future::pending::<()>();
 
     tokio::select! {
-        r = ctrl_c  => { r?; tracing::info!("received SIGINT, initiating graceful shutdown"); }
-        r = sigterm => { r?; tracing::info!("received SIGTERM, initiating graceful shutdown"); }
+        () = ctrl_c  => { tracing::info!("received SIGINT, initiating graceful shutdown"); }
+        () = sigterm => { tracing::info!("received SIGTERM, initiating graceful shutdown"); }
     }
-    Ok(())
 }
 
 #[tokio::main]
@@ -501,12 +506,10 @@ async fn main() -> Result<()> {
     tracing::info!("garudust-server listening on {addr}");
 
     let serve = axum::serve(listener, router).with_graceful_shutdown(async move {
-        if let Err(e) = shutdown_signal().await {
-            tracing::warn!("signal handler error: {e}");
-        }
+        shutdown_signal().await;
+        tracing::info!(drain_secs = shutdown_secs, "draining in-flight requests");
     });
 
-    tracing::info!(drain_secs = shutdown_secs, "draining in-flight requests");
     if shutdown_secs > 0 {
         tokio::time::timeout(tokio::time::Duration::from_secs(shutdown_secs), serve)
             .await
@@ -521,7 +524,7 @@ async fn main() -> Result<()> {
         serve.await?;
     }
 
-    // mcp_handles drops here, terminating MCP child processes cleanly.
+    // Explicit drop ensures MCP child processes exit before the server process does.
     drop(mcp_handles);
     tracing::info!("shutdown complete");
 

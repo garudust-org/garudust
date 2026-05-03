@@ -492,7 +492,8 @@ impl Agent {
                     let id = tc.id.clone();
                     async move {
                         debug!(tool = %name, "dispatching");
-                        let res = if tool_timeout_secs > 0 && name != "terminal" {
+                        let res = if tool_timeout_secs > 0 && !tools.bypass_dispatch_timeout(&name)
+                        {
                             timeout(
                                 Duration::from_secs(tool_timeout_secs),
                                 tools.dispatch(&name, args, &ctx),

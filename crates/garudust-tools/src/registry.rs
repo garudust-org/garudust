@@ -127,6 +127,13 @@ impl ToolRegistry {
     pub fn names(&self) -> Vec<&str> {
         self.tools.keys().map(String::as_str).collect()
     }
+
+    /// Returns `true` if the named tool opts out of the global dispatch timeout.
+    pub fn bypass_dispatch_timeout(&self, name: &str) -> bool {
+        self.tools
+            .get(name)
+            .is_some_and(|t| t.bypass_dispatch_timeout())
+    }
 }
 
 /// Truncate a string to at most `max` bytes at a UTF-8 char boundary for safe logging.

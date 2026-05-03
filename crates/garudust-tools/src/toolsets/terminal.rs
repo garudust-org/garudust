@@ -303,6 +303,10 @@ impl Tool for Terminal {
         true
     }
 
+    fn bypass_dispatch_timeout(&self) -> bool {
+        true // Terminal manages its own per-command timeout via the timeout_secs param.
+    }
+
     fn is_destructive_for(&self, params: &serde_json::Value) -> bool {
         let cmd = params["command"].as_str().unwrap_or("").trim();
         // Reject multi-segment commands (`;`, `|`, `&`, newline) — a suffix like
