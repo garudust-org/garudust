@@ -337,44 +337,54 @@ curl http://localhost:3000/metrics   # Prometheus 兼容
 ## 架构
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                        garudust-server                           │
-│                                                                  │
-│  HTTP /chat ────┐                                                │
-│  HTTP /stream   │                                                │
-│  WebSocket ─────┼──► GatewayHandler ──► ArcSwap<Agent>          │
-│  Telegram       │                            │                   │
-│  Discord        │                            ▼                   │
-│  Slack ─────────┘                       run_loop()               │
-│  Matrix                                  │         │             │
-│  LINE                                                             │
-│  Cron ──────────────────────────►   Transport   ToolRegistry     │
-│                                    (Anthropic    (web, browser,  │
-│                                     OpenRouter   file, terminal, │
-│                                     Bedrock      memory, MCP,    │
-│                                     Codex        delegate, ...)  │
-│                                     Ollama                       │
-│                                     vLLM)                        │
-└──────────────────────────────────────────────────────────────────┘
+  garudust (CLI)              garudust-server
+  ┌────────────────────┐    ┌─────────────────────────────────────────────┐
+  │  TUI / one-shot    │    │  HTTP /chat · /stream · /ws                 │
+  │  setup · config    ├──┐ │  Telegram · Discord · Slack · Matrix · LINE │
+  │  doctor · model    │  │ │  Webhook · Cron                             │
+  └────────────────────┘  │ └──────────────────────────┬──────────────────┘
+                          │                            │
+                          └─────────────┬──────────────┘
+                                        ▼
+                               ┌─────────────────┐
+                               │      Agent       │
+                               │   run_loop()     │
+                               └────────┬─────────┘
+                            ┌───────────┴───────────┐
+                            ▼                       ▼
+              ┌──────────────────────┐  ┌─────────────────────────────────┐
+              │      Transport       │  │        ToolRegistry              │
+              │  Anthropic           │  │  web_fetch · web_search          │
+              │  OpenRouter          │  │  http_request · browser          │
+              │  AWS Bedrock         │  │  read_file · write_file          │
+              │  Codex               │  │  list_directory · terminal       │
+              │  Ollama · vLLM       │  │  memory · user_profile           │
+              └──────────────────────┘  │  session_search · delegate_task  │
+                                        │  skills · + MCP (external)       │
+                                        └─────────────┬───────────────────┘
+                                                      │
+                                          ┌───────────┴───────────┐
+                                          ▼                       ▼
+                                ┌──────────────────┐  ┌──────────────────────┐
+                                │ FileMemoryStore   │  │      SessionDb       │
+                                │ memory/ · skills/ │  │   SQLite + FTS5      │
+                                └──────────────────┘  └──────────────────────┘
 ```
 
 ### Crate 布局
 
-```
-crates/
-  garudust-core        共享 trait 和类型 — 零 I/O
-  garudust-transport   LLM 适配器：Anthropic、OpenAI-compat、Codex、Bedrock、Ollama、vLLM
-  garudust-tools       工具注册表 + 内置工具集（web、browser、file 等）
-  garudust-memory      FileMemoryStore（markdown）+ SessionDb（SQLite + FTS5）
-  garudust-agent       Agent 运行循环、上下文压缩器、提示构建器
-  garudust-platforms   Telegram、Discord、Slack、Matrix、LINE、Webhook
-  garudust-cron        定时调度器
-  garudust-gateway     axum HTTP 网关 — /chat、/chat/stream、/chat/ws、/metrics
-
-bin/
-  garudust             CLI：交互式 TUI、单次任务、setup、doctor、config、model
-  garudust-server      无头模式：所有平台 + HTTP + 定时任务，单进程运行
-```
+| Crate / 二进制 | 职责 |
+|---|---|
+| `garudust-core` | 共享 trait 和类型 — 零 I/O |
+| `garudust-transport` | LLM 适配器：Anthropic、OpenAI-compat、Bedrock、Codex、Ollama、vLLM |
+| `garudust-tools` | 工具注册表 + 内置工具集（web、files、terminal、browser 等） |
+| `garudust-memory` | `FileMemoryStore`（markdown）+ `SessionDb`（SQLite + FTS5） |
+| `garudust-agent` | Agent 运行循环、上下文压缩器、提示构建器 |
+| `garudust-platforms` | Telegram、Discord、Slack、Matrix、LINE、Webhook |
+| `garudust-cron` | 定时调度器 |
+| `garudust-gateway` | axum HTTP 网关 — `/chat`、`/chat/stream`、`/chat/ws`、`/metrics` |
+| `bin/garudust` | CLI：交互式 TUI、单次任务、`setup`、`config`、`doctor`、`model` |
+| `bin/garudust-server` | 无头模式：所有平台 + HTTP 网关 + 定时任务，单进程运行 |
 
 ---
 
