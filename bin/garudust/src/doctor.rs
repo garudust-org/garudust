@@ -60,25 +60,46 @@ pub async fn run(config: &AgentConfig) {
     checks.push(Check::ok("Model", &config.model));
 
     // ── API Key ──────────────────────────────────────────────────────────────
-    if let Some(k) = &config.api_key {
-        checks.push(Check::ok("API key", redact(k)));
-    } else {
-        let hint = if config.provider == "anthropic" {
-            "ANTHROPIC_API_KEY"
-        } else {
-            "OPENROUTER_API_KEY"
-        };
-        checks.push(Check::fail("API key", format!("not set — export {hint}")));
+    match config.provider.as_str() {
+        "ollama" => {
+            checks.push(Check::ok("API key", "not required (ollama)"));
+        }
+        "vllm" => {
+            if let Some(k) = &config.api_key {
+                checks.push(Check::ok("API key", redact(k)));
+            } else {
+                checks.push(Check::ok("API key", "not required (vllm)"));
+            }
+        }
+        "anthropic" => {
+            if let Some(k) = &config.api_key {
+                checks.push(Check::ok("API key", redact(k)));
+            } else {
+                checks.push(Check::fail("API key", "not set — export ANTHROPIC_API_KEY"));
+            }
+        }
+        _ => {
+            if let Some(k) = &config.api_key {
+                checks.push(Check::ok("API key", redact(k)));
+            } else {
+                checks.push(Check::fail(
+                    "API key",
+                    "not set — export OPENROUTER_API_KEY",
+                ));
+            }
+        }
     }
 
     // ── Connectivity ─────────────────────────────────────────────────────────
-    let base = config.base_url.clone().unwrap_or_else(|| {
-        if config.provider == "anthropic" {
-            "https://api.anthropic.com".into()
-        } else {
-            "https://openrouter.ai".into()
-        }
-    });
+    let base = config
+        .base_url
+        .clone()
+        .unwrap_or_else(|| match config.provider.as_str() {
+            "anthropic" => "https://api.anthropic.com".into(),
+            "ollama" => "http://localhost:11434".into(),
+            "vllm" => "http://localhost:8000".into(),
+            _ => "https://openrouter.ai".into(),
+        });
     let host = host_of(&base);
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(5))
@@ -164,8 +185,18 @@ pub async fn run(config: &AgentConfig) {
 }
 
 fn redact(key: &str) -> String {
-    if key.len() > 10 {
-        format!("{}…{}", &key[..6], &key[key.len() - 4..])
+    let chars: Vec<char> = key.chars().collect();
+    if chars.len() > 10 {
+        let prefix: String = chars.iter().take(6).collect();
+        let suffix: String = chars
+            .iter()
+            .rev()
+            .take(4)
+            .collect::<String>()
+            .chars()
+            .rev()
+            .collect();
+        format!("{prefix}…{suffix}")
     } else {
         "set".into()
     }
