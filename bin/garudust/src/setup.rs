@@ -94,6 +94,17 @@ pub async fn run() -> anyhow::Result<()> {
     println!();
 
     // ── Credentials / endpoint ────────────────────────────────────────────────
+    // Remove base-URL env vars for providers not selected — they take priority
+    // over config.yaml in AgentConfig::load() and would override the new choice.
+    let stale_base_url_vars: &[&str] = match provider {
+        "ollama" => &["VLLM_BASE_URL"],
+        "vllm" => &["OLLAMA_BASE_URL"],
+        _ => &["OLLAMA_BASE_URL", "VLLM_BASE_URL"],
+    };
+    for var in stale_base_url_vars {
+        remove_env_var(&home_dir, var)?;
+    }
+
     let mut env_vars: Vec<(&'static str, String)> = Vec::new();
     let mut custom_base_url: Option<String> = None;
 
@@ -251,6 +262,21 @@ pub async fn run() -> anyhow::Result<()> {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+/// Remove a key from ~/.garudust/.env if present.
+fn remove_env_var(home_dir: &Path, key: &str) -> std::io::Result<()> {
+    let env_path = home_dir.join(".env");
+    if !env_path.exists() {
+        return Ok(());
+    }
+    let content = std::fs::read_to_string(&env_path)?;
+    let prefix = format!("{key}=");
+    let filtered: Vec<&str> = content
+        .lines()
+        .filter(|l| !l.trim().starts_with(prefix.as_str()))
+        .collect();
+    std::fs::write(&env_path, filtered.join("\n") + "\n")
+}
 
 /// Read a raw value from ~/.garudust/.env without going through the OnceLock cache.
 fn read_env_file(home_dir: &Path, key: &str) -> Option<String> {
