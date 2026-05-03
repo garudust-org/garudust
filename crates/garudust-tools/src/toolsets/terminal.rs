@@ -10,8 +10,6 @@ use tokio::process::Command;
 
 use crate::security::{command_references_sensitive_path, redact_secrets};
 
-// Read-only git prefixes — approval gate is skipped for commands that match
-// one of these and contain no shell metacharacters.
 const READONLY_GIT_PREFIXES: &[&str] = &["git status", "git diff", "git log", "git show"];
 
 /// Only these variables are forwarded to subprocesses.
@@ -310,9 +308,10 @@ impl Tool for Terminal {
         // Reject multi-segment commands (`;`, `|`, `&`, newline) — a suffix like
         // `git log; git push` would otherwise bypass the allowlist check.
         let mut segments = split_shell_segments(cmd);
-        let sole = match (segments.next(), segments.next()) {
-            (Some(s), None) => s.trim(),
-            _ => return true,
+        let sole = if let (Some(s), None) = (segments.next(), segments.next()) {
+            s.trim()
+        } else {
+            return true;
         };
         // Reject shell metacharacters that `split_shell_segments` doesn't cover:
         // `>` / `<` for redirection and `` ` `` / `$` for command substitution.
@@ -320,8 +319,9 @@ impl Tool for Terminal {
         if sole.contains('>') || sole.contains('<') || sole.contains('`') || sole.contains('$') {
             return true;
         }
-        // `git diff --no-index` reads arbitrary filesystem paths, not just repo state.
-        if sole.contains("--no-index") {
+        // `--no-index` and `--output=` are native git flags that read/write
+        // arbitrary filesystem paths rather than repository state.
+        if sole.contains("--no-index") || sole.contains("--output") {
             return true;
         }
         !READONLY_GIT_PREFIXES.iter().any(|&p| {
@@ -803,11 +803,13 @@ mod tests {
             "git diff --no-index /etc/shadow /dev/null",
             "git diff --no-index /home/user/secrets.txt /dev/null",
             "git diff --no-index a b",
+            "git diff --output=/tmp/out HEAD~1",
+            "git show --output=/home/runner/.ssh/authorized_keys HEAD",
         ] {
             let params = serde_json::json!({ "command": cmd, "description": "test" });
             assert!(
                 t.is_destructive_for(&params),
-                "{cmd:?} reads arbitrary FS paths and should be destructive"
+                "{cmd:?} reads/writes arbitrary FS paths and should be destructive"
             );
         }
     }
