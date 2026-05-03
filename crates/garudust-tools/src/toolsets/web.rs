@@ -370,6 +370,11 @@ async fn brave_search(query: &str, count: usize, api_key: &str) -> Result<ToolRe
     Ok(ToolResult::ok("", formatted.join("\n\n")))
 }
 
+const DDG_BLOCKED_MSG: &str = "Web search is unavailable: DuckDuckGo blocked this request \
+    (bot/rate-limit detection). To enable reliable search, get a free Brave Search API key at \
+    https://brave.com/search/api/ and set BRAVE_SEARCH_API_KEY (via `garudust setup` or \
+    `garudust config set BRAVE_SEARCH_API_KEY <key>`).";
+
 async fn ddg_search(query: &str, count: usize) -> Result<ToolResult, ToolError> {
     let resp = http_client()?
         .get("https://html.duckduckgo.com/html/")
@@ -377,6 +382,11 @@ async fn ddg_search(query: &str, count: usize) -> Result<ToolResult, ToolError> 
         .send()
         .await
         .map_err(|e| ToolError::Execution(format!("DDG search failed: {e}")))?;
+
+    // DDG returns HTTP 202 when it serves a bot-detection/CAPTCHA challenge page.
+    if resp.status().as_u16() == 202 {
+        return Ok(ToolResult::ok("", DDG_BLOCKED_MSG));
+    }
 
     if !resp.status().is_success() {
         return Err(ToolError::Execution(format!(
@@ -390,11 +400,16 @@ async fn ddg_search(query: &str, count: usize) -> Result<ToolResult, ToolError> 
         .await
         .map_err(|e| ToolError::Execution(e.to_string()))?;
 
+    // Detect anomaly/CAPTCHA body even when status is 200.
+    if html.contains("anomaly.js") {
+        return Ok(ToolResult::ok("", DDG_BLOCKED_MSG));
+    }
+
     let items = parse_ddg_html(&html, count);
     if items.is_empty() {
         return Ok(ToolResult::ok(
             "",
-            "No results found. (DDG returned no parseable results — it may be rate-limiting.)",
+            "No results found.",
         ));
     }
     Ok(ToolResult::ok("", items.join("\n\n")))
