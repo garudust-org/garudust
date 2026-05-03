@@ -274,8 +274,12 @@ fn spawn_config_watcher(
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()))
+        .with_writer(std::io::stderr)
         .init();
-    dotenvy::dotenv().ok();
+    // Load ~/.garudust/.env first so platform tokens saved by `garudust setup`
+    // are visible to clap's env = "..." attributes below.
+    dotenvy::from_path(AgentConfig::garudust_dir().join(".env")).ok();
+    dotenvy::dotenv().ok(); // local .env override for development
 
     let cli = Cli::parse();
     let config = build_config(&cli);
