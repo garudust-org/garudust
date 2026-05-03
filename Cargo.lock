@@ -1710,7 +1710,7 @@ dependencies = [
  "garudust-memory",
  "globset",
  "jsonschema",
- "lopdf 0.32.0",
+ "lopdf",
  "pdf-extract",
  "reqwest 0.12.28",
  "rmcp",
@@ -2592,12 +2592,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "linked-hash-map"
-version = "0.5.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0717cef1bc8b636c6e1c1bbdefc09e6322da8a9321966e8928ef80d20f7f770f"
-
-[[package]]
 name = "linux-raw-sys"
 version = "0.4.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2632,29 +2626,11 @@ checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 
 [[package]]
 name = "lopdf"
-version = "0.32.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e775e4ee264e8a87d50a9efef7b67b4aa988cf94e75630859875fc347e6c872b"
-dependencies = [
- "chrono",
- "encoding_rs",
- "flate2",
- "itoa",
- "linked-hash-map",
- "log",
- "md5",
- "nom",
- "rayon",
- "time",
- "weezl",
-]
-
-[[package]]
-name = "lopdf"
 version = "0.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c5c8ecfc6c72051981c0459f75ccc585e7ff67c70829560cda8e647882a9abff"
 dependencies = [
+ "chrono",
  "encoding_rs",
  "flate2",
  "indexmap",
@@ -2663,6 +2639,7 @@ dependencies = [
  "md-5",
  "nom",
  "rangemap",
+ "rayon",
  "time",
  "weezl",
 ]
@@ -2822,12 +2799,6 @@ dependencies = [
  "cfg-if",
  "digest 0.10.7",
 ]
-
-[[package]]
-name = "md5"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "490cc448043f947bae3cbee9c203358d62dbee0db12107a74be5c30ccfd09771"
 
 [[package]]
 name = "memchr"
@@ -3156,7 +3127,7 @@ dependencies = [
  "adobe-cmap-parser",
  "encoding_rs",
  "euclid",
- "lopdf 0.34.0",
+ "lopdf",
  "postscript",
  "type1-encoding-parser",
  "unicode-normalization",

@@ -11,10 +11,7 @@ use serde_json::{json, Value};
 
 use super::files::is_path_allowed;
 
-/// Maximum bytes of extracted text returned to the agent.
 const MAX_OUTPUT_BYTES: usize = 200 * 1_024;
-
-/// Maximum pages processed in a single call.
 const MAX_PAGES: usize = 50;
 
 #[derive(Deserialize)]
@@ -23,7 +20,6 @@ struct PdfReadInput {
     pages: Option<String>,
 }
 
-/// Parse "N" or "N-M" into an inclusive 1-based page range.
 fn parse_page_range(s: &str) -> Result<(usize, usize), ToolError> {
     let s = s.trim();
     if let Some((a, b)) = s.split_once('-') {
@@ -51,11 +47,12 @@ fn parse_page_range(s: &str) -> Result<(usize, usize), ToolError> {
 }
 
 fn pdf_obj_to_string(obj: &lopdf::Object) -> Option<String> {
-    match obj {
-        lopdf::Object::String(bytes, _) => String::from_utf8(bytes.clone())
+    if let lopdf::Object::String(bytes, _) = obj {
+        String::from_utf8(bytes.clone())
             .ok()
-            .filter(|s| !s.trim().is_empty()),
-        _ => None,
+            .filter(|s| !s.trim().is_empty())
+    } else {
+        None
     }
 }
 
@@ -137,14 +134,15 @@ impl Tool for PdfRead {
             let doc =
                 lopdf::Document::load_mem(&bytes).map_err(|e| format!("PDF parse error: {e}"))?;
 
-            let page_count = doc.get_pages().len();
             let (title, author) = extract_metadata(&doc);
 
             let all_text = pdf_extract::extract_text_from_mem(&bytes)
                 .map_err(|e| format!("text extraction failed: {e}"))?;
 
-            // pdf-extract separates pages with form-feed (\x0c)
+            // pdf-extract separates pages with form-feed (\x0c); use this as
+            // the authoritative page count since both parses are from the same crate version.
             let all_pages: Vec<&str> = all_text.split('\x0c').collect();
+            let page_count = all_pages.len();
 
             let (start, end) = page_range.unwrap_or((1, MAX_PAGES.min(page_count)));
             let end = end.min(page_count).min(start + MAX_PAGES - 1);
@@ -162,13 +160,19 @@ impl Tool for PdfRead {
 
             let mut truncated = false;
             if text.len() > MAX_OUTPUT_BYTES {
-                text.truncate(MAX_OUTPUT_BYTES);
+                // Walk back from the cap to the nearest char boundary to avoid panics
+                // on multi-byte characters (CJK, accented Latin, etc.).
+                let cut = (0..=MAX_OUTPUT_BYTES)
+                    .rev()
+                    .find(|&i| text.is_char_boundary(i))
+                    .unwrap_or(0);
+                text.truncate(cut);
                 truncated = true;
             }
 
             let mut out = json!({
                 "page_count": page_count,
-                "pages_extracted": format!("{start}-{}", end.min(page_count)),
+                "pages_extracted": format!("{start}-{end}"),
                 "text": text,
             });
             if let Some(t) = title {
@@ -220,5 +224,18 @@ mod tests {
     fn rejects_garbage() {
         assert!(parse_page_range("abc").is_err());
         assert!(parse_page_range("1-abc").is_err());
+    }
+
+    #[test]
+    fn truncate_respects_char_boundary() {
+        // Simulate the truncation logic on a string with multi-byte chars.
+        let s = "日本語テスト".repeat(100); // each char is 3 bytes
+        let cap = 7; // not on a char boundary
+        let cut = (0..=cap)
+            .rev()
+            .find(|&i| s.is_char_boundary(i))
+            .unwrap_or(0);
+        assert!(s.is_char_boundary(cut));
+        assert!(cut <= cap);
     }
 }
