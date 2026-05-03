@@ -3,6 +3,7 @@ pub mod delegate;
 pub mod files;
 pub mod mcp;
 pub mod memory;
+pub mod pdf;
 pub mod search;
 pub mod skills;
 pub mod terminal;

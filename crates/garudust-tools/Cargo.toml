@@ -21,6 +21,8 @@ chromiumoxide   = { workspace = true }
 jsonschema      = { workspace = true }
 walkdir         = { workspace = true }
 globset         = { workspace = true }
+lopdf           = { workspace = true }
+pdf-extract     = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

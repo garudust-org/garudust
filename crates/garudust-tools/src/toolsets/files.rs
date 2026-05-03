@@ -31,7 +31,7 @@ fn try_canonicalize(path: &Path) -> Option<PathBuf> {
 
 /// Check whether `path` is within one of the allowed root directories.
 /// Always blocks paths inside `~/.garudust/` regardless of allowed roots.
-fn is_path_allowed(path: &Path, allowed_roots: &[PathBuf]) -> bool {
+pub(crate) fn is_path_allowed(path: &Path, allowed_roots: &[PathBuf]) -> bool {
     let Some(canonical) = try_canonicalize(path) else {
         return false;
     };
