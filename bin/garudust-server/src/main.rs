@@ -296,9 +296,8 @@ async fn shutdown_signal() {
     let sigterm: std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> =
         match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
             Ok(mut s) => Box::pin(async move {
-                while s.recv().await.is_some() {}
-                // Stream closed before signal arrived — degrade to ctrl_c only.
-                std::future::pending::<()>().await;
+                // Some(()) = SIGTERM received; None = stream closed — both resolve the select.
+                s.recv().await;
             }),
             Err(e) => {
                 tracing::warn!("SIGTERM handler unavailable, falling back to Ctrl-C only: {e}");
