@@ -407,10 +407,7 @@ async fn ddg_search(query: &str, count: usize) -> Result<ToolResult, ToolError> 
 
     let items = parse_ddg_html(&html, count);
     if items.is_empty() {
-        return Ok(ToolResult::ok(
-            "",
-            "No results found.",
-        ));
+        return Ok(ToolResult::ok("", "No results found."));
     }
     Ok(ToolResult::ok("", items.join("\n\n")))
 }
