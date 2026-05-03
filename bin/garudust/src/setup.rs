@@ -1,4 +1,5 @@
 use std::io::{self, Write};
+use std::path::Path;
 
 use crossterm::{
     cursor,
@@ -9,13 +10,49 @@ use crossterm::{
 };
 use garudust_core::config::AgentConfig;
 
+// (display name, [(label, env_var)])
+const PLATFORMS: &[(&str, &[(&str, &str)])] = &[
+    ("Telegram", &[("Telegram bot token", "TELEGRAM_TOKEN")]),
+    ("Discord", &[("Discord bot token", "DISCORD_TOKEN")]),
+    (
+        "Slack",
+        &[
+            ("Slack bot token (xoxb-...)", "SLACK_BOT_TOKEN"),
+            ("Slack app token (xapp-...)", "SLACK_APP_TOKEN"),
+        ],
+    ),
+    (
+        "Matrix",
+        &[
+            ("Matrix homeserver URL", "MATRIX_HOMESERVER"),
+            ("Matrix user (@bot:example.com)", "MATRIX_USER"),
+            ("Matrix password", "MATRIX_PASSWORD"),
+        ],
+    ),
+    (
+        "LINE",
+        &[
+            ("LINE channel access token", "LINE_CHANNEL_TOKEN"),
+            ("LINE channel secret", "LINE_CHANNEL_SECRET"),
+        ],
+    ),
+];
+
 pub async fn run() -> anyhow::Result<()> {
     let home_dir = AgentConfig::garudust_dir();
     std::fs::create_dir_all(&home_dir)?;
 
+    let existing = AgentConfig::load();
+    let is_reconfigure = home_dir.join("config.yaml").exists();
+
     println!("Garudust Setup");
     println!("{}", "─".repeat(48));
-    println!("Press Enter to accept the [default] value.\n");
+    if is_reconfigure {
+        println!("Existing configuration found.");
+        println!("Press Enter to keep the current value, or type a new one.\n");
+    } else {
+        println!("Press Enter to accept the [default] value.\n");
+    }
 
     // ── Mode ──────────────────────────────────────────────────────────────────
     println!("Setup mode:");
@@ -28,13 +65,22 @@ pub async fn run() -> anyhow::Result<()> {
     // ── Provider ──────────────────────────────────────────────────────────────
     let ollama_detected = std::net::TcpStream::connect("127.0.0.1:11434").is_ok();
     let ollama_hint = if ollama_detected { " ✓ detected" } else { "" };
+
+    let current_num = match existing.provider.as_str() {
+        "openrouter" => "2",
+        "anthropic" => "3",
+        "vllm" => "4",
+        "custom" => "5",
+        _ => "1",
+    };
+
     println!("LLM Provider:");
     println!("  1) ollama      — local Ollama, no API key needed{ollama_hint}");
     println!("  2) openrouter  — 200+ hosted models (openrouter.ai)");
     println!("  3) anthropic   — Claude directly");
     println!("  4) vllm        — self-hosted vLLM server");
     println!("  5) custom      — any OpenAI-compatible endpoint");
-    let choice = prompt("Choose provider", Some("1"));
+    let choice = prompt("Choose provider", Some(current_num));
     let provider = match choice.trim() {
         "2" | "openrouter" => "openrouter",
         "3" | "anthropic" => "anthropic",
@@ -50,65 +96,65 @@ pub async fn run() -> anyhow::Result<()> {
 
     match provider {
         "anthropic" => {
-            let k = prompt("ANTHROPIC_API_KEY", None);
-            if !k.is_empty() {
-                env_vars.push(("ANTHROPIC_API_KEY", k));
+            let cur = read_env_file(&home_dir, "ANTHROPIC_API_KEY");
+            if let Some(v) = prompt_secret("ANTHROPIC_API_KEY", cur.as_deref()) {
+                env_vars.push(("ANTHROPIC_API_KEY", v));
             }
         }
         "vllm" => {
-            let url = prompt("VLLM_BASE_URL", Some("http://localhost:8000/v1"));
-            let url = if url.is_empty() {
-                "http://localhost:8000/v1".to_string()
-            } else {
-                url
-            };
+            let cur_url = read_env_file(&home_dir, "VLLM_BASE_URL")
+                .unwrap_or_else(|| "http://localhost:8000/v1".into());
+            let url = prompt("VLLM_BASE_URL", Some(&cur_url));
+            let url = if url.is_empty() { cur_url } else { url };
             env_vars.push(("VLLM_BASE_URL", url));
-            let k = prompt("VLLM_API_KEY (Enter to skip)", Some(""));
-            if !k.is_empty() {
-                env_vars.push(("VLLM_API_KEY", k));
+
+            let cur_key = read_env_file(&home_dir, "VLLM_API_KEY");
+            if let Some(v) = prompt_secret("VLLM_API_KEY (Enter to skip)", cur_key.as_deref()) {
+                env_vars.push(("VLLM_API_KEY", v));
             }
         }
         "ollama" => {
-            let url = prompt("OLLAMA_BASE_URL", Some("http://localhost:11434"));
-            let url = if url.is_empty() {
-                "http://localhost:11434".to_string()
-            } else {
-                url
-            };
+            let cur_url = read_env_file(&home_dir, "OLLAMA_BASE_URL")
+                .unwrap_or_else(|| "http://localhost:11434".into());
+            let url = prompt("OLLAMA_BASE_URL", Some(&cur_url));
+            let url = if url.is_empty() { cur_url } else { url };
             env_vars.push(("OLLAMA_BASE_URL", url));
         }
         "custom" => {
-            let url = prompt("Base URL (e.g. http://localhost:8000/v1)", None);
+            let cur_url = existing.base_url.as_deref();
+            let url = prompt("Base URL (e.g. http://localhost:8000/v1)", cur_url);
             if !url.is_empty() {
                 custom_base_url = Some(url);
+            } else if let Some(u) = existing.base_url.clone() {
+                custom_base_url = Some(u);
             }
-            let k = prompt("API key (Enter to skip)", Some(""));
-            if !k.is_empty() {
-                env_vars.push(("OPENROUTER_API_KEY", k));
+            let cur_key = read_env_file(&home_dir, "OPENROUTER_API_KEY");
+            if let Some(v) = prompt_secret("API key (Enter to skip)", cur_key.as_deref()) {
+                env_vars.push(("OPENROUTER_API_KEY", v));
             }
         }
         _ => {
-            let k = prompt("OPENROUTER_API_KEY", None);
-            if !k.is_empty() {
-                env_vars.push(("OPENROUTER_API_KEY", k));
+            // openrouter
+            let cur = read_env_file(&home_dir, "OPENROUTER_API_KEY");
+            if let Some(v) = prompt_secret("OPENROUTER_API_KEY", cur.as_deref()) {
+                env_vars.push(("OPENROUTER_API_KEY", v));
             }
         }
     }
     println!();
 
     // ── Model ─────────────────────────────────────────────────────────────────
-    let default_model = match provider {
-        "ollama" => "llama3.2",
-        "anthropic" => "claude-sonnet-4-6",
-        "openrouter" => "anthropic/claude-sonnet-4-6",
-        _ => "",
-    };
-    let hint = if default_model.is_empty() {
-        None
+    let default_model = if is_reconfigure && provider == existing.provider {
+        existing.model.as_str()
     } else {
-        Some(default_model)
+        match provider {
+            "ollama" => "llama3.2",
+            "anthropic" => "claude-sonnet-4-6",
+            "openrouter" => "anthropic/claude-sonnet-4-6",
+            _ => "",
+        }
     };
-    let model_input = prompt("Model", hint);
+    let model_input = prompt("Model", if default_model.is_empty() { None } else { Some(default_model) });
     let model = if model_input.is_empty() {
         default_model.to_string()
     } else {
@@ -118,64 +164,38 @@ pub async fn run() -> anyhow::Result<()> {
 
     // ── Optional tools + platform adapters (Full mode) ───────────────────────
     if full {
-        println!("Optional Tools (Enter to skip each):");
-        let tool_fields: &[(&str, &str)] = &[(
-            "Brave Search API key (web_search tool)",
-            "BRAVE_SEARCH_API_KEY",
-        )];
-        for (label, var) in tool_fields {
-            let val = prompt(label, Some(""));
-            if !val.is_empty() {
-                env_vars.push((var, val));
-            }
+        println!("Optional Tools (Enter to keep current / skip):");
+        let cur_brave = read_env_file(&home_dir, "BRAVE_SEARCH_API_KEY");
+        if let Some(v) = prompt_secret("Brave Search API key (web_search tool)", cur_brave.as_deref()) {
+            env_vars.push(("BRAVE_SEARCH_API_KEY", v));
         }
         println!();
 
-        // ── Platform selection via checkbox menu ──────────────────────────────
-        let platforms: &[(&str, &str)] = &[
-            ("Telegram", "telegram"),
-            ("Discord", "discord"),
-            ("Slack", "slack"),
-            ("Matrix", "matrix"),
-            ("LINE", "line"),
-        ];
+        // Pre-tick platforms that already have at least one token in .env
+        let preselected: Vec<bool> = PLATFORMS
+            .iter()
+            .map(|(_, fields)| {
+                fields
+                    .iter()
+                    .any(|(_, var)| read_env_file(&home_dir, var).is_some())
+            })
+            .collect();
 
         println!("Platform Adapters:");
         println!("  ↑↓ to move  ·  Space to select  ·  Enter to confirm\n");
 
-        let names: Vec<&str> = platforms.iter().map(|(name, _)| *name).collect();
-        let selected = multi_select(&names)?;
+        let names: Vec<&str> = PLATFORMS.iter().map(|(name, _)| *name).collect();
+        let selected = multi_select(&names, &preselected)?;
         println!();
 
-        // ── Per-platform config fields ────────────────────────────────────────
-        for (i, (_name, id)) in platforms.iter().enumerate() {
+        for (i, (_, fields)) in PLATFORMS.iter().enumerate() {
             if !selected[i] {
                 continue;
             }
-
-            let fields: &[(&str, &str)] = match *id {
-                "telegram" => &[("Telegram bot token", "TELEGRAM_TOKEN")],
-                "discord" => &[("Discord bot token", "DISCORD_TOKEN")],
-                "slack" => &[
-                    ("Slack bot token (xoxb-...)", "SLACK_BOT_TOKEN"),
-                    ("Slack app token (xapp-...)", "SLACK_APP_TOKEN"),
-                ],
-                "matrix" => &[
-                    ("Matrix homeserver URL", "MATRIX_HOMESERVER"),
-                    ("Matrix user (@bot:example.com)", "MATRIX_USER"),
-                    ("Matrix password", "MATRIX_PASSWORD"),
-                ],
-                "line" => &[
-                    ("LINE channel access token", "LINE_CHANNEL_TOKEN"),
-                    ("LINE channel secret", "LINE_CHANNEL_SECRET"),
-                ],
-                _ => &[],
-            };
-
-            for (label, var) in fields {
-                let val = prompt(label, Some(""));
-                if !val.is_empty() {
-                    env_vars.push((var, val));
+            for (label, var) in *fields {
+                let cur = read_env_file(&home_dir, var);
+                if let Some(v) = prompt_secret(label, cur.as_deref()) {
+                    env_vars.push((var, v));
                 }
             }
         }
@@ -187,45 +207,112 @@ pub async fn run() -> anyhow::Result<()> {
         AgentConfig::set_env_var(&home_dir, var, val)?;
     }
 
-    let mut config = AgentConfig {
+    let mut new_config = AgentConfig {
         home_dir: home_dir.clone(),
         provider: provider.to_string(),
         model,
         base_url: custom_base_url,
         ..AgentConfig::default()
     };
-    config.save_yaml()?;
+    new_config.save_yaml()?;
 
     println!("Configuration saved to {}", home_dir.display());
     println!();
 
     // ── Doctor ────────────────────────────────────────────────────────────────
-    if let Some((_, key)) = env_vars.iter().find(|(v, _)| {
-        matches!(
-            *v,
-            "ANTHROPIC_API_KEY" | "OPENROUTER_API_KEY" | "VLLM_API_KEY"
-        )
-    }) {
-        config.api_key = Some(key.clone());
+    let api_key = env_vars
+        .iter()
+        .find(|(v, _)| matches!(*v, "ANTHROPIC_API_KEY" | "OPENROUTER_API_KEY" | "VLLM_API_KEY"))
+        .map(|(_, k)| k.clone())
+        .or(existing.api_key);
+    if let Some(key) = api_key {
+        new_config.api_key = Some(key);
     }
-    super::doctor::run(&config).await;
+    super::doctor::run(&new_config).await;
 
     Ok(())
 }
 
-/// Render an interactive checkbox list. Returns a bool vec (same length as
-/// `items`) indicating which entries the user selected.
-fn multi_select(items: &[&str]) -> anyhow::Result<Vec<bool>> {
-    let mut selected = vec![false; items.len()];
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+/// Read a raw value from ~/.garudust/.env without going through the OnceLock cache.
+fn read_env_file(home_dir: &Path, key: &str) -> Option<String> {
+    let content = std::fs::read_to_string(home_dir.join(".env")).ok()?;
+    let prefix = format!("{key}=");
+    for line in content.lines() {
+        if let Some(val) = line.trim().strip_prefix(&prefix) {
+            let val = val.trim().trim_matches('"').trim_matches('\'');
+            if !val.is_empty() {
+                return Some(val.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Mask a secret: `sk-ant-api03-abcdef…xyz` → `sk-an••••wxyz`.
+fn mask_secret(s: &str) -> String {
+    if s.len() < 8 {
+        return "••••".to_string();
+    }
+    let prefix = &s[..4.min(s.len())];
+    let suffix = &s[s.len().saturating_sub(4)..];
+    format!("{prefix}••••{suffix}")
+}
+
+/// Prompt for a potentially-sensitive value.
+/// Shows `[current: ••••]` when an existing value is present.
+/// Returns `None` (keep existing) if the user presses Enter with no input.
+/// Returns `Some(new_value)` when the user types a new value.
+fn prompt_secret(label: &str, existing: Option<&str>) -> Option<String> {
+    if let Some(cur) = existing {
+        print!("  {label} [current: {}]: ", mask_secret(cur));
+    } else {
+        print!("  {label}: ");
+    }
+    io::stdout().flush().ok();
+
+    let mut buf = String::new();
+    io::stdin().read_line(&mut buf).unwrap_or(0);
+    let trimmed = buf.trim().to_string();
+
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    }
+}
+
+/// Prompt for a non-secret value. Shows `[default]` in brackets.
+/// Returns the default if the user presses Enter with no input.
+fn prompt(label: &str, default: Option<&str>) -> String {
+    match default {
+        Some(d) if !d.is_empty() => print!("  {label} [{d}]: "),
+        _ => print!("  {label}: "),
+    }
+    io::stdout().flush().ok();
+
+    let mut buf = String::new();
+    io::stdin().read_line(&mut buf).unwrap_or(0);
+    let trimmed = buf.trim().to_string();
+
+    if trimmed.is_empty() {
+        default.unwrap_or("").to_string()
+    } else {
+        trimmed
+    }
+}
+
+/// Render an interactive checkbox list. `preselected` sets the initial state.
+/// Returns a bool vec (same length as `items`) indicating which are selected.
+fn multi_select(items: &[&str], preselected: &[bool]) -> anyhow::Result<Vec<bool>> {
+    let mut selected = preselected.to_vec();
+    selected.resize(items.len(), false);
     let mut cursor_pos: usize = 0;
     let mut stdout = io::stdout();
 
     terminal::enable_raw_mode()?;
-
-    // Hide cursor while navigating
     execute!(stdout, cursor::Hide)?;
-
-    // Draw initial list
     draw_checkboxes(&mut stdout, items, &selected, cursor_pos)?;
 
     loop {
@@ -242,7 +329,6 @@ fn multi_select(items: &[&str]) -> anyhow::Result<Vec<bool>> {
                 }
                 KeyCode::Enter => break,
                 KeyCode::Char('q') | KeyCode::Esc => {
-                    // Deselect all on quit
                     selected.fill(false);
                     break;
                 }
@@ -254,8 +340,6 @@ fn multi_select(items: &[&str]) -> anyhow::Result<Vec<bool>> {
 
     terminal::disable_raw_mode()?;
     execute!(stdout, cursor::Show)?;
-
-    // Move past the drawn list
     writeln!(stdout)?;
 
     Ok(selected)
@@ -267,7 +351,6 @@ fn draw_checkboxes(
     selected: &[bool],
     cursor_pos: usize,
 ) -> anyhow::Result<()> {
-    // Move up to redraw from the top of the list
     if items.len() > 1 {
         queue!(
             stdout,
@@ -300,27 +383,4 @@ fn draw_checkboxes(
 
     stdout.flush()?;
     Ok(())
-}
-
-fn prompt(label: &str, default: Option<&str>) -> String {
-    if let Some(d) = default {
-        if d.is_empty() {
-            print!("  {label}: ");
-        } else {
-            print!("  {label} [{d}]: ");
-        }
-    } else {
-        print!("  {label}: ");
-    }
-    io::stdout().flush().ok();
-
-    let mut buf = String::new();
-    io::stdin().read_line(&mut buf).unwrap_or(0);
-    let trimmed = buf.trim().to_string();
-
-    if trimmed.is_empty() {
-        default.unwrap_or("").to_string()
-    } else {
-        trimmed
-    }
 }
