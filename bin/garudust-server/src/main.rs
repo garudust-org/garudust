@@ -298,7 +298,7 @@ async fn shutdown_signal() {
             Ok(mut s) => Box::pin(async move {
                 while s.recv().await.is_some() {}
                 // Stream closed before signal arrived — degrade to ctrl_c only.
-                std::future::pending::<()>().await
+                std::future::pending::<()>().await;
             }),
             Err(e) => {
                 tracing::warn!("SIGTERM handler unavailable, falling back to Ctrl-C only: {e}");
