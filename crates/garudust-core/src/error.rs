@@ -32,6 +32,8 @@ pub enum TransportError {
     ContextLengthExceeded,
     #[error("stream error: {0}")]
     Stream(String),
+    #[error("LLM call timed out after {0}s")]
+    Timeout(u64),
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }

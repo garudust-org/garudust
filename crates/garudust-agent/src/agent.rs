@@ -374,8 +374,8 @@ impl Agent {
                     timeout(Duration::from_secs(secs), fut)
                         .await
                         .map_err(|_| {
-                            AgentError::Transport(garudust_core::error::TransportError::Stream(
-                                format!("LLM stream timed out after {secs}s"),
+                            AgentError::Transport(garudust_core::error::TransportError::Timeout(
+                                secs,
                             ))
                         })??
                 } else {
@@ -387,8 +387,8 @@ impl Agent {
                     timeout(Duration::from_secs(secs), fut)
                         .await
                         .map_err(|_| {
-                            AgentError::Transport(garudust_core::error::TransportError::Stream(
-                                format!("LLM call timed out after {secs}s"),
+                            AgentError::Transport(garudust_core::error::TransportError::Timeout(
+                                secs,
                             ))
                         })?
                         .map_err(AgentError::from)?

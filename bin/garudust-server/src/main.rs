@@ -265,9 +265,13 @@ fn spawn_config_watcher(
             tracing::info!("config changed — reloading agent");
             let new_config = Arc::new(AgentConfig::load());
             let (new_agent, new_handles) = build_agent(new_config, db.clone()).await;
-            // Drop old MCP handles before swapping — terminates previous MCP child processes.
-            *handles_lock.lock().await = new_handles;
+            // Swap agent first so new requests immediately use the new config, then
+            // drop old handles. This narrows (but does not eliminate) the window where
+            // in-flight MCP tool calls from the old agent hit terminated child processes;
+            // fully quiescing the old agent would require request-level draining which is
+            // not yet implemented. The race is acceptable for the hot-reload use case.
             agent_swap.store(new_agent);
+            *handles_lock.lock().await = new_handles;
             tracing::info!("agent hot-reloaded successfully");
         }
 
@@ -276,28 +280,31 @@ fn spawn_config_watcher(
 }
 
 /// Resolves on SIGINT (Ctrl-C) or SIGTERM, whichever arrives first.
-async fn shutdown_signal() {
+/// Returns an error if a signal handler cannot be installed.
+async fn shutdown_signal() -> anyhow::Result<()> {
     let ctrl_c = async {
         tokio::signal::ctrl_c()
             .await
-            .expect("failed to install Ctrl-C handler");
+            .map_err(|e| anyhow::anyhow!("failed to install Ctrl-C handler: {e}"))
     };
 
     #[cfg(unix)]
     let sigterm = async {
         tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .expect("failed to install SIGTERM handler")
+            .map_err(|e| anyhow::anyhow!("failed to install SIGTERM handler: {e}"))?
             .recv()
             .await;
+        Ok::<_, anyhow::Error>(())
     };
 
     #[cfg(not(unix))]
-    let sigterm = std::future::pending::<()>();
+    let sigterm = std::future::pending::<anyhow::Result<()>>();
 
     tokio::select! {
-        () = ctrl_c  => { tracing::info!("received SIGINT, initiating graceful shutdown"); }
-        () = sigterm => { tracing::info!("received SIGTERM, initiating graceful shutdown"); }
+        r = ctrl_c  => { r?; tracing::info!("received SIGINT, initiating graceful shutdown"); }
+        r = sigterm => { r?; tracing::info!("received SIGTERM, initiating graceful shutdown"); }
     }
+    Ok(())
 }
 
 #[tokio::main]
@@ -493,14 +500,27 @@ async fn main() -> Result<()> {
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     tracing::info!("garudust-server listening on {addr}");
 
-    axum::serve(listener, router)
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    let serve = axum::serve(listener, router).with_graceful_shutdown(async move {
+        if let Err(e) = shutdown_signal().await {
+            tracing::warn!("signal handler error: {e}");
+        }
+    });
 
-    tracing::info!(
-        drain_secs = shutdown_secs,
-        "server stopped accepting connections — draining"
-    );
+    tracing::info!(drain_secs = shutdown_secs, "draining in-flight requests");
+    if shutdown_secs > 0 {
+        tokio::time::timeout(tokio::time::Duration::from_secs(shutdown_secs), serve)
+            .await
+            .unwrap_or_else(|_| {
+                tracing::warn!(
+                    drain_secs = shutdown_secs,
+                    "drain timeout exceeded — forcing exit"
+                );
+                Ok(())
+            })?;
+    } else {
+        serve.await?;
+    }
+
     // mcp_handles drops here, terminating MCP child processes cleanly.
     drop(mcp_handles);
     tracing::info!("shutdown complete");
