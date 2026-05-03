@@ -154,7 +154,14 @@ pub async fn run() -> anyhow::Result<()> {
             _ => "",
         }
     };
-    let model_input = prompt("Model", if default_model.is_empty() { None } else { Some(default_model) });
+    let model_input = prompt(
+        "Model",
+        if default_model.is_empty() {
+            None
+        } else {
+            Some(default_model)
+        },
+    );
     let model = if model_input.is_empty() {
         default_model.to_string()
     } else {
@@ -166,7 +173,10 @@ pub async fn run() -> anyhow::Result<()> {
     if full {
         println!("Optional Tools (Enter to keep current / skip):");
         let cur_brave = read_env_file(&home_dir, "BRAVE_SEARCH_API_KEY");
-        if let Some(v) = prompt_secret("Brave Search API key (web_search tool)", cur_brave.as_deref()) {
+        if let Some(v) = prompt_secret(
+            "Brave Search API key (web_search tool)",
+            cur_brave.as_deref(),
+        ) {
             env_vars.push(("BRAVE_SEARCH_API_KEY", v));
         }
         println!();
@@ -222,7 +232,12 @@ pub async fn run() -> anyhow::Result<()> {
     // ── Doctor ────────────────────────────────────────────────────────────────
     let api_key = env_vars
         .iter()
-        .find(|(v, _)| matches!(*v, "ANTHROPIC_API_KEY" | "OPENROUTER_API_KEY" | "VLLM_API_KEY"))
+        .find(|(v, _)| {
+            matches!(
+                *v,
+                "ANTHROPIC_API_KEY" | "OPENROUTER_API_KEY" | "VLLM_API_KEY"
+            )
+        })
         .map(|(_, k)| k.clone())
         .or(existing.api_key);
     if let Some(key) = api_key {
