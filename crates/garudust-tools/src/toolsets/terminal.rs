@@ -315,6 +315,10 @@ impl Tool for Terminal {
             (Some(s), None) => s.trim(),
             _ => return true,
         };
+        // `git diff --no-index` reads arbitrary filesystem paths, not just repo state.
+        if sole.contains("--no-index") {
+            return true;
+        }
         !READONLY_GIT_PREFIXES.iter().any(|&p| {
             sole == p || (sole.starts_with(p) && sole.as_bytes().get(p.len()) == Some(&b' '))
         })
@@ -767,6 +771,22 @@ mod tests {
         let t = Terminal;
         let params = serde_json::json!({ "description": "test" });
         assert!(t.is_destructive_for(&params));
+    }
+
+    #[test]
+    fn git_diff_no_index_is_destructive() {
+        let t = Terminal;
+        for cmd in &[
+            "git diff --no-index /etc/shadow /dev/null",
+            "git diff --no-index /home/user/secrets.txt /dev/null",
+            "git diff --no-index a b",
+        ] {
+            let params = serde_json::json!({ "command": cmd, "description": "test" });
+            assert!(
+                t.is_destructive_for(&params),
+                "{cmd:?} reads arbitrary FS paths and should be destructive"
+            );
+        }
     }
 
     #[test]
