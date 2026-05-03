@@ -308,9 +308,16 @@ impl Tool for Terminal {
 
     fn is_destructive_for(&self, params: &serde_json::Value) -> bool {
         let cmd = params["command"].as_str().unwrap_or("").trim();
-        !READONLY_GIT_PREFIXES
-            .iter()
-            .any(|&prefix| cmd == prefix || cmd.starts_with(&format!("{prefix} ")))
+        // Reject multi-segment commands (`;`, `|`, `&`, newline) — a suffix like
+        // `git log; git push` would otherwise bypass the allowlist check.
+        let mut segments = split_shell_segments(cmd);
+        let sole = match (segments.next(), segments.next()) {
+            (Some(s), None) => s.trim(),
+            _ => return true,
+        };
+        !READONLY_GIT_PREFIXES.iter().any(|&p| {
+            sole == p || (sole.starts_with(p) && sole.as_bytes().get(p.len()) == Some(&b' '))
+        })
     }
 
     fn schema(&self) -> serde_json::Value {
@@ -760,6 +767,24 @@ mod tests {
         let t = Terminal;
         let params = serde_json::json!({ "description": "test" });
         assert!(t.is_destructive_for(&params));
+    }
+
+    #[test]
+    fn shell_operator_injection_is_destructive() {
+        let t = Terminal;
+        for cmd in &[
+            "git log --oneline; git push origin main",
+            "git show HEAD | tee ~/.ssh/authorized_keys",
+            "git diff HEAD~1 && cargo publish",
+            "git status\ngit commit -m 'injected'",
+            "git log&git push",
+        ] {
+            let params = serde_json::json!({ "command": cmd, "description": "test" });
+            assert!(
+                t.is_destructive_for(&params),
+                "{cmd:?} with shell operator should be destructive"
+            );
+        }
     }
 
     // ── output truncation ────────────────────────────────────────────────────
