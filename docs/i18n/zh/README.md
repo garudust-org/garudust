@@ -274,6 +274,17 @@ curl http://localhost:3000/metrics   # Prometheus 兼容
 
 在 `~/.garudust/.env` 中设置相关令牌并启动 `garudust-server`，所有适配器可在同一进程中同时运行。
 
+<div align="center">
+
+[![Telegram](https://img.shields.io/badge/Telegram-2CA5E0?logo=telegram&logoColor=white&style=for-the-badge)](https://core.telegram.org/bots)
+[![Discord](https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white&style=for-the-badge)](https://discord.com/developers/applications)
+[![Slack](https://img.shields.io/badge/Slack-4A154B?logo=slack&logoColor=white&style=for-the-badge)](https://api.slack.com/apps)
+[![Matrix](https://img.shields.io/badge/Matrix-000000?logo=matrix&logoColor=white&style=for-the-badge)](https://matrix.org)
+[![LINE](https://img.shields.io/badge/LINE-00C300?logo=line&logoColor=white&style=for-the-badge)](https://developers.line.biz/console/)
+[![Webhook](https://img.shields.io/badge/Webhook-6E7681?style=for-the-badge)](#headless-server)
+
+</div>
+
 | 平台 | 所需令牌 |
 |------|---------|
 | Telegram | `TELEGRAM_TOKEN` |
