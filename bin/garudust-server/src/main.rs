@@ -32,6 +32,7 @@ use garudust_tools::{
 use garudust_transport::build_transport;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 
+// Each element is held only for its Drop impl — dropping terminates the MCP child process.
 type McpHandles = Vec<Box<dyn std::any::Any + Send>>;
 
 #[derive(Parser)]
@@ -295,7 +296,11 @@ async fn shutdown_signal() {
     let sigterm: std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> =
         match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
             Ok(mut s) => Box::pin(async move {
-                s.recv().await;
+                loop {
+                    if s.recv().await.is_some() {
+                        break;
+                    }
+                }
             }),
             Err(e) => {
                 tracing::warn!("SIGTERM handler unavailable, falling back to Ctrl-C only: {e}");
@@ -505,24 +510,27 @@ async fn main() -> Result<()> {
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     tracing::info!("garudust-server listening on {addr}");
 
+    // Signal the drain-timeout task only after shutdown_signal() resolves so the
+    // countdown starts when the signal fires, not when the server starts listening.
+    let (drain_tx, mut drain_rx) = tokio::sync::watch::channel(false);
     let serve = axum::serve(listener, router).with_graceful_shutdown(async move {
         shutdown_signal().await;
         tracing::info!(drain_secs = shutdown_secs, "draining in-flight requests");
+        let _ = drain_tx.send(true);
     });
-
-    if shutdown_secs > 0 {
-        tokio::time::timeout(tokio::time::Duration::from_secs(shutdown_secs), serve)
-            .await
-            .unwrap_or_else(|_| {
-                tracing::warn!(
-                    drain_secs = shutdown_secs,
-                    "drain timeout exceeded — forcing exit"
-                );
-                Ok(())
-            })?;
-    } else {
-        serve.await?;
-    }
+    tokio::spawn(async move {
+        // Wait until the graceful-shutdown future has fired the signal.
+        let _ = drain_rx.wait_for(|v| *v).await;
+        if shutdown_secs > 0 {
+            tokio::time::sleep(tokio::time::Duration::from_secs(shutdown_secs)).await;
+            tracing::warn!(
+                drain_secs = shutdown_secs,
+                "drain timeout exceeded — forcing exit"
+            );
+            std::process::exit(1);
+        }
+    });
+    serve.await?;
 
     // Explicit drop ensures MCP child processes exit before the server process does.
     drop(mcp_handles);
