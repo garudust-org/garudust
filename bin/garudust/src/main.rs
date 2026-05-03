@@ -187,6 +187,7 @@ async fn attach_mcp_servers(
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(std::env::var("RUST_LOG").unwrap_or_else(|_| "warn".into()))
+        .with_writer(std::io::stderr)
         .init();
     dotenvy::dotenv().ok(); // load .env from current dir (development override)
 
