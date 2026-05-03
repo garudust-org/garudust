@@ -19,6 +19,7 @@ use garudust_tools::{
         files::{ListDirectory, ReadFile, WriteFile},
         mcp::connect_mcp_server,
         memory::{MemoryTool, UserProfileTool},
+        pdf::PdfRead,
         search::SessionSearch,
         skills::{SkillView, SkillsList, WriteSkill},
         terminal::Terminal,
@@ -137,6 +138,7 @@ async fn build_agent(config: Arc<AgentConfig>) -> (Arc<Agent>, McpHandles) {
     registry.register(ReadFile);
     registry.register(WriteFile);
     registry.register(ListDirectory);
+    registry.register(PdfRead);
     registry.register(Terminal);
     registry.register(MemoryTool);
     registry.register(UserProfileTool);
