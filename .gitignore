@@ -19,6 +19,9 @@
 .vscode/
 *.iml
 
+# Claude Code — sessions, memory, and local settings
+.claude/
+
 # Garudust user data (kept local, not in repo)
 # ~/.garudust/ is outside the repo — this covers any accidental symlinks
 state.db
