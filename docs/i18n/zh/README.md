@@ -81,6 +81,10 @@ garudust setup   # 首次配置向导 — 选择提供商并保存 API key
 garudust
 ```
 
+<div align="center">
+  <img src="../../../assets/demo-tui.png" alt="Garudust TUI" width="800"/>
+</div>
+
 | 按键 | 操作 |
 |------|------|
 | `Enter` | 发送消息 |

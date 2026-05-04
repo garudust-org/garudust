@@ -81,6 +81,10 @@ garudust setup   # first-time wizard — pick provider, save API key
 garudust
 ```
 
+<div align="center">
+  <img src="assets/demo-tui.png" alt="Garudust TUI" width="800"/>
+</div>
+
 | Key | Action |
 |-----|--------|
 | `Enter` | Send message |
