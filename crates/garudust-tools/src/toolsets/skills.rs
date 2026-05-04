@@ -1,4 +1,7 @@
-use std::{collections::HashMap, path::{Path, PathBuf}};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
 use async_trait::async_trait;
 use garudust_core::{
