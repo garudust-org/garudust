@@ -1,7 +1,15 @@
 [package]
-name    = "garudust-platforms"
-version = { workspace = true }
-edition = { workspace = true }
+name         = "garudust-platforms"
+version      = { workspace = true }
+edition      = { workspace = true }
+authors      = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+rust-version = { workspace = true }
+description  = "Chat platform adapters for Garudust agents: Telegram, Discord, Slack, Matrix, LINE, Webhook"
+keywords     = ["chatbot", "telegram", "discord", "slack", "bot"]
+categories   = ["network-programming", "web-programming"]
 
 [features]
 default  = ["telegram", "webhook"]
@@ -14,8 +22,8 @@ line     = ["dep:hmac", "dep:sha2", "dep:base64", "dep:axum", "dep:dashmap"]
 all      = ["telegram", "discord", "webhook", "slack", "matrix", "line"]
 
 [dependencies]
-garudust-core  = { path = "../garudust-core" }
-garudust-agent = { path = "../garudust-agent" }
+garudust-core  = { path = "../garudust-core",  version = "0.2" }
+garudust-agent = { path = "../garudust-agent", version = "0.2" }
 async-trait    = { workspace = true }
 serde          = { workspace = true }
 serde_json     = { workspace = true }

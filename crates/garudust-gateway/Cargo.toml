@@ -1,12 +1,20 @@
 [package]
-name    = "garudust-gateway"
-version = { workspace = true }
-edition = { workspace = true }
+name         = "garudust-gateway"
+version      = { workspace = true }
+edition      = { workspace = true }
+authors      = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+rust-version = { workspace = true }
+description  = "Production HTTP API gateway and streaming server for Garudust agents"
+keywords     = ["ai", "agent", "gateway", "api", "server"]
+categories   = ["web-programming::http-server", "asynchronous"]
 
 [dependencies]
-garudust-core      = { path = "../garudust-core" }
-garudust-agent     = { path = "../garudust-agent" }
-garudust-memory    = { path = "../garudust-memory" }
+garudust-core      = { path = "../garudust-core",   version = "0.2" }
+garudust-agent     = { path = "../garudust-agent",  version = "0.2" }
+garudust-memory    = { path = "../garudust-memory", version = "0.2" }
 async-trait        = { workspace = true }
 axum               = { workspace = true }
 tower              = { workspace = true }
@@ -27,5 +35,5 @@ tower_governor     = { workspace = true }
 [dev-dependencies]
 tower              = { version = "0.5", features = ["util"] }
 http-body-util     = "0.1"
-garudust-tools     = { path = "../garudust-tools" }
+garudust-tools     = { path = "../garudust-tools", version = "0.2" }
 uuid               = { workspace = true }

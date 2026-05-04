@@ -1,21 +1,29 @@
 [package]
-name    = "garudust-server"
-version = { workspace = true }
-edition = { workspace = true }
+name         = "garudust-server"
+version      = { workspace = true }
+edition      = { workspace = true }
+authors      = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+rust-version = { workspace = true }
+description  = "Garudust AI agent — production HTTP API server with multi-platform chat support"
+keywords     = ["ai", "agent", "server", "api", "llm"]
+categories   = ["command-line-utilities", "web-programming::http-server"]
 
 [[bin]]
 name = "garudust-server"
 path = "src/main.rs"
 
 [dependencies]
-garudust-core      = { path = "../../crates/garudust-core" }
-garudust-agent     = { path = "../../crates/garudust-agent" }
-garudust-memory    = { path = "../../crates/garudust-memory" }
-garudust-gateway   = { path = "../../crates/garudust-gateway" }
-garudust-platforms = { path = "../../crates/garudust-platforms", features = ["all"] }
-garudust-cron      = { path = "../../crates/garudust-cron" }
-garudust-tools     = { path = "../../crates/garudust-tools" }
-garudust-transport = { path = "../../crates/garudust-transport" }
+garudust-core      = { path = "../../crates/garudust-core",      version = "0.2" }
+garudust-agent     = { path = "../../crates/garudust-agent",     version = "0.2" }
+garudust-memory    = { path = "../../crates/garudust-memory",    version = "0.2" }
+garudust-gateway   = { path = "../../crates/garudust-gateway",   version = "0.2" }
+garudust-platforms = { path = "../../crates/garudust-platforms", version = "0.2", features = ["all"] }
+garudust-cron      = { path = "../../crates/garudust-cron",      version = "0.2" }
+garudust-tools     = { path = "../../crates/garudust-tools",     version = "0.2" }
+garudust-transport = { path = "../../crates/garudust-transport", version = "0.2" }
 axum               = { workspace = true }
 clap               = { workspace = true }
 tokio              = { workspace = true }

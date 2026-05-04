@@ -1,13 +1,21 @@
 [package]
-name    = "garudust-agent"
-version = { workspace = true }
-edition = { workspace = true }
+name         = "garudust-agent"
+version      = { workspace = true }
+edition      = { workspace = true }
+authors      = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+rust-version = { workspace = true }
+description  = "AI agent run-loop, prompt builder, and multi-agent orchestration for Garudust"
+keywords     = ["ai", "agent", "llm", "anthropic", "mcp"]
+categories   = ["development-tools", "asynchronous"]
 
 [dependencies]
-garudust-core      = { path = "../garudust-core" }
-garudust-transport = { path = "../garudust-transport" }
-garudust-tools     = { path = "../garudust-tools" }
-garudust-memory    = { path = "../garudust-memory" }
+garudust-core      = { path = "../garudust-core",      version = "0.2" }
+garudust-transport = { path = "../garudust-transport", version = "0.2" }
+garudust-tools     = { path = "../garudust-tools",     version = "0.2" }
+garudust-memory    = { path = "../garudust-memory",    version = "0.2" }
 async-trait        = { workspace = true }
 serde              = { workspace = true }
 serde_json         = { workspace = true }

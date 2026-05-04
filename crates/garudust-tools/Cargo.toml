@@ -1,11 +1,19 @@
 [package]
-name    = "garudust-tools"
-version = { workspace = true }
-edition = { workspace = true }
+name         = "garudust-tools"
+version      = { workspace = true }
+edition      = { workspace = true }
+authors      = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+rust-version = { workspace = true }
+description  = "Built-in tool suite for Garudust agents: files, web, terminal, browser, MCP, skills"
+keywords     = ["ai", "agent", "tools", "mcp", "llm"]
+categories   = ["development-tools", "filesystem"]
 
 [dependencies]
-garudust-core   = { path = "../garudust-core" }
-garudust-memory = { path = "../garudust-memory" }
+garudust-core   = { path = "../garudust-core",   version = "0.2" }
+garudust-memory = { path = "../garudust-memory", version = "0.2" }
 async-trait     = { workspace = true }
 serde           = { workspace = true }
 serde_json      = { workspace = true }

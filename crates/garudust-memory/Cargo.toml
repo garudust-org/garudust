@@ -1,10 +1,18 @@
 [package]
-name    = "garudust-memory"
-version = { workspace = true }
-edition = { workspace = true }
+name         = "garudust-memory"
+version      = { workspace = true }
+edition      = { workspace = true }
+authors      = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+rust-version = { workspace = true }
+description  = "SQLite-backed persistent memory and user profiles for Garudust AI agents"
+keywords     = ["ai", "agent", "memory", "sqlite", "persistence"]
+categories   = ["development-tools", "database"]
 
 [dependencies]
-garudust-core = { path = "../garudust-core" }
+garudust-core = { path = "../garudust-core", version = "0.2" }
 async-trait   = { workspace = true }
 rusqlite      = { workspace = true }
 serde         = { workspace = true }

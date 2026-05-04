@@ -1,7 +1,15 @@
 [package]
-name    = "garudust-core"
-version = { workspace = true }
-edition = { workspace = true }
+name         = "garudust-core"
+version      = { workspace = true }
+edition      = { workspace = true }
+authors      = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+rust-version = { workspace = true }
+description  = "Core traits, types, and error definitions for the Garudust AI agent framework"
+keywords     = ["ai", "agent", "llm", "framework", "mcp"]
+categories   = ["development-tools", "asynchronous"]
 
 [dependencies]
 async-trait = { workspace = true }

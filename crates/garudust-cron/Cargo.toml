@@ -1,11 +1,19 @@
 [package]
-name    = "garudust-cron"
-version = { workspace = true }
-edition = { workspace = true }
+name         = "garudust-cron"
+version      = { workspace = true }
+edition      = { workspace = true }
+authors      = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+rust-version = { workspace = true }
+description  = "Cron-scheduled autonomous task runner for Garudust AI agents"
+keywords     = ["ai", "agent", "cron", "scheduler", "automation"]
+categories   = ["development-tools", "asynchronous"]
 
 [dependencies]
-garudust-core  = { path = "../garudust-core" }
-garudust-agent = { path = "../garudust-agent" }
+garudust-core  = { path = "../garudust-core",  version = "0.2" }
+garudust-agent = { path = "../garudust-agent", version = "0.2" }
 tokio-cron-scheduler = { workspace = true }
 serde          = { workspace = true }
 serde_json     = { workspace = true }

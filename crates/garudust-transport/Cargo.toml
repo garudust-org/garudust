@@ -1,10 +1,18 @@
 [package]
-name    = "garudust-transport"
-version = { workspace = true }
-edition = { workspace = true }
+name         = "garudust-transport"
+version      = { workspace = true }
+edition      = { workspace = true }
+authors      = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+rust-version = { workspace = true }
+description  = "Anthropic and OpenRouter transport with streaming and retry for Garudust agents"
+keywords     = ["ai", "anthropic", "llm", "streaming", "agent"]
+categories   = ["network-programming", "asynchronous"]
 
 [dependencies]
-garudust-core = { path = "../garudust-core" }
+garudust-core = { path = "../garudust-core", version = "0.2" }
 async-trait   = { workspace = true }
 reqwest       = { workspace = true }
 serde         = { workspace = true }

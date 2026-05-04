@@ -19,10 +19,13 @@ lto      = "thin"
 opt-level = 3
 
 [workspace.package]
-version     = "0.2.0"
-edition     = "2021"
-authors     = ["Garudust"]
-license     = "MIT"
+version      = "0.2.0"
+edition      = "2021"
+authors      = ["Garudust"]
+license      = "MIT"
+repository   = "https://github.com/garudust-org/garudust-agent"
+homepage     = "https://garudust-org.github.io/garudust-agent/"
+rust-version = "1.75"
 
 [workspace.dependencies]
 # Async runtime
