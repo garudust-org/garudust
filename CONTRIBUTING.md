@@ -7,7 +7,7 @@ Thanks for your interest in contributing to Garudust!
 ```bash
 # Clone the repo
 git clone https://github.com/garudust-org/garudust-agent.git
-cd garudust
+cd garudust-agent
 
 # Build everything
 cargo build
@@ -30,11 +30,11 @@ cargo fmt --all -- --check
 | Crate / Binary | Purpose |
 |----------------|---------|
 | `crates/garudust-core` | Shared types, traits (`Tool`, `ProviderTransport`, `PlatformAdapter`, `MemoryStore`), config, `SecurityConfig`, `net_guard` (SSRF) |
-| `crates/garudust-transport` | LLM provider implementations — Anthropic, OpenAI-compatible (OpenRouter, etc.), AWS Bedrock, Codex |
-| `crates/garudust-tools` | Built-in tools: `read_file`, `write_file`, `terminal`, `web_fetch`, `web_search`, `browser`, `memory`, `delegate_task`, `skills_list`, `skill_view` |
+| `crates/garudust-transport` | LLM provider implementations — Anthropic, OpenAI-compatible (OpenRouter, etc.), AWS Bedrock, Codex, Ollama, vLLM |
+| `crates/garudust-tools` | Built-in tools: `web_fetch`, `web_search`, `http_request`, `browser`, `read_file`, `write_file`, `list_directory`, `pdf_read`, `terminal`, `memory`, `user_profile`, `session_search`, `delegate_task`, `skills_list`, `skill_view`, `write_skill` |
 | `crates/garudust-memory` | Persistence: `FileMemoryStore` (markdown files) + `SessionDb` (SQLite + FTS5) |
 | `crates/garudust-agent` | Agent run loop, context compression, session persistence, `AutoApprover` / `ConstitutionalApprover` / `DenyApprover` |
-| `crates/garudust-platforms` | Platform adapters: Telegram, Discord, Slack (Socket Mode), Matrix, Webhook |
+| `crates/garudust-platforms` | Platform adapters: Telegram, Discord, Slack (Socket Mode), Matrix, LINE, Webhook |
 | `crates/garudust-cron` | Cron scheduler — wraps `tokio-cron-scheduler`, spawns agent on schedule |
 | `crates/garudust-gateway` | HTTP gateway — Bearer auth middleware, rate limiting, `GatewayHandler`, `/health` + `/chat*` routes |
 | `bin/garudust` | CLI binary: TUI chat, `setup`, `config show/set`, `doctor` |
@@ -149,6 +149,11 @@ impl Tool for YourTool {
         })
     }
 
+    // Override only if the tool manages its own timeout internally (e.g. it
+    // accepts a user-supplied timeout_secs param). The default returns false,
+    // which means the global tool_timeout_secs from config.yaml applies.
+    fn bypass_dispatch_timeout(&self) -> bool { false }
+
     async fn execute(&self, params: Value, _ctx: &ToolContext) -> Result<ToolResult, ToolError> {
         let input: YourToolInput = serde_json::from_value(params)
             .map_err(|e| ToolError::InvalidArgs(e.to_string()))?;
@@ -171,11 +176,11 @@ Implement `PlatformAdapter` from `garudust-core`:
 use async_trait::async_trait;
 use garudust_core::{error::PlatformError, platform::{MessageHandler, PlatformAdapter}, types::{ChannelId, OutboundMessage}};
 
-pub struct SlackAdapter { /* token, http client, etc. */ }
+pub struct YourAdapter { /* token, http client, etc. */ }
 
 #[async_trait]
-impl PlatformAdapter for SlackAdapter {
-    fn name(&self) -> &'static str { "slack" }
+impl PlatformAdapter for YourAdapter {
+    fn name(&self) -> &'static str { "your_platform" }
 
     async fn start(&self, handler: Arc<dyn MessageHandler>) -> Result<(), PlatformError> {
         // Spawn listener, call handler.handle(inbound) on each message
