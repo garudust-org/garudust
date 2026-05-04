@@ -14,4 +14,4 @@ tokio       = { workspace = true }
 uuid        = { workspace = true }
 chrono      = { workspace = true }
 anyhow      = { workspace = true }
-dirs        = "5"
+dirs        = "6"
