@@ -48,6 +48,8 @@ pub enum ToolError {
     Execution(String),
     #[error("approval denied")]
     ApprovalDenied,
+    #[error("tool '{0}' denied by active skill permissions")]
+    PermissionDenied(String),
     #[error("tool timed out after {0}s")]
     Timeout(u64),
     #[error(transparent)]

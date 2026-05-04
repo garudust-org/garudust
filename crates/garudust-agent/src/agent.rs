@@ -482,6 +482,9 @@ impl Agent {
                 config: self.config.clone(),
                 approver: approver.clone(),
                 sub_agent: Some(sub_agent),
+                skill_permissions: Arc::new(tokio::sync::RwLock::new(
+                    garudust_core::tool::SkillPermissions::default(),
+                )),
             });
 
             let tool_timeout_secs = self.config.tool_timeout_secs;
@@ -744,6 +747,9 @@ async fn reflect_and_save_skill(
             config: config.clone(),
             approver: Arc::new(crate::approver::AutoApprover),
             sub_agent: None,
+            skill_permissions: Arc::new(tokio::sync::RwLock::new(
+                garudust_core::tool::SkillPermissions::default(),
+            )),
         };
         match tools
             .dispatch("write_skill", tc.arguments.clone(), &ctx)
