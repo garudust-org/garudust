@@ -109,4 +109,4 @@ chromiumoxide = { version = "0.7", default-features = false, features = ["tokio-
 
 # Platform SDKs (Slack / Matrix)
 tokio-tungstenite = { version = "0.29", features = ["rustls-tls-webpki-roots"] }
-matrix-sdk        = { version = "0.7", default-features = false, features = ["rustls-tls"] }
+matrix-sdk        = { version = "0.16", default-features = false, features = ["rustls-tls"] }
