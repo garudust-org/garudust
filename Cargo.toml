@@ -74,7 +74,7 @@ walkdir      = "2"
 globset      = "0.4"
 tempfile     = "3"
 lopdf        = "0.34"
-pdf-extract  = "0.7"
+pdf-extract  = "0.10"
 
 # File locking
 fs4 = "1.1"
