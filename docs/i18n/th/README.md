@@ -9,9 +9,11 @@
 # Garudust Agent
 
 [![CI](https://github.com/garudust-org/garudust-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/garudust-org/garudust-agent/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/garudust-agent.svg)](https://crates.io/crates/garudust-agent)
+[![Downloads](https://img.shields.io/crates/d/garudust-agent.svg)](https://crates.io/crates/garudust-agent)
 [![Release](https://img.shields.io/github/v/release/garudust-org/garudust-agent)](https://github.com/garudust-org/garudust-agent/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](../../../LICENSE)
-![Rust 1.75+](https://img.shields.io/badge/rust-1.75+-orange.svg)
+![Rust 1.87+](https://img.shields.io/badge/rust-1.87+-orange.svg)
 
 **ระบบรันไทม์ AI agent ที่โฮสต์เองได้ พัฒนาตัวเองได้ เขียนด้วย Rust**
 
@@ -56,7 +58,7 @@ sudo mv garudust garudust-server /usr/local/bin/
 
 ### Build จาก source
 
-ต้องการ Rust 1.75+:
+ต้องการ Rust 1.87+:
 
 ```bash
 git clone https://github.com/garudust-org/garudust-agent
