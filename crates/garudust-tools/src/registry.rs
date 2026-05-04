@@ -65,6 +65,13 @@ impl ToolRegistry {
             .get(name)
             .ok_or_else(|| ToolError::NotFound(name.into()))?;
 
+        // Check per-skill permissions before anything else.
+        if let Some(allowed) = ctx.skill_permissions.read().await.check(name) {
+            if !allowed {
+                return Err(ToolError::PermissionDenied(name.into()));
+            }
+        }
+
         // Validate params against the tool's declared JSON Schema.
         if let Some(validator) = self.validators.get(name) {
             let errors: Vec<String> = validator
@@ -248,6 +255,9 @@ mod tests {
             config: Arc::new(AgentConfig::default()),
             approver: Arc::new(DenyAll),
             sub_agent: None,
+            skill_permissions: Arc::new(tokio::sync::RwLock::new(
+                garudust_core::tool::SkillPermissions::default(),
+            )),
         }
     }
 

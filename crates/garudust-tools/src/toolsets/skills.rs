@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
 use async_trait::async_trait;
 use garudust_core::{
@@ -16,6 +19,9 @@ pub struct Skill {
     pub description: String,
     pub version: Option<String>,
     pub platforms: Option<Vec<String>>,
+    /// Optional per-skill tool permissions. Map of tool name → allowed.
+    /// Absent tools are not restricted. Union semantics when multiple skills loaded.
+    pub permissions: Option<HashMap<String, bool>>,
     pub body: String,
     pub path: PathBuf,
 }
@@ -46,12 +52,18 @@ pub fn parse_skill_md(content: &str, path: PathBuf) -> Option<Skill> {
             .filter_map(|v| v.as_str().map(str::to_string))
             .collect()
     });
+    let permissions = yaml["permissions"].as_mapping().map(|map| {
+        map.iter()
+            .filter_map(|(k, v)| Some((k.as_str()?.to_string(), v.as_bool()?)))
+            .collect()
+    });
 
     Some(Skill {
         name,
         description,
         version,
         platforms,
+        permissions,
         body,
         path,
     })
@@ -222,6 +234,10 @@ impl Tool for SkillView {
             .iter()
             .find(|s| s.name == name)
             .ok_or_else(|| ToolError::NotFound(format!("skill '{name}' not found")))?;
+
+        if let Some(perms) = &skill.permissions {
+            ctx.skill_permissions.write().await.merge(perms);
+        }
 
         Ok(ToolResult::ok(
             "",

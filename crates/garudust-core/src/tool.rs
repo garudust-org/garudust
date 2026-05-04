@@ -1,6 +1,7 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
+use tokio::sync::RwLock;
 
 use crate::{
     budget::IterationBudget,
@@ -9,6 +10,31 @@ use crate::{
     memory::MemoryStore,
     types::{ToolResult, ToolSchema},
 };
+
+/// Accumulated permissions from all skills loaded in the current session.
+/// Each entry maps a tool name to `true` (allowed) or `false` (denied).
+/// Union semantics: `true` from any skill wins over `false` from another.
+/// Tools absent from the map are not restricted by skill permissions.
+#[derive(Debug, Default, Clone)]
+pub struct SkillPermissions(pub HashMap<String, bool>);
+
+impl SkillPermissions {
+    /// Merge another skill's permissions using union semantics (allow wins).
+    pub fn merge(&mut self, other: &HashMap<String, bool>) {
+        for (tool, allowed) in other {
+            let entry = self.0.entry(tool.clone()).or_insert(false);
+            if *allowed {
+                *entry = true;
+            }
+        }
+    }
+
+    /// Returns `Some(false)` only if the tool is explicitly denied by every
+    /// loaded skill that mentions it. Returns `None` if no skill restricts it.
+    pub fn check(&self, tool_name: &str) -> Option<bool> {
+        self.0.get(tool_name).copied()
+    }
+}
 
 #[async_trait]
 pub trait Tool: Send + Sync + 'static {
@@ -68,6 +94,9 @@ pub struct ToolContext {
     pub config: Arc<AgentConfig>,
     pub approver: Arc<dyn CommandApprover>,
     pub sub_agent: Option<Arc<dyn SubAgentRunner>>,
+    /// Accumulated permissions from all skills loaded this session via skill_view.
+    /// Shared across all tool dispatches within the same agent turn.
+    pub skill_permissions: Arc<RwLock<SkillPermissions>>,
 }
 
 #[async_trait]

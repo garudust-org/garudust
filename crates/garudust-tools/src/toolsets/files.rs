@@ -428,6 +428,9 @@ mod tests {
             config: Arc::new(config),
             approver: Arc::new(AutoApprove),
             sub_agent: None,
+            skill_permissions: std::sync::Arc::new(tokio::sync::RwLock::new(
+                garudust_core::tool::SkillPermissions::default(),
+            )),
         }
     }
 
@@ -507,6 +510,9 @@ mod tests {
             config: Arc::new(config),
             approver: Arc::new(AutoApprove),
             sub_agent: None,
+            skill_permissions: std::sync::Arc::new(tokio::sync::RwLock::new(
+                garudust_core::tool::SkillPermissions::default(),
+            )),
         };
 
         let result = ReadFile
@@ -541,6 +547,9 @@ mod tests {
             config: Arc::new(config),
             approver: Arc::new(AutoApprove),
             sub_agent: None,
+            skill_permissions: std::sync::Arc::new(tokio::sync::RwLock::new(
+                garudust_core::tool::SkillPermissions::default(),
+            )),
         };
 
         let result = ReadFile
