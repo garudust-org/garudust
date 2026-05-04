@@ -25,7 +25,7 @@ authors      = ["Garudust"]
 license      = "MIT"
 repository   = "https://github.com/garudust-org/garudust-agent"
 homepage     = "https://garudust-org.github.io/garudust-agent/"
-rust-version = "1.75"
+rust-version = "1.87"
 
 [workspace.dependencies]
 # Async runtime
