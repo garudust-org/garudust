@@ -110,3 +110,8 @@ chromiumoxide = { version = "0.7", default-features = false, features = ["tokio-
 # Platform SDKs (Slack / Matrix)
 tokio-tungstenite = { version = "0.29", features = ["rustls-tls-webpki-roots"] }
 matrix-sdk        = { version = "0.16", default-features = false, features = ["rustls-tls"] }
+
+# Patch matrix-sdk 0.16.0 to raise the recursion limit for Client::sync()'s
+# deeply nested async type. Remove once a fixed version is published upstream.
+[patch.crates-io]
+matrix-sdk = { path = "vendor/matrix-sdk" }
