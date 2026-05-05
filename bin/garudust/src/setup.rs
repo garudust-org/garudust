@@ -280,15 +280,11 @@ pub async fn run() -> anyhow::Result<()> {
 /// Returns an error hint string when the value looks wrong, or `None` when OK.
 fn validate_token(var: &str, val: &str) -> Option<&'static str> {
     match var {
-        "ANTHROPIC_API_KEY" => {
-            if !val.starts_with("sk-ant-") {
-                return Some("expected format: sk-ant-… (starts with 'sk-ant-')");
-            }
+        "ANTHROPIC_API_KEY" if !val.starts_with("sk-ant-") => {
+            return Some("expected format: sk-ant-… (starts with 'sk-ant-')");
         }
-        "OPENROUTER_API_KEY" => {
-            if !val.starts_with("sk-or-") {
-                return Some("expected format: sk-or-… (starts with 'sk-or-')");
-            }
+        "OPENROUTER_API_KEY" if !val.starts_with("sk-or-") => {
+            return Some("expected format: sk-or-… (starts with 'sk-or-')");
         }
         "TELEGRAM_TOKEN" => {
             let mut parts = val.splitn(2, ':');
@@ -300,40 +296,26 @@ fn validate_token(var: &str, val: &str) -> Option<&'static str> {
                 return Some("expected format: 123456789:AAFxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
             }
         }
-        "DISCORD_TOKEN" => {
-            if val.split('.').count() != 3 || val.len() < 50 {
-                return Some("expected format: three Base64 segments separated by '.' (~70 chars)");
-            }
+        "DISCORD_TOKEN" if val.split('.').count() != 3 || val.len() < 50 => {
+            return Some("expected format: three Base64 segments separated by '.' (~70 chars)");
         }
-        "SLACK_BOT_TOKEN" => {
-            if !val.starts_with("xoxb-") {
-                return Some("expected format: xoxb-… (starts with 'xoxb-')");
-            }
+        "SLACK_BOT_TOKEN" if !val.starts_with("xoxb-") => {
+            return Some("expected format: xoxb-… (starts with 'xoxb-')");
         }
-        "SLACK_APP_TOKEN" => {
-            if !val.starts_with("xapp-") {
-                return Some("expected format: xapp-… (starts with 'xapp-')");
-            }
+        "SLACK_APP_TOKEN" if !val.starts_with("xapp-") => {
+            return Some("expected format: xapp-… (starts with 'xapp-')");
         }
-        "MATRIX_HOMESERVER" => {
-            if !val.starts_with("https://") && !val.starts_with("http://") {
-                return Some("expected format: https://matrix.example.com");
-            }
+        "MATRIX_HOMESERVER" if !val.starts_with("https://") && !val.starts_with("http://") => {
+            return Some("expected format: https://matrix.example.com");
         }
-        "MATRIX_USER" => {
-            if !val.starts_with('@') || !val.contains(':') {
-                return Some("expected format: @username:server.com");
-            }
+        "MATRIX_USER" if !val.starts_with('@') || !val.contains(':') => {
+            return Some("expected format: @username:server.com");
         }
-        "LINE_CHANNEL_TOKEN" => {
-            if val.len() < 20 {
-                return Some("expected: non-empty string, at least 20 characters");
-            }
+        "LINE_CHANNEL_TOKEN" if val.len() < 20 => {
+            return Some("expected: non-empty string, at least 20 characters");
         }
-        "LINE_CHANNEL_SECRET" => {
-            if val.len() != 32 || !val.chars().all(|c| c.is_ascii_hexdigit()) {
-                return Some("expected format: 32-character hex string");
-            }
+        "LINE_CHANNEL_SECRET" if val.len() != 32 || !val.chars().all(|c| c.is_ascii_hexdigit()) => {
+            return Some("expected format: 32-character hex string");
         }
         _ => {}
     }
