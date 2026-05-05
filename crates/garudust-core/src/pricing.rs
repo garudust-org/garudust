@@ -9,8 +9,7 @@ fn lookup(model: &str) -> Option<ModelPrice> {
     // Normalise: strip provider prefix ("anthropic/claude-...") and minor version suffixes.
     let name = model
         .rsplit_once('/')
-        .map(|(_, n)| n)
-        .unwrap_or(model)
+        .map_or(model, |(_, n)| n)
         .to_lowercase();
 
     // Match by prefix so minor variants (e.g. -20251001) are covered.
@@ -110,7 +109,7 @@ pub fn usage_footer(model: &str, iters: u32, input_tokens: u32, output_tokens: u
     let cost_part = estimate_cost_usd(model, input_tokens, output_tokens)
         .map(|c| format!(" | ~${c:.4}"))
         .unwrap_or_default();
-    let short_model = model.rsplit_once('/').map(|(_, n)| n).unwrap_or(model);
+    let short_model = model.rsplit_once('/').map_or(model, |(_, n)| n);
     format!(
         "[{iters} iter | {input_tokens}in {output_tokens}out {total}tok{cost_part} @ {short_model}]"
     )
