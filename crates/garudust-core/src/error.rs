@@ -4,6 +4,8 @@ use thiserror::Error;
 pub enum AgentError {
     #[error("budget exhausted after {0} iterations")]
     BudgetExhausted(u32),
+    #[error("token budget exhausted: {0} tokens used")]
+    TokenBudgetExhausted(u32),
     #[error("transport error: {0}")]
     Transport(#[from] TransportError),
     #[error("tool error: {0}")]

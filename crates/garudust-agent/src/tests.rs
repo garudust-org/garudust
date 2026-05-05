@@ -138,7 +138,11 @@ async fn run_returns_reply() {
         .run("say hi", Arc::new(AutoApprove), "test")
         .await
         .unwrap();
-    assert_eq!(result.output, "Hello, world!");
+    assert!(
+        result.output.starts_with("Hello, world!"),
+        "unexpected output: {}",
+        result.output
+    );
     assert_eq!(result.iterations, 1);
 }
 
@@ -157,5 +161,9 @@ async fn run_streaming_emits_chunks() {
         chunks.push(c);
     }
     assert_eq!(chunks.join(""), "streamed response");
-    assert_eq!(result.output, "streamed response");
+    assert!(
+        result.output.starts_with("streamed response"),
+        "unexpected output: {}",
+        result.output
+    );
 }

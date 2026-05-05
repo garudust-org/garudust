@@ -24,6 +24,7 @@ pub mod error;
 pub mod memory;
 pub mod net_guard;
 pub mod platform;
+pub mod pricing;
 pub mod tool;
 pub mod transport;
 pub mod types;
