@@ -1,0 +1,109 @@
+# Changelog
+
+All notable changes to this project are documented here.
+
+Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+Versioning follows [Semantic Versioning](https://semver.org/).
+
+---
+
+## [Unreleased]
+
+---
+
+## [0.2.1] — 2026-05-05
+
+### Added
+- Crate-level `//!` documentation across all 8 library crates for better [docs.rs](https://docs.rs/garudust-agent) coverage
+- TUI demo screenshot (`assets/demo-tui.png`) added to all README languages under the Interactive TUI section
+- crates.io version and download badges in all README languages
+
+### Fixed
+- `Duration::from_mins()` replaced with `Duration::from_secs(60)` in LINE adapter to satisfy MSRV 1.87
+- MSRV declaration corrected from 1.75 to 1.87 (`is_multiple_of` and `LazyLock` require 1.87)
+- Doctest examples in `garudust-agent`, `garudust-gateway`, `garudust-memory`, and `garudust-transport` corrected to match actual public API signatures
+
+### Changed
+- All 10 crates published to crates.io for the first time
+- `.claude/` added to `.gitignore`
+
+---
+
+## [0.2.0] — 2026-05-03
+
+### Added
+- **Per-skill tool permissioning** — `SKILL.md` frontmatter can now restrict which tools a skill is allowed to call
+- **Graceful shutdown** — `garudust-server` handles `SIGTERM`/`SIGINT` with a configurable drain period before exit
+- **LLM and tool timeouts** — per-request timeout configuration to prevent hung runs
+- **`pdf_read` tool** — extract text from PDF files
+- **`http_request` tool** — generic REST API calls from within an agent session
+- **`list_directory` tool** — recursive directory listing with glob support
+- **LINE Messaging API adapter** — new platform adapter (`garudust-platforms`)
+- **Automated skill-reflection pipeline** — agent writes a reusable skill after complex multi-step tasks
+- **JSON Schema validation** — all tool parameters validated against their schema before execution
+- **Platform whitelist, mention gate, and per-user session isolation**
+- **`/metrics` endpoint protection** — Bearer token gate when `GARUDUST_API_KEY` is set
+
+### Fixed
+- DuckDuckGo bot-detection challenge detected and returns an actionable error instead of silently failing
+- `doctor` command API-key and connectivity checks are now provider-aware (Anthropic / OpenRouter / Ollama / Bedrock)
+- `garudust-server` loads `~/.garudust/.env` before parsing CLI args so env vars are available at startup
+- `setup` wizard removes stale provider base-URL vars when switching providers
+- `setup` wizard pre-fills existing values and allows skipping fields with Enter
+- Terminal tool: read-only git commands bypass the approval gate; shell-operator injection, redirection, and `git diff --no-index` bypass closed
+- Memory prefetch: stop-word filter, prefetch cap, and injection hardening
+- Sub-agents each receive their own iteration budget
+- `read_file` and `web_fetch` output capped at 512 KB to prevent context flooding
+- `session_search` reuses `SessionDb` connection instead of opening a new one per call
+- Docker healthcheck `curl` missing binary and unexposed webhook/LINE ports fixed
+
+### Changed
+- System prompt trimmed by ~50% without behavioral regression
+- Architecture diagram and crate layout redesigned in all READMEs
+
+---
+
+## [0.1.1] — 2026-05-02
+
+### Added
+- GitHub Pages landing page (`docs/`)
+- Docker sandboxed execution via `run_command` — commands run in an isolated container with `--no-new-privileges`
+- Prompt injection protection via `<untrusted_memory>` tags in recalled memory
+- Structured `INFO`-level audit log for every tool call
+- DNS TOCTOU gap closed with a custom `SafeResolver`
+- Retry with exponential back-off for transient LLM errors
+- Hermes-style constitutional approval replacing `SmartApprover`
+- Proactive skill loading — agent injects a universal note and handles multi-language triggers per message
+- Hermes-style proactive memory — guidance, prefetch, and recall injection
+- Per-category memory expiry with a deterministic cron job
+- Brave Search API key prompt in full setup mode
+- Improved `garudust setup` wizard and `garudust model` subcommand
+
+### Fixed
+- DuckDuckGo fallback search added; untrusted content prompt clarified
+- Streamed tool call id/name preserved when sent before arguments
+- `register` calls for `WriteSkill`, `DelegateTask`, `UserProfileTool`, and `BrowserTool` in main agent build were missing
+
+---
+
+## [0.1.0] — 2026-04-28
+
+### Added
+- Initial public release
+- Multi-provider transport layer: Anthropic Claude, Ollama, OpenAI-compatible (OpenRouter / vLLM / LM Studio), AWS Bedrock, Codex
+- Platform adapters: Telegram, Discord, Slack, Matrix, LINE, HTTP Webhook
+- Built-in toolsets: `files`, `terminal`, `web`, `browser`, `memory`, `skills`, `mcp`, `pdf`, `search`, `delegate`
+- Interactive TUI (`garudust`) with real-time streaming
+- HTTP gateway (`garudust-server`) with SSE streaming, WebSocket, rate limiting, and session management
+- Cron scheduler (`garudust-cron`) for recurring autonomous tasks
+- File-based memory store and SQLite session database
+- MCP (Model Context Protocol) client support
+- Multi-language README (English, Thai, Chinese)
+- Pre-built binaries for `x86_64-musl` and `aarch64-apple-darwin` via release workflow
+- MIT license
+
+[Unreleased]: https://github.com/garudust-org/garudust-agent/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/garudust-org/garudust-agent/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/garudust-org/garudust-agent/compare/v0.1.1...v0.2.0
+[0.1.1]: https://github.com/garudust-org/garudust-agent/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/garudust-org/garudust-agent/releases/tag/v0.1.0
