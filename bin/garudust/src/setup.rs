@@ -111,7 +111,7 @@ pub async fn run() -> anyhow::Result<()> {
     match provider {
         "anthropic" => {
             let cur = read_env_file(&home_dir, "ANTHROPIC_API_KEY");
-            if let Some(v) = prompt_secret("ANTHROPIC_API_KEY", cur.as_deref())? {
+            if let Some(v) = prompt_secret("ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY", cur.as_deref())? {
                 env_vars.push(("ANTHROPIC_API_KEY", v));
             }
         }
@@ -123,7 +123,7 @@ pub async fn run() -> anyhow::Result<()> {
             env_vars.push(("VLLM_BASE_URL", url));
 
             let cur_key = read_env_file(&home_dir, "VLLM_API_KEY");
-            if let Some(v) = prompt_secret("VLLM_API_KEY (Enter to skip)", cur_key.as_deref())? {
+            if let Some(v) = prompt_secret("VLLM_API_KEY", "VLLM_API_KEY (Enter to skip)", cur_key.as_deref())? {
                 env_vars.push(("VLLM_API_KEY", v));
             }
         }
@@ -143,13 +143,13 @@ pub async fn run() -> anyhow::Result<()> {
                 custom_base_url = Some(u);
             }
             let cur_key = read_env_file(&home_dir, "OPENROUTER_API_KEY");
-            if let Some(v) = prompt_secret("API key (Enter to skip)", cur_key.as_deref())? {
+            if let Some(v) = prompt_secret("OPENROUTER_API_KEY", "API key (Enter to skip)", cur_key.as_deref())? {
                 env_vars.push(("OPENROUTER_API_KEY", v));
             }
         }
         _ => {
             let cur = read_env_file(&home_dir, "OPENROUTER_API_KEY");
-            if let Some(v) = prompt_secret("OPENROUTER_API_KEY", cur.as_deref())? {
+            if let Some(v) = prompt_secret("OPENROUTER_API_KEY", "OPENROUTER_API_KEY", cur.as_deref())? {
                 env_vars.push(("OPENROUTER_API_KEY", v));
             }
         }
@@ -187,6 +187,7 @@ pub async fn run() -> anyhow::Result<()> {
         println!("Optional Tools (Enter to keep current / skip):");
         let cur_brave = read_env_file(&home_dir, "BRAVE_SEARCH_API_KEY");
         if let Some(v) = prompt_secret(
+            "BRAVE_SEARCH_API_KEY",
             "Brave Search API key (web_search tool)",
             cur_brave.as_deref(),
         )? {
@@ -217,7 +218,7 @@ pub async fn run() -> anyhow::Result<()> {
             }
             for (label, var) in *fields {
                 let cur = read_env_file(&home_dir, var);
-                if let Some(v) = prompt_secret(label, cur.as_deref())? {
+                if let Some(v) = prompt_secret(var, label, cur.as_deref())? {
                     env_vars.push((var, v));
                 }
             }
@@ -262,6 +263,68 @@ pub async fn run() -> anyhow::Result<()> {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+/// Validate a token value against known format rules.
+/// Returns an error hint string when the value looks wrong, or `None` when OK.
+fn validate_token(var: &str, val: &str) -> Option<&'static str> {
+    match var {
+        "ANTHROPIC_API_KEY" => {
+            if !val.starts_with("sk-ant-") {
+                return Some("expected format: sk-ant-… (starts with 'sk-ant-')");
+            }
+        }
+        "OPENROUTER_API_KEY" => {
+            if !val.starts_with("sk-or-") {
+                return Some("expected format: sk-or-… (starts with 'sk-or-')");
+            }
+        }
+        "TELEGRAM_TOKEN" => {
+            let mut parts = val.splitn(2, ':');
+            let digits_ok = parts.next().map_or(false, |p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()));
+            let suffix_ok = parts.next().map_or(false, |p| p.len() >= 30);
+            if !digits_ok || !suffix_ok {
+                return Some("expected format: 123456789:AAFxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
+            }
+        }
+        "DISCORD_TOKEN" => {
+            if val.split('.').count() != 3 || val.len() < 50 {
+                return Some("expected format: three Base64 segments separated by '.' (~70 chars)");
+            }
+        }
+        "SLACK_BOT_TOKEN" => {
+            if !val.starts_with("xoxb-") {
+                return Some("expected format: xoxb-… (starts with 'xoxb-')");
+            }
+        }
+        "SLACK_APP_TOKEN" => {
+            if !val.starts_with("xapp-") {
+                return Some("expected format: xapp-… (starts with 'xapp-')");
+            }
+        }
+        "MATRIX_HOMESERVER" => {
+            if !val.starts_with("https://") && !val.starts_with("http://") {
+                return Some("expected format: https://matrix.example.com");
+            }
+        }
+        "MATRIX_USER" => {
+            if !val.starts_with('@') || !val.contains(':') {
+                return Some("expected format: @username:server.com");
+            }
+        }
+        "LINE_CHANNEL_TOKEN" => {
+            if val.len() < 20 {
+                return Some("expected: non-empty string, at least 20 characters");
+            }
+        }
+        "LINE_CHANNEL_SECRET" => {
+            if val.len() != 32 || !val.chars().all(|c| c.is_ascii_hexdigit()) {
+                return Some("expected format: 32-character hex string");
+            }
+        }
+        _ => {}
+    }
+    None
+}
 
 /// Remove a key from ~/.garudust/.env if present.
 fn remove_env_var(home_dir: &Path, key: &str) -> std::io::Result<()> {
@@ -311,11 +374,19 @@ fn mask_secret(s: &str) -> String {
     format!("{prefix}••••{suffix}")
 }
 
-/// Prompt for a potentially-sensitive value.
+/// Prompt for a potentially-sensitive value, with one-time format validation.
 /// Shows `[current: ••••]` when an existing value is present.
 /// Returns `None` (keep existing) if the user presses Enter with no input.
 /// Returns `Some(new_value)` when the user types a new value.
-fn prompt_secret(label: &str, existing: Option<&str>) -> anyhow::Result<Option<String>> {
+/// On a format mismatch: warns inline and re-prompts once; accepts whatever the
+/// user enters on the second attempt so valid non-standard tokens still work.
+fn prompt_secret(var: &str, label: &str, existing: Option<&str>) -> anyhow::Result<Option<String>> {
+    let read_line = || -> anyhow::Result<String> {
+        let mut buf = String::new();
+        io::stdin().read_line(&mut buf)?;
+        Ok(buf.trim().to_string())
+    };
+
     if let Some(cur) = existing {
         print!("  {label} [current: {}]: ", mask_secret(cur));
     } else {
@@ -323,15 +394,20 @@ fn prompt_secret(label: &str, existing: Option<&str>) -> anyhow::Result<Option<S
     }
     io::stdout().flush()?;
 
-    let mut buf = String::new();
-    io::stdin().read_line(&mut buf)?;
-    let trimmed = buf.trim().to_string();
+    let first = read_line()?;
+    if first.is_empty() {
+        return Ok(None);
+    }
 
-    Ok(if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed)
-    })
+    if let Some(hint) = validate_token(var, &first) {
+        println!("  ✗ {hint}");
+        print!("  {label} (press Enter to use as-is): ");
+        io::stdout().flush()?;
+        let second = read_line()?;
+        return Ok(Some(if second.is_empty() { first } else { second }));
+    }
+
+    Ok(Some(first))
 }
 
 /// Prompt for a non-secret value. Shows `[default]` in brackets.
@@ -434,4 +510,120 @@ fn draw_checkboxes(
 
     stdout.flush()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_token;
+
+    #[test]
+    fn anthropic_key_valid() {
+        assert!(validate_token("ANTHROPIC_API_KEY", "sk-ant-api03-abc").is_none());
+    }
+
+    #[test]
+    fn anthropic_key_invalid() {
+        assert!(validate_token("ANTHROPIC_API_KEY", "sk-abc-wrongprefix").is_some());
+    }
+
+    #[test]
+    fn openrouter_key_valid() {
+        assert!(validate_token("OPENROUTER_API_KEY", "sk-or-v1-abc123").is_none());
+    }
+
+    #[test]
+    fn openrouter_key_invalid() {
+        assert!(validate_token("OPENROUTER_API_KEY", "sk-ant-abc").is_some());
+    }
+
+    #[test]
+    fn telegram_token_valid() {
+        assert!(validate_token("TELEGRAM_TOKEN", "123456789:AAFabcdefghijklmnopqrstuvwxyz012").is_none());
+    }
+
+    #[test]
+    fn telegram_token_invalid_no_colon() {
+        assert!(validate_token("TELEGRAM_TOKEN", "123456789AAFabc").is_some());
+    }
+
+    #[test]
+    fn telegram_token_invalid_non_digit_id() {
+        assert!(validate_token("TELEGRAM_TOKEN", "abcde:AAFabcdefghijklmnopqrstuvwxyz012").is_some());
+    }
+
+    #[test]
+    fn slack_bot_token_valid() {
+        assert!(validate_token("SLACK_BOT_TOKEN", "xoxb-123-abc").is_none());
+    }
+
+    #[test]
+    fn slack_bot_token_invalid() {
+        assert!(validate_token("SLACK_BOT_TOKEN", "xoxp-123-abc").is_some());
+    }
+
+    #[test]
+    fn slack_app_token_valid() {
+        assert!(validate_token("SLACK_APP_TOKEN", "xapp-1-abc").is_none());
+    }
+
+    #[test]
+    fn matrix_homeserver_valid() {
+        assert!(validate_token("MATRIX_HOMESERVER", "https://matrix.example.com").is_none());
+    }
+
+    #[test]
+    fn matrix_homeserver_invalid() {
+        assert!(validate_token("MATRIX_HOMESERVER", "matrix.example.com").is_some());
+    }
+
+    #[test]
+    fn matrix_user_valid() {
+        assert!(validate_token("MATRIX_USER", "@bot:example.com").is_none());
+    }
+
+    #[test]
+    fn matrix_user_invalid() {
+        assert!(validate_token("MATRIX_USER", "bot_example_com").is_some());
+    }
+
+    #[test]
+    fn line_channel_token_valid() {
+        assert!(validate_token("LINE_CHANNEL_TOKEN", "a".repeat(20).as_str()).is_none());
+    }
+
+    #[test]
+    fn line_channel_token_too_short() {
+        assert!(validate_token("LINE_CHANNEL_TOKEN", "short").is_some());
+    }
+
+    #[test]
+    fn line_channel_secret_valid() {
+        assert!(validate_token("LINE_CHANNEL_SECRET", "abcdef1234567890abcdef1234567890").is_none());
+    }
+
+    #[test]
+    fn line_channel_secret_invalid_length() {
+        assert!(validate_token("LINE_CHANNEL_SECRET", "tooshort").is_some());
+    }
+
+    #[test]
+    fn line_channel_secret_invalid_non_hex() {
+        assert!(validate_token("LINE_CHANNEL_SECRET", "zbcdef1234567890abcdef123456789z").is_some());
+    }
+
+    #[test]
+    fn unknown_var_always_passes() {
+        assert!(validate_token("SOME_UNKNOWN_VAR", "anything").is_none());
+    }
+
+    #[test]
+    fn discord_token_valid() {
+        let token = "MTIzNDU2Nzg5.ABCDEF.ghijklmnopqrstuvwxyz1234567890abcdefghij";
+        assert!(validate_token("DISCORD_TOKEN", token).is_none());
+    }
+
+    #[test]
+    fn discord_token_invalid_segments() {
+        assert!(validate_token("DISCORD_TOKEN", "only.two").is_some());
+    }
 }
