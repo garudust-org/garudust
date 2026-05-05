@@ -108,9 +108,8 @@ fn verify_sig(app_secret: &str, body: &[u8], header: &str) -> bool {
     let Ok(expected_bytes) = hex::decode(expected) else {
         return false;
     };
-    let mut mac = match Hmac::<Sha256>::new_from_slice(app_secret.as_bytes()) {
-        Ok(m) => m,
-        Err(_) => return false,
+    let Ok(mut mac) = Hmac::<Sha256>::new_from_slice(app_secret.as_bytes()) else {
+        return false;
     };
     mac.update(body);
     mac.verify_slice(&expected_bytes).is_ok()
@@ -190,8 +189,7 @@ async fn handle_webhook(
                 let user_name = contacts
                     .iter()
                     .find(|c| c.wa_id == wa_id)
-                    .map(|c| c.profile.name.clone())
-                    .unwrap_or_else(|| wa_id.clone());
+                    .map_or_else(|| wa_id.clone(), |c| c.profile.name.clone());
 
                 let inbound = InboundMessage {
                     channel: ChannelId {
