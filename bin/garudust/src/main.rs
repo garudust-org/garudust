@@ -15,7 +15,7 @@ use garudust_tools::{
     security::docker_available,
     toolsets::{
         browser::BrowserTool,
-        delegate::DelegateTask,
+        delegate::{DelegateTask, DelegateTasks},
         files::{ListDirectory, ReadFile, WriteFile},
         mcp::connect_mcp_server,
         memory::{MemoryTool, UserProfileTool},
@@ -149,6 +149,7 @@ async fn build_agent(config: Arc<AgentConfig>) -> (Arc<Agent>, McpHandles) {
     registry.register(SkillView);
     registry.register(WriteSkill);
     registry.register(DelegateTask);
+    registry.register(DelegateTasks);
     registry.register(BrowserTool::new());
 
     let mcp_handles = attach_mcp_servers(&mut registry, &config.mcp_servers).await;
