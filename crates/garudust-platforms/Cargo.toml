@@ -19,7 +19,8 @@ webhook  = ["dep:axum"]
 slack    = ["dep:tokio-tungstenite"]
 matrix   = ["dep:matrix-sdk"]
 line     = ["dep:hmac", "dep:sha2", "dep:base64", "dep:axum", "dep:dashmap"]
-all      = ["telegram", "discord", "webhook", "slack", "matrix", "line"]
+whatsapp = ["dep:hmac", "dep:sha2", "dep:hex", "dep:axum"]
+all      = ["telegram", "discord", "webhook", "slack", "matrix", "line", "whatsapp"]
 
 [dependencies]
 garudust-core  = { path = "../garudust-core",  version = "0.2.1" }
@@ -42,3 +43,4 @@ dashmap           = { workspace = true, optional = true }
 hmac              = { workspace = true, optional = true }
 sha2              = { workspace = true, optional = true }
 base64            = { workspace = true, optional = true }
+hex               = { workspace = true, optional = true }

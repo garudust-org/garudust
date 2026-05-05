@@ -1845,6 +1845,7 @@ dependencies = [
  "futures",
  "garudust-agent",
  "garudust-core",
+ "hex",
  "hmac 0.13.0",
  "matrix-sdk",
  "reqwest 0.12.28",
