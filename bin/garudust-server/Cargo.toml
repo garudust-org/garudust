@@ -16,14 +16,14 @@ name = "garudust-server"
 path = "src/main.rs"
 
 [dependencies]
-garudust-core      = { path = "../../crates/garudust-core",      version = "0.2" }
-garudust-agent     = { path = "../../crates/garudust-agent",     version = "0.2" }
-garudust-memory    = { path = "../../crates/garudust-memory",    version = "0.2" }
-garudust-gateway   = { path = "../../crates/garudust-gateway",   version = "0.2" }
-garudust-platforms = { path = "../../crates/garudust-platforms", version = "0.2", features = ["all"] }
-garudust-cron      = { path = "../../crates/garudust-cron",      version = "0.2" }
-garudust-tools     = { path = "../../crates/garudust-tools",     version = "0.2" }
-garudust-transport = { path = "../../crates/garudust-transport", version = "0.2" }
+garudust-core      = { path = "../../crates/garudust-core",      version = "0.2.1" }
+garudust-agent     = { path = "../../crates/garudust-agent",     version = "0.2.1" }
+garudust-memory    = { path = "../../crates/garudust-memory",    version = "0.2.1" }
+garudust-gateway   = { path = "../../crates/garudust-gateway",   version = "0.2.1" }
+garudust-platforms = { path = "../../crates/garudust-platforms", version = "0.2.1", features = ["all"] }
+garudust-cron      = { path = "../../crates/garudust-cron",      version = "0.2.1" }
+garudust-tools     = { path = "../../crates/garudust-tools",     version = "0.2.1" }
+garudust-transport = { path = "../../crates/garudust-transport", version = "0.2.1" }
 axum               = { workspace = true }
 clap               = { workspace = true }
 tokio              = { workspace = true }

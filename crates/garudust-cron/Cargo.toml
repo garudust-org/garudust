@@ -12,8 +12,8 @@ keywords     = ["ai", "agent", "cron", "scheduler", "automation"]
 categories   = ["development-tools", "asynchronous"]
 
 [dependencies]
-garudust-core  = { path = "../garudust-core",  version = "0.2" }
-garudust-agent = { path = "../garudust-agent", version = "0.2" }
+garudust-core  = { path = "../garudust-core",  version = "0.2.1" }
+garudust-agent = { path = "../garudust-agent", version = "0.2.1" }
 tokio-cron-scheduler = { workspace = true }
 serde          = { workspace = true }
 serde_json     = { workspace = true }

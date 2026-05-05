@@ -1,3 +1,25 @@
+//! Cron-scheduled autonomous task runner for Garudust AI agents.
+//!
+//! [`CronScheduler`] runs agent tasks on a cron schedule — useful for
+//! recurring jobs such as daily briefings, monitoring alerts, or periodic
+//! data collection, all without human input.
+//!
+//! # Example
+//!
+//! ```no_run
+//! use garudust_cron::{CronScheduler, parse_job_pairs};
+//!
+//! #[tokio::main]
+//! async fn main() -> anyhow::Result<()> {
+//!     let jobs = parse_job_pairs("0 9 * * *=send me a morning briefing");
+//!     // scheduler.start(agent, jobs).await?;
+//!     Ok(())
+//! }
+//! ```
+//!
+//! Jobs are specified as `"cron_expr=task"` pairs.  Use [`parse_job_pairs`]
+//! to parse a comma-separated list from a config file or environment variable.
+
 pub mod scheduler;
 
 pub use scheduler::CronScheduler;
@@ -55,7 +77,6 @@ mod tests {
 
     #[test]
     fn task_may_contain_equals_sign() {
-        // Only the first '=' splits — the rest belongs to the task.
         let jobs = parse_job_pairs("0 * * * *=key=value");
         assert_eq!(jobs[0].1, "key=value");
     }
