@@ -111,7 +111,9 @@ pub async fn run() -> anyhow::Result<()> {
     match provider {
         "anthropic" => {
             let cur = read_env_file(&home_dir, "ANTHROPIC_API_KEY");
-            if let Some(v) = prompt_secret("ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY", cur.as_deref())? {
+            if let Some(v) =
+                prompt_secret("ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY", cur.as_deref())?
+            {
                 env_vars.push(("ANTHROPIC_API_KEY", v));
             }
         }
@@ -123,7 +125,11 @@ pub async fn run() -> anyhow::Result<()> {
             env_vars.push(("VLLM_BASE_URL", url));
 
             let cur_key = read_env_file(&home_dir, "VLLM_API_KEY");
-            if let Some(v) = prompt_secret("VLLM_API_KEY", "VLLM_API_KEY (Enter to skip)", cur_key.as_deref())? {
+            if let Some(v) = prompt_secret(
+                "VLLM_API_KEY",
+                "VLLM_API_KEY (Enter to skip)",
+                cur_key.as_deref(),
+            )? {
                 env_vars.push(("VLLM_API_KEY", v));
             }
         }
@@ -143,13 +149,19 @@ pub async fn run() -> anyhow::Result<()> {
                 custom_base_url = Some(u);
             }
             let cur_key = read_env_file(&home_dir, "OPENROUTER_API_KEY");
-            if let Some(v) = prompt_secret("OPENROUTER_API_KEY", "API key (Enter to skip)", cur_key.as_deref())? {
+            if let Some(v) = prompt_secret(
+                "OPENROUTER_API_KEY",
+                "API key (Enter to skip)",
+                cur_key.as_deref(),
+            )? {
                 env_vars.push(("OPENROUTER_API_KEY", v));
             }
         }
         _ => {
             let cur = read_env_file(&home_dir, "OPENROUTER_API_KEY");
-            if let Some(v) = prompt_secret("OPENROUTER_API_KEY", "OPENROUTER_API_KEY", cur.as_deref())? {
+            if let Some(v) =
+                prompt_secret("OPENROUTER_API_KEY", "OPENROUTER_API_KEY", cur.as_deref())?
+            {
                 env_vars.push(("OPENROUTER_API_KEY", v));
             }
         }
@@ -280,8 +292,10 @@ fn validate_token(var: &str, val: &str) -> Option<&'static str> {
         }
         "TELEGRAM_TOKEN" => {
             let mut parts = val.splitn(2, ':');
-            let digits_ok = parts.next().map_or(false, |p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()));
-            let suffix_ok = parts.next().map_or(false, |p| p.len() >= 30);
+            let digits_ok = parts
+                .next()
+                .is_some_and(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()));
+            let suffix_ok = parts.next().is_some_and(|p| p.len() >= 30);
             if !digits_ok || !suffix_ok {
                 return Some("expected format: 123456789:AAFxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
             }
@@ -538,7 +552,11 @@ mod tests {
 
     #[test]
     fn telegram_token_valid() {
-        assert!(validate_token("TELEGRAM_TOKEN", "123456789:AAFabcdefghijklmnopqrstuvwxyz012").is_none());
+        assert!(validate_token(
+            "TELEGRAM_TOKEN",
+            "123456789:AAFabcdefghijklmnopqrstuvwxyz012"
+        )
+        .is_none());
     }
 
     #[test]
@@ -548,7 +566,9 @@ mod tests {
 
     #[test]
     fn telegram_token_invalid_non_digit_id() {
-        assert!(validate_token("TELEGRAM_TOKEN", "abcde:AAFabcdefghijklmnopqrstuvwxyz012").is_some());
+        assert!(
+            validate_token("TELEGRAM_TOKEN", "abcde:AAFabcdefghijklmnopqrstuvwxyz012").is_some()
+        );
     }
 
     #[test]
@@ -598,7 +618,9 @@ mod tests {
 
     #[test]
     fn line_channel_secret_valid() {
-        assert!(validate_token("LINE_CHANNEL_SECRET", "abcdef1234567890abcdef1234567890").is_none());
+        assert!(
+            validate_token("LINE_CHANNEL_SECRET", "abcdef1234567890abcdef1234567890").is_none()
+        );
     }
 
     #[test]
@@ -608,7 +630,9 @@ mod tests {
 
     #[test]
     fn line_channel_secret_invalid_non_hex() {
-        assert!(validate_token("LINE_CHANNEL_SECRET", "zbcdef1234567890abcdef123456789z").is_some());
+        assert!(
+            validate_token("LINE_CHANNEL_SECRET", "zbcdef1234567890abcdef123456789z").is_some()
+        );
     }
 
     #[test]
