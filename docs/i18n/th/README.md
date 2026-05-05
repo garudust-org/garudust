@@ -17,7 +17,7 @@
 
 **ระบบรันไทม์ AI agent ที่โฮสต์เองได้ พัฒนาตัวเองได้ เขียนด้วย Rust**
 
-แชทจากเทอร์มินัล เชื่อมต่อกับ Telegram / Discord / Slack / Matrix / LINE หรือเรียกใช้ผ่าน HTTP — ทั้งหมดจากไบนารีเดียว มันจำสิ่งที่คุณสอน พูดภาษาของคุณ และฉลาดขึ้นทุกเซสชัน
+แชทจากเทอร์มินัล เชื่อมต่อกับ Telegram / Discord / Slack / Matrix / LINE / WhatsApp หรือเรียกใช้ผ่าน HTTP — ทั้งหมดจากไบนารีเดียว มันจำสิ่งที่คุณสอน พูดภาษาของคุณ และฉลาดขึ้นทุกเซสชัน
 
 ### ตัวอย่างการใช้งาน
 
@@ -34,7 +34,7 @@
 - **พูดภาษาของคุณ** — ตรวจจับภาษาไทย จีน ญี่ปุ่น อาหรับ เกาหลี และอื่น ๆ โดยอัตโนมัติ ไม่ต้องตั้งค่าเพิ่ม
 - **เปลี่ยน LLM ด้วย env var เดียว** — รองรับ Anthropic, OpenRouter, AWS Bedrock, Ollama, vLLM หรือ endpoint ที่เข้ากันได้กับ OpenAI
 - **ปลอดภัยตั้งแต่ต้น** — Docker sandbox, การบล็อคคำสั่งอันตรายแบบไม่มีข้อยกเว้น, ป้องกันการฝังคำสั่งผ่าน memory และการ redact secret อัตโนมัติจาก output ของ tool
-- **รันได้ทุกที่** — TUI บนแล็ปท็อป, headless server, Docker, Telegram, Discord, Slack, Matrix, LINE, HTTP
+- **รันได้ทุกที่** — TUI บนแล็ปท็อป, headless server, Docker, Telegram, Discord, Slack, Matrix, LINE, WhatsApp, HTTP
 - **ประกอบต่อได้ง่าย** — แต่ละส่วนแยกเป็น crate อิสระ เพิ่ม tool, platform หรือ transport โดยไม่กระทบโค้ดส่วนอื่น
 
 ---
@@ -288,6 +288,7 @@ curl http://localhost:3000/metrics   # รองรับ Prometheus
   <a href="https://api.slack.com/apps"><img src="https://img.shields.io/badge/Slack-4A154B?logo=slack&logoColor=white&style=for-the-badge" alt="Slack"/></a>
   <a href="https://matrix.org"><img src="https://img.shields.io/badge/Matrix-000000?logo=matrix&logoColor=white&style=for-the-badge" alt="Matrix"/></a>
   <a href="https://developers.line.biz/console/"><img src="https://img.shields.io/badge/LINE-00C300?logo=line&logoColor=white&style=for-the-badge" alt="LINE"/></a>
+  <a href="https://developers.facebook.com/docs/whatsapp/cloud-api"><img src="https://img.shields.io/badge/WhatsApp-25D366?logo=whatsapp&logoColor=white&style=for-the-badge" alt="WhatsApp"/></a>
   <img src="https://img.shields.io/badge/Webhook-6E7681?style=for-the-badge" alt="Webhook"/>
 </div>
 
@@ -300,6 +301,7 @@ curl http://localhost:3000/metrics   # รองรับ Prometheus
 | Slack | `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN` |
 | Matrix | `MATRIX_HOMESERVER`, `MATRIX_USER`, `MATRIX_PASSWORD` |
 | LINE | `LINE_CHANNEL_TOKEN`, `LINE_CHANNEL_SECRET` |
+| WhatsApp | `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN` |
 | Webhook | เปิดอยู่ที่ `POST /webhook` เสมอ — ไม่ต้องใช้ token |
 
 **Telegram** — สร้างบอทผ่าน [@BotFather](https://t.me/botfather) แล้วคัดลอก token
@@ -311,6 +313,8 @@ curl http://localhost:3000/metrics   # รองรับ Prometheus
 **Matrix** — รองรับ homeserver ทุกประเภท (matrix.org, Synapse, Dendrite ฯลฯ)
 
 **LINE** — สร้าง Messaging API channel ที่ [developers.line.biz](https://developers.line.biz/console/) คัดลอก **Channel access token** และ **Channel secret** จากนั้นตั้งค่า `GARUDUST_LINE_PORT` (ค่าเริ่มต้น `3002`) และกำหนด Webhook URL ใน LINE console เป็น `https://your-host:3002/line`
+
+**WhatsApp** — สร้าง Meta app ที่ [developers.facebook.com](https://developers.facebook.com/) เพิ่มผลิตภัณฑ์ **WhatsApp** คัดลอก **Access token** และ **Phone number ID** ตั้งค่า `GARUDUST_WHATSAPP_PORT` (ค่าเริ่มต้น `3003`) และกำหนด Webhook URL ใน Meta console เป็น `https://your-host:3003/whatsapp` หากต้องการตรวจสอบ HMAC signature ให้ตั้งค่า `WHATSAPP_APP_SECRET` ด้วย
 
 ---
 
@@ -359,7 +363,7 @@ curl http://localhost:3000/metrics   # รองรับ Prometheus
   garudust (CLI)              garudust-server
   ┌────────────────────┐    ┌─────────────────────────────────────────────┐
   │  TUI / one-shot    │    │  HTTP /chat · /stream · /ws                 │
-  │  setup · config    ├──┐ │  Telegram · Discord · Slack · Matrix · LINE │
+  │  setup · config    ├──┐ │  Telegram · Discord · Slack · Matrix · LINE · WhatsApp │
   │  doctor · model    │  │ │  Webhook · Cron                             │
   └────────────────────┘  │ └──────────────────────────┬──────────────────┘
                           │                            │
@@ -399,7 +403,7 @@ curl http://localhost:3000/metrics   # รองรับ Prometheus
 | `garudust-tools` | Tool registry + toolset ในตัว (web, files, terminal, browser, …) |
 | `garudust-memory` | `FileMemoryStore` (markdown) + `SessionDb` (SQLite + FTS5) |
 | `garudust-agent` | Agent run loop, context compressor, prompt builder |
-| `garudust-platforms` | Telegram, Discord, Slack, Matrix, LINE, Webhook |
+| `garudust-platforms` | Telegram, Discord, Slack, Matrix, LINE, WhatsApp, Webhook |
 | `garudust-cron` | Cron scheduler |
 | `garudust-gateway` | axum HTTP gateway — `/chat`, `/chat/stream`, `/chat/ws`, `/metrics` |
 | `bin/garudust` | CLI: TUI โต้ตอบ, one-shot, `setup`, `config`, `doctor`, `model` |
@@ -414,7 +418,7 @@ Garudust ออกแบบมาให้ขยายได้ง่าย — 
 ### Issues สำหรับผู้เริ่มต้น
 
 - **เครื่องมือใหม่** — ห่อ CLI หรือ API ใด ๆ เป็น `Tool` impl ใน `garudust-tools`
-- **แพลตฟอร์มใหม่** — implement `PlatformAdapter` (เช่น Signal, WhatsApp)
+- **แพลตฟอร์มใหม่** — implement `PlatformAdapter` (เช่น Signal, WeChat)
 - **ปรับปรุง TUI** — multi-line input, syntax highlighting, รองรับเมาส์
 - **เทส** — integration tests, property tests, snapshot tests
 

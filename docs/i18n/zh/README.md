@@ -17,7 +17,7 @@
 
 **用 Rust 编写的可自托管、可自我进化的 AI 智能体运行时**
 
-从终端聊天，连接 Telegram / Discord / Slack / Matrix / LINE，或通过 HTTP 调用 — 一个二进制文件搞定一切。它记住你教给它的东西，说你的语言，每次使用都变得更聪明。
+从终端聊天，连接 Telegram / Discord / Slack / Matrix / LINE / WhatsApp，或通过 HTTP 调用 — 一个二进制文件搞定一切。它记住你教给它的东西，说你的语言，每次使用都变得更聪明。
 
 ### 演示
 
@@ -34,7 +34,7 @@
 - **说你的语言** — 自动检测中文、泰语、日语、阿拉伯语、韩语等，无需任何配置
 - **一个环境变量切换 LLM 提供商** — 支持 Anthropic、OpenRouter、AWS Bedrock、Ollama、vLLM 或任何 OpenAI 兼容端点
 - **安全优先设计** — Docker 沙箱、无条件命令拦截、内存投毒防护，以及工具输出的自动密钥脱敏
-- **随处运行** — 笔记本 TUI、无头服务器、Docker、Telegram、Discord、Slack、Matrix、LINE、HTTP
+- **随处运行** — 笔记本 TUI、无头服务器、Docker、Telegram、Discord、Slack、Matrix、LINE、WhatsApp、HTTP
 - **高度可组合** — 每个模块都是独立 crate，添加工具、平台或传输层无需改动其他代码
 
 ---
@@ -286,6 +286,7 @@ curl http://localhost:3000/metrics   # Prometheus 兼容
   <a href="https://api.slack.com/apps"><img src="https://img.shields.io/badge/Slack-4A154B?logo=slack&logoColor=white&style=for-the-badge" alt="Slack"/></a>
   <a href="https://matrix.org"><img src="https://img.shields.io/badge/Matrix-000000?logo=matrix&logoColor=white&style=for-the-badge" alt="Matrix"/></a>
   <a href="https://developers.line.biz/console/"><img src="https://img.shields.io/badge/LINE-00C300?logo=line&logoColor=white&style=for-the-badge" alt="LINE"/></a>
+  <a href="https://developers.facebook.com/docs/whatsapp/cloud-api"><img src="https://img.shields.io/badge/WhatsApp-25D366?logo=whatsapp&logoColor=white&style=for-the-badge" alt="WhatsApp"/></a>
   <img src="https://img.shields.io/badge/Webhook-6E7681?style=for-the-badge" alt="Webhook"/>
 </div>
 
@@ -298,6 +299,7 @@ curl http://localhost:3000/metrics   # Prometheus 兼容
 | Slack | `SLACK_BOT_TOKEN`、`SLACK_APP_TOKEN` |
 | Matrix | `MATRIX_HOMESERVER`、`MATRIX_USER`、`MATRIX_PASSWORD` |
 | LINE | `LINE_CHANNEL_TOKEN`、`LINE_CHANNEL_SECRET` |
+| WhatsApp | `WHATSAPP_ACCESS_TOKEN`、`WHATSAPP_PHONE_NUMBER_ID`、`WHATSAPP_VERIFY_TOKEN` |
 | Webhook | 始终开启，监听 `POST /webhook` — 无需令牌 |
 
 **Telegram** — 通过 [@BotFather](https://t.me/botfather) 创建机器人，复制 token。
@@ -309,6 +311,8 @@ curl http://localhost:3000/metrics   # Prometheus 兼容
 **Matrix** — 支持任意 homeserver（matrix.org、Synapse、Dendrite 等）。
 
 **LINE** — 在 [developers.line.biz](https://developers.line.biz/console/) 创建 Messaging API channel，复制 **Channel access token** 和 **Channel secret**，设置 `GARUDUST_LINE_PORT`（默认 `3002`），并在 LINE 控制台将 Webhook URL 设为 `https://your-host:3002/line`。
+
+**WhatsApp** — 在 [developers.facebook.com](https://developers.facebook.com/) 创建 Meta 应用并添加 **WhatsApp** 产品，复制 **Access token** 和 **Phone number ID**。设置 `GARUDUST_WHATSAPP_PORT`（默认 `3003`），并在 Meta 控制台将 Webhook URL 设为 `https://your-host:3003/whatsapp`。如需启用 HMAC 签名验证，还需设置 `WHATSAPP_APP_SECRET`。
 
 ---
 
@@ -357,7 +361,7 @@ curl http://localhost:3000/metrics   # Prometheus 兼容
   garudust (CLI)              garudust-server
   ┌────────────────────┐    ┌─────────────────────────────────────────────┐
   │  TUI / one-shot    │    │  HTTP /chat · /stream · /ws                 │
-  │  setup · config    ├──┐ │  Telegram · Discord · Slack · Matrix · LINE │
+  │  setup · config    ├──┐ │  Telegram · Discord · Slack · Matrix · LINE · WhatsApp │
   │  doctor · model    │  │ │  Webhook · Cron                             │
   └────────────────────┘  │ └──────────────────────────┬──────────────────┘
                           │                            │
@@ -397,7 +401,7 @@ curl http://localhost:3000/metrics   # Prometheus 兼容
 | `garudust-tools` | 工具注册表 + 内置工具集（web、files、terminal、browser 等） |
 | `garudust-memory` | `FileMemoryStore`（markdown）+ `SessionDb`（SQLite + FTS5） |
 | `garudust-agent` | Agent 运行循环、上下文压缩器、提示构建器 |
-| `garudust-platforms` | Telegram、Discord、Slack、Matrix、LINE、Webhook |
+| `garudust-platforms` | Telegram、Discord、Slack、Matrix、LINE、WhatsApp、Webhook |
 | `garudust-cron` | 定时调度器 |
 | `garudust-gateway` | axum HTTP 网关 — `/chat`、`/chat/stream`、`/chat/ws`、`/metrics` |
 | `bin/garudust` | CLI：交互式 TUI、单次任务、`setup`、`config`、`doctor`、`model` |
@@ -412,7 +416,7 @@ Garudust 设计为易于扩展 — 添加工具、传输层或平台适配器通
 ### 新手入门议题
 
 - **新工具** — 在 `garudust-tools` 中将任意 CLI 或 API 封装为 `Tool` 实现
-- **新平台** — 实现 `PlatformAdapter`（如 Signal、WhatsApp）
+- **新平台** — 实现 `PlatformAdapter`（如 Signal、WeChat）
 - **改进 TUI** — 多行输入、语法高亮、鼠标支持
 - **测试** — 集成测试、属性测试、快照测试
 

@@ -17,7 +17,7 @@
 
 **A self-hostable, self-improving AI agent runtime written in Rust.**
 
-Chat from your terminal, connect it to Telegram / Discord / Slack / Matrix / LINE, or call it over HTTP — all from a single binary. It remembers what you teach it, speaks your language, and gets smarter with every session.
+Chat from your terminal, connect it to Telegram / Discord / Slack / Matrix / LINE / WhatsApp, or call it over HTTP — all from a single binary. It remembers what you teach it, speaks your language, and gets smarter with every session.
 
 ### Demo
 
@@ -34,7 +34,7 @@ Chat from your terminal, connect it to Telegram / Discord / Slack / Matrix / LIN
 - **Speaks your language** — detects Thai, Chinese, Japanese, Arabic, Korean, and more automatically; no configuration needed
 - **Swap providers with one env var** — Anthropic, OpenRouter, AWS Bedrock, Ollama, vLLM, or any OpenAI-compatible endpoint
 - **Secure by design** — Docker sandbox, hardline command blocks, memory-poisoning protection, and automatic secret redaction from tool output
-- **Runs everywhere** — laptop TUI, headless server, Docker, Telegram, Discord, Slack, Matrix, LINE, HTTP
+- **Runs everywhere** — laptop TUI, headless server, Docker, Telegram, Discord, Slack, Matrix, LINE, WhatsApp, HTTP
 - **Composable** — every piece is a separate crate; add a tool, platform, or transport without touching anything else
 
 ---
@@ -286,6 +286,7 @@ curl http://localhost:3000/metrics   # Prometheus-compatible
   <a href="https://api.slack.com/apps"><img src="https://img.shields.io/badge/Slack-4A154B?logo=slack&logoColor=white&style=for-the-badge" alt="Slack"/></a>
   <a href="https://matrix.org"><img src="https://img.shields.io/badge/Matrix-000000?logo=matrix&logoColor=white&style=for-the-badge" alt="Matrix"/></a>
   <a href="https://developers.line.biz/console/"><img src="https://img.shields.io/badge/LINE-00C300?logo=line&logoColor=white&style=for-the-badge" alt="LINE"/></a>
+  <a href="https://developers.facebook.com/docs/whatsapp/cloud-api"><img src="https://img.shields.io/badge/WhatsApp-25D366?logo=whatsapp&logoColor=white&style=for-the-badge" alt="WhatsApp"/></a>
   <img src="https://img.shields.io/badge/Webhook-6E7681?style=for-the-badge" alt="Webhook"/>
 </div>
 
@@ -298,6 +299,7 @@ Set the relevant tokens in `~/.garudust/.env` and start `garudust-server`. Every
 | Slack | `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN` |
 | Matrix | `MATRIX_HOMESERVER`, `MATRIX_USER`, `MATRIX_PASSWORD` |
 | LINE | `LINE_CHANNEL_TOKEN`, `LINE_CHANNEL_SECRET` |
+| WhatsApp | `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN` |
 | Webhook | always-on at `POST /webhook` — no token needed |
 
 **Telegram** — create a bot via [@BotFather](https://t.me/botfather), copy the token.
@@ -309,6 +311,8 @@ Set the relevant tokens in `~/.garudust/.env` and start `garudust-server`. Every
 **Matrix** — works with any homeserver (matrix.org, Synapse, Dendrite, etc.).
 
 **LINE** — create a Messaging API channel at [developers.line.biz](https://developers.line.biz/console/), copy the **Channel access token** and **Channel secret**, then set `GARUDUST_LINE_PORT` (default `3002`) and point the webhook URL in LINE console to `https://your-host:3002/line`.
+
+**WhatsApp** — create a Meta app at [developers.facebook.com](https://developers.facebook.com/), add the **WhatsApp** product, copy the **Access token** and **Phone number ID**. Set `GARUDUST_WHATSAPP_PORT` (default `3003`) and point the webhook URL in Meta console to `https://your-host:3003/whatsapp`. Optionally set `WHATSAPP_APP_SECRET` to enable HMAC signature verification.
 
 ---
 
@@ -358,7 +362,7 @@ Set the relevant key in `~/.garudust/.env`, then switch models with `garudust mo
   garudust (CLI)              garudust-server
   ┌────────────────────┐    ┌─────────────────────────────────────────────┐
   │  TUI / one-shot    │    │  HTTP /chat · /stream · /ws                 │
-  │  setup · config    ├──┐ │  Telegram · Discord · Slack · Matrix · LINE │
+  │  setup · config    ├──┐ │  Telegram · Discord · Slack · Matrix · LINE · WhatsApp │
   │  doctor · model    │  │ │  Webhook · Cron                             │
   └────────────────────┘  │ └──────────────────────────┬──────────────────┘
                           │                            │
@@ -398,7 +402,7 @@ Set the relevant key in `~/.garudust/.env`, then switch models with `garudust mo
 | `garudust-tools` | Tool registry + built-in toolsets (web, files, terminal, browser, …) |
 | `garudust-memory` | `FileMemoryStore` (markdown) + `SessionDb` (SQLite + FTS5) |
 | `garudust-agent` | Agent run loop, context compressor, prompt builder |
-| `garudust-platforms` | Telegram, Discord, Slack, Matrix, LINE, Webhook |
+| `garudust-platforms` | Telegram, Discord, Slack, Matrix, LINE, WhatsApp, Webhook |
 | `garudust-cron` | Cron scheduler |
 | `garudust-gateway` | axum HTTP gateway — `/chat`, `/chat/stream`, `/chat/ws`, `/metrics` |
 | `bin/garudust` | CLI: interactive TUI, one-shot, `setup`, `config`, `doctor`, `model` |
@@ -413,7 +417,7 @@ Garudust is designed to be easy to extend — adding a tool, transport, or platf
 ### Good first issues
 
 - **New tool** — wrap any CLI or API as a `Tool` impl in `garudust-tools`
-- **New platform** — implement `PlatformAdapter` (e.g. Signal, WhatsApp)
+- **New platform** — implement `PlatformAdapter` (e.g. Signal, WeChat)
 - **Improve TUI** — multi-line input, syntax highlighting, mouse support
 - **Tests** — integration tests, property tests, snapshot tests
 
