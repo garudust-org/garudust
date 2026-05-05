@@ -10,14 +10,16 @@
 //! # Example
 //!
 //! ```no_run
+//! use std::path::PathBuf;
 //! use garudust_memory::FileMemoryStore;
 //! use garudust_core::memory::MemoryStore;
 //!
 //! #[tokio::main]
 //! async fn main() -> anyhow::Result<()> {
-//!     let store  = FileMemoryStore::new(dirs::home_dir().unwrap().join(".garudust"));
-//!     let memory = store.read_memory().await?;
-//!     println!("Facts: {:?}", memory.facts);
+//!     let home  = PathBuf::from(std::env::var("HOME").unwrap_or_default());
+//!     let store = FileMemoryStore::new(&home);
+//!     let profile = store.read_user_profile().await?;
+//!     println!("Profile: {profile}");
 //!     Ok(())
 //! }
 //! ```

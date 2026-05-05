@@ -21,7 +21,7 @@
 //! use garudust_gateway::{create_router, AppState};
 //!
 //! async fn serve(state: AppState) -> anyhow::Result<()> {
-//!     let app      = create_router(Arc::new(state));
+//!     let app      = create_router(state);
 //!     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
 //!     axum::serve(listener, app).await?;
 //!     Ok(())

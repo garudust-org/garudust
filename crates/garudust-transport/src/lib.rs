@@ -21,12 +21,14 @@
 //! wrapped in a [`RetryTransport`] with exponential back-off.
 //!
 //! ```no_run
+//! use std::sync::Arc;
 //! use garudust_transport::build_transport;
+//! use garudust_core::config::AgentConfig;
 //!
-//! #[tokio::main]
-//! async fn main() -> anyhow::Result<()> {
-//!     let transport = build_transport()?;
-//!     Ok(())
+//! fn main() {
+//!     let config    = AgentConfig::default();
+//!     let transport = build_transport(&config);
+//!     // pass `transport` to Agent::new(...)
 //! }
 //! ```
 

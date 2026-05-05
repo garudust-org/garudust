@@ -7,15 +7,23 @@
 //!
 //! ```no_run
 //! use std::sync::Arc;
-//! use garudust_agent::Agent;
+//! use std::path::PathBuf;
+//! use garudust_agent::{Agent, AutoApprover};
 //! use garudust_core::config::AgentConfig;
+//! use garudust_transport::build_transport;
+//! use garudust_memory::FileMemoryStore;
+//! use garudust_tools::ToolRegistry;
 //!
 //! #[tokio::main]
 //! async fn main() -> anyhow::Result<()> {
-//!     let config = Arc::new(AgentConfig::default());
-//!     let agent  = Agent::new(config);
-//!     let result = agent.run_once("List files in the current directory").await?;
-//!     println!("{result}");
+//!     let config    = Arc::new(AgentConfig::default());
+//!     let transport = build_transport(&config);
+//!     let tools     = Arc::new(ToolRegistry::default());
+//!     let memory    = Arc::new(FileMemoryStore::new(&PathBuf::from("/tmp")));
+//!     let agent     = Agent::new(transport, tools, memory, config);
+//!     let approver  = Arc::new(AutoApprover);
+//!     let result    = agent.run("List files here", approver, "cli").await?;
+//!     println!("{}", result.output);
 //!     Ok(())
 //! }
 //! ```
