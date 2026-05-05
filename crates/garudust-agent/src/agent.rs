@@ -7,6 +7,7 @@ use garudust_core::{
     config::AgentConfig,
     error::AgentError,
     memory::MemoryStore,
+    pricing::usage_footer,
     tool::{SubAgentRunner, ToolContext},
     transport::ProviderTransport,
     types::{
@@ -403,6 +404,31 @@ impl Agent {
             total_in += resp.usage.input_tokens;
             total_out += resp.usage.output_tokens;
 
+            // Token budget: stop early if the per-task cap is reached.
+            if let Some(cap) = self.config.max_tokens_per_task {
+                let used = total_in + total_out;
+                if used >= cap {
+                    warn!(used, cap, "token budget exhausted — stopping task early");
+                    let footer = usage_footer(&self.config.model, iters, total_in, total_out);
+                    let output = format!(
+                        "[Token budget of {cap} exceeded after {used} tokens — \
+                         stopping early.]\n\n{footer}"
+                    );
+                    let result = AgentResult {
+                        output,
+                        usage: garudust_core::types::TokenUsage {
+                            input_tokens: total_in,
+                            output_tokens: total_out,
+                            ..Default::default()
+                        },
+                        iterations: iters,
+                        session_id: session_id.clone(),
+                    };
+                    self.persist_session(&session_id, platform, started_at, &history, &result);
+                    return Ok(result);
+                }
+            }
+
             history.push(Message {
                 role: Role::Assistant,
                 content: resp.content.clone(),
@@ -422,7 +448,9 @@ impl Agent {
                     .collect::<Vec<_>>()
                     .join("\n");
                 // Scrub any <recalled_memory> block the model may have echoed back.
-                let output = scrub_recalled_memory(&raw_output);
+                let raw_output = scrub_recalled_memory(&raw_output);
+                let footer = usage_footer(&self.config.model, iters, total_in, total_out);
+                let output = format!("{raw_output}\n\n{footer}");
 
                 let result = AgentResult {
                     output,

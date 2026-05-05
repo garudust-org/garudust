@@ -86,6 +86,11 @@ pub struct AgentConfig {
     /// requests to complete before forcing exit. Default: 30.
     #[serde(default = "default_shutdown_timeout_secs")]
     pub shutdown_timeout_secs: u64,
+    /// Hard cap on total tokens (input + output) consumed by a single task.
+    /// When exceeded the agent stops and returns what it has with a budget notice.
+    /// `None` means no limit.
+    #[serde(default)]
+    pub max_tokens_per_task: Option<u32>,
 }
 
 fn default_nudge_interval() -> u32 {
@@ -311,6 +316,7 @@ impl Default for AgentConfig {
             llm_timeout_secs: default_llm_timeout_secs(),
             tool_timeout_secs: default_tool_timeout_secs(),
             shutdown_timeout_secs: default_shutdown_timeout_secs(),
+            max_tokens_per_task: None,
         }
     }
 }
