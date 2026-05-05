@@ -19,6 +19,8 @@
 
 แชทจากเทอร์มินัล เชื่อมต่อกับ Telegram / Discord / Slack / Matrix / LINE หรือเรียกใช้ผ่าน HTTP — ทั้งหมดจากไบนารีเดียว มันจำสิ่งที่คุณสอน พูดภาษาของคุณ และฉลาดขึ้นทุกเซสชัน
 
+### ตัวอย่างการใช้งาน
+
 <div align="center">
   <img src="../../../assets/demo.svg" alt="Garudust demo"/>
 </div>

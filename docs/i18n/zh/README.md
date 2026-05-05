@@ -19,6 +19,8 @@
 
 从终端聊天，连接 Telegram / Discord / Slack / Matrix / LINE，或通过 HTTP 调用 — 一个二进制文件搞定一切。它记住你教给它的东西，说你的语言，每次使用都变得更聪明。
 
+### 演示
+
 <div align="center">
   <img src="../../../assets/demo.svg" alt="Garudust demo"/>
 </div>

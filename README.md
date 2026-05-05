@@ -19,6 +19,8 @@
 
 Chat from your terminal, connect it to Telegram / Discord / Slack / Matrix / LINE, or call it over HTTP — all from a single binary. It remembers what you teach it, speaks your language, and gets smarter with every session.
 
+### Demo
+
 <div align="center">
   <img src="assets/demo.svg" alt="Garudust demo"/>
 </div>
