@@ -11,7 +11,7 @@ use garudust_gateway::{create_router, AppState, GatewayHandler, Metrics, Session
 use garudust_memory::{FileMemoryStore, SessionDb};
 use garudust_platforms::{
     discord::DiscordAdapter, line::LineAdapter, matrix::MatrixAdapter, slack::SlackAdapter,
-    telegram::TelegramAdapter, webhook::WebhookAdapter,
+    telegram::TelegramAdapter, webhook::WebhookAdapter, whatsapp::WhatsAppAdapter,
 };
 use garudust_tools::{
     security::docker_available,
@@ -90,6 +90,24 @@ struct Cli {
     /// Port for the LINE webhook receiver (0 = disabled)
     #[arg(long, env = "GARUDUST_LINE_PORT", default_value = "3002")]
     line_port: u16,
+
+    #[arg(long, env = "WHATSAPP_ACCESS_TOKEN")]
+    whatsapp_access_token: Option<String>,
+
+    #[arg(long, env = "WHATSAPP_PHONE_NUMBER_ID")]
+    whatsapp_phone_number_id: Option<String>,
+
+    /// WhatsApp app secret for HMAC signature verification (leave empty to skip verification)
+    #[arg(long, env = "WHATSAPP_APP_SECRET", default_value = "")]
+    whatsapp_app_secret: String,
+
+    /// Token used during Meta webhook verification handshake
+    #[arg(long, env = "WHATSAPP_VERIFY_TOKEN", default_value = "")]
+    whatsapp_verify_token: String,
+
+    /// Port for the WhatsApp webhook receiver (0 = disabled)
+    #[arg(long, env = "GARUDUST_WHATSAPP_PORT", default_value = "3003")]
+    whatsapp_port: u16,
 
     /// Comma-separated list of cron jobs: "cron_expr=task" pairs
     /// e.g. "0 9 * * *=Good morning report"
@@ -429,6 +447,28 @@ async fn main() -> Result<()> {
                 token.clone(),
                 secret.clone(),
                 cli.line_port,
+            ));
+            start_platform(
+                platform,
+                agent.load_full(),
+                sessions.clone(),
+                approver.clone(),
+                config.clone(),
+            )
+            .await?;
+        }
+    }
+
+    if let (Some(token), Some(phone_id)) =
+        (&cli.whatsapp_access_token, &cli.whatsapp_phone_number_id)
+    {
+        if cli.whatsapp_port > 0 {
+            let platform: Arc<dyn PlatformAdapter> = Arc::new(WhatsAppAdapter::new(
+                token.clone(),
+                phone_id.clone(),
+                cli.whatsapp_app_secret.clone(),
+                cli.whatsapp_verify_token.clone(),
+                cli.whatsapp_port,
             ));
             start_platform(
                 platform,

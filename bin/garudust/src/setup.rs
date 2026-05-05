@@ -35,6 +35,21 @@ const PLATFORMS: &[(&str, &[(&str, &str)])] = &[
             ("LINE channel secret", "LINE_CHANNEL_SECRET"),
         ],
     ),
+    (
+        "WhatsApp",
+        &[
+            ("WhatsApp access token", "WHATSAPP_ACCESS_TOKEN"),
+            ("WhatsApp phone number ID", "WHATSAPP_PHONE_NUMBER_ID"),
+            (
+                "WhatsApp app secret (for signature verification)",
+                "WHATSAPP_APP_SECRET",
+            ),
+            (
+                "WhatsApp verify token (for webhook setup)",
+                "WHATSAPP_VERIFY_TOKEN",
+            ),
+        ],
+    ),
 ];
 
 pub async fn run() -> anyhow::Result<()> {
@@ -316,6 +331,9 @@ fn validate_token(var: &str, val: &str) -> Option<&'static str> {
         }
         "LINE_CHANNEL_SECRET" if val.len() != 32 || !val.chars().all(|c| c.is_ascii_hexdigit()) => {
             return Some("expected format: 32-character hex string");
+        }
+        "WHATSAPP_PHONE_NUMBER_ID" if !val.chars().all(|c| c.is_ascii_digit()) => {
+            return Some("expected format: numeric ID (e.g. 123456789012345)");
         }
         _ => {}
     }

@@ -68,6 +68,7 @@ dashmap   = "6"
 hmac      = "0.13"
 sha2      = "0.11"
 base64    = "0.22"
+hex       = "0.4"
 
 # JSON Schema validation
 jsonschema = { version = "0.46", default-features = false }

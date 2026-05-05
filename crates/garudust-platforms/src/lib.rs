@@ -49,3 +49,6 @@ pub mod matrix;
 
 #[cfg(feature = "line")]
 pub mod line;
+
+#[cfg(feature = "whatsapp")]
+pub mod whatsapp;
