@@ -11,6 +11,26 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.2.2] — 2026-05-06
+
+### Added
+- **WhatsApp Business Cloud API adapter** — full inbound/outbound support via Meta Cloud API; HMAC-SHA256 signature verification, text chunking at 4 096-char boundary, `garudust setup` and `garudust-server` integration
+- **`delegate_tasks` tool** — parallel sub-agent execution; spawns multiple sub-agents concurrently via `futures::join_all` and returns all results in original order
+- **Per-task token budget** — `max_tokens_per_task: Option<u32>` in `AgentConfig`; stops the agent loop early when the token cap is reached and returns a notice
+- **Usage footer** — every completed task now appends `[N iter | Xin Yout tok | ~$cost @ model]` to the output
+- **`garudust-core::pricing`** — static per-million-token price table covering Claude 3/4, GPT-4o/mini, and Gemini 1.5/2.x families
+- **Token format validation in `garudust setup`** — warns and re-prompts on obviously malformed API keys and platform tokens (Anthropic, OpenRouter, Telegram, Discord, Slack, Matrix, LINE, WhatsApp)
+
+### Fixed
+- GitHub issue template URLs updated from old `ninenox/garudust` repo to `garudust-org/garudust-agent`
+- Security advisory link in `SECURITY.md` corrected to new repo
+
+### Changed
+- `garudust-platforms` crate description updated to include WhatsApp
+- All README languages and the landing page updated to list WhatsApp as a supported platform
+
+---
+
 ## [0.2.1] — 2026-05-05
 
 ### Added
@@ -102,7 +122,8 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Pre-built binaries for `x86_64-musl` and `aarch64-apple-darwin` via release workflow
 - MIT license
 
-[Unreleased]: https://github.com/garudust-org/garudust-agent/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/garudust-org/garudust-agent/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/garudust-org/garudust-agent/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/garudust-org/garudust-agent/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/garudust-org/garudust-agent/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/garudust-org/garudust-agent/compare/v0.1.0...v0.1.1
