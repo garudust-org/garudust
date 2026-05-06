@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Before opening a request, please check the [existing issues](https://github.com/ninenox/garudust/issues) to avoid duplicates.
+        Before opening a request, please check the [existing issues](https://github.com/garudust-org/garudust-agent/issues) to avoid duplicates.
 
   - type: dropdown
     id: area
