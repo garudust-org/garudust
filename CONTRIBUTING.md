@@ -31,10 +31,10 @@ cargo fmt --all -- --check
 |----------------|---------|
 | `crates/garudust-core` | Shared types, traits (`Tool`, `ProviderTransport`, `PlatformAdapter`, `MemoryStore`), config, `SecurityConfig`, `net_guard` (SSRF) |
 | `crates/garudust-transport` | LLM provider implementations — Anthropic, OpenAI-compatible (OpenRouter, etc.), AWS Bedrock, Codex, Ollama, vLLM |
-| `crates/garudust-tools` | Built-in tools: `web_fetch`, `web_search`, `http_request`, `browser`, `read_file`, `write_file`, `list_directory`, `pdf_read`, `terminal`, `memory`, `user_profile`, `session_search`, `delegate_task`, `skills_list`, `skill_view`, `write_skill` |
+| `crates/garudust-tools` | Built-in tools: `web_fetch`, `web_search`, `http_request`, `browser`, `read_file`, `write_file`, `list_directory`, `pdf_read`, `terminal`, `memory`, `user_profile`, `session_search`, `delegate_task`, `delegate_tasks`, `skills_list`, `skill_view`, `write_skill` |
 | `crates/garudust-memory` | Persistence: `FileMemoryStore` (markdown files) + `SessionDb` (SQLite + FTS5) |
 | `crates/garudust-agent` | Agent run loop, context compression, session persistence, `AutoApprover` / `ConstitutionalApprover` / `DenyApprover` |
-| `crates/garudust-platforms` | Platform adapters: Telegram, Discord, Slack (Socket Mode), Matrix, LINE, Webhook |
+| `crates/garudust-platforms` | Platform adapters: Telegram, Discord, Slack (Socket Mode), Matrix, LINE, WhatsApp, Webhook |
 | `crates/garudust-cron` | Cron scheduler — wraps `tokio-cron-scheduler`, spawns agent on schedule |
 | `crates/garudust-gateway` | HTTP gateway — Bearer auth middleware, rate limiting, `GatewayHandler`, `/health` + `/chat*` routes |
 | `bin/garudust` | CLI binary: TUI chat, `setup`, `config show/set`, `doctor` |
@@ -73,7 +73,19 @@ git checkout -b feat/my-feature
 
 ```bash
 cargo check --workspace --all-targets
-cargo clippy --workspace --all-targets -- -W clippy::all -W clippy::pedantic
+cargo clippy --workspace --all-targets -- \
+  -W clippy::all \
+  -W clippy::pedantic \
+  -A clippy::module_name_repetitions \
+  -A clippy::must_use_candidate \
+  -A clippy::missing_errors_doc \
+  -A clippy::missing_panics_doc \
+  -A clippy::return_self_not_must_use \
+  -A clippy::too_many_arguments \
+  -A clippy::large_futures \
+  -A clippy::doc_markdown \
+  -A clippy::field_reassign_with_default \
+  -A clippy::too_many_lines
 cargo fmt --all -- --check
 cargo test --workspace
 ```
