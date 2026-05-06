@@ -116,14 +116,19 @@ garudust-server --port 3000
 echo "OPENROUTER_API_KEY=sk-or-..." > .env
 docker compose up
 
-# 生产环境：沙箱 + Telegram 机器人 + 每日定时任务
+# 生产环境：沙箱 + LINE 机器人 + 每日定时任务
 GARUDUST_TERMINAL_SANDBOX=docker \
 GARUDUST_API_KEY=my-secret-token \
-TELEGRAM_TOKEN=123:ABC \
-GARUDUST_CRON_JOBS="0 9 * * *=向 Telegram 发送晨报" \
+LINE_CHANNEL_TOKEN=<channel-access-token> \
+LINE_CHANNEL_SECRET=<32-char-hex-secret> \
+GARUDUST_CRON_JOBS="0 9 * * *=向 LINE 发送晨报" \
 GARUDUST_MEMORY_CRON="0 3 * * *" \
 garudust-server --port 3000 --approval-mode smart
 ```
+
+<div align="center">
+  <img src="../../../assets/demo-line.jpg" alt="LINE Demo" width="800"/>
+</div>
 
 ---
 
