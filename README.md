@@ -124,6 +124,10 @@ LINE_CHANNEL_SECRET=<32-char-hex-secret> \
 GARUDUST_CRON_JOBS="0 9 * * *=Post a morning briefing to LINE" \
 GARUDUST_MEMORY_CRON="0 3 * * *" \
 garudust-server --port 3000 --approval-mode smart
+
+# Expose LINE webhook via ngrok (development)
+ngrok http 3002
+# Webhook URL: https://xxxx.ngrok-free.app/line  ← paste this into LINE Developers Console
 ```
 
 <div align="center">

@@ -124,6 +124,10 @@ LINE_CHANNEL_SECRET=<32-char-hex-secret> \
 GARUDUST_CRON_JOBS="0 9 * * *=向 LINE 发送晨报" \
 GARUDUST_MEMORY_CRON="0 3 * * *" \
 garudust-server --port 3000 --approval-mode smart
+
+# 通过 ngrok 暴露 LINE webhook（开发环境）
+ngrok http 3002
+# Webhook URL: https://xxxx.ngrok-free.app/line  ← 填入 LINE Developers Console
 ```
 
 <div align="center">

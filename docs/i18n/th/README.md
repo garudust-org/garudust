@@ -124,6 +124,10 @@ LINE_CHANNEL_SECRET=<32-char-hex-secret> \
 GARUDUST_CRON_JOBS="0 9 * * *=โพสต์สรุปเช้าไปยัง LINE" \
 GARUDUST_MEMORY_CRON="0 3 * * *" \
 garudust-server --port 3000 --approval-mode smart
+
+# เปิด LINE webhook ผ่าน ngrok (สำหรับพัฒนา)
+ngrok http 3002
+# Webhook URL: https://xxxx.ngrok-free.app/line  ← นำไปใส่ใน LINE Developers Console
 ```
 
 <div align="center">
