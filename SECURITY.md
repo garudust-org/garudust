@@ -10,7 +10,7 @@ Only the latest commit on `main` is actively supported. There are no versioned r
 
 Report security issues privately through one of these channels:
 
-1. **GitHub Security Advisories (preferred)** — [Open a private advisory](https://github.com/ninenox/garudust/security/advisories/new). This keeps the report confidential until a fix is ready.
+1. **GitHub Security Advisories (preferred)** — [Open a private advisory](https://github.com/garudust-org/garudust-agent/security/advisories/new). This keeps the report confidential until a fix is ready.
 2. **Email** — `nashnox15@gmail.com` with subject `[SECURITY] Garudust — <short description>`.
 
 ### What to include
