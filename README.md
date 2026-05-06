@@ -106,7 +106,7 @@ garudust "summarise the git log from the last 7 days into a changelog"
 
 Output goes to stdout. Exit code is 0 on success. Pipe-friendly.
 
-### 3 — Server / Docker
+### 3 — Server / Docker with Platforms
 
 ```bash
 # Minimal
@@ -127,7 +127,7 @@ garudust-server --port 3000 --approval-mode smart
 ```
 
 <div align="center">
-  <img src="assets/demo-line.jpg" alt="LINE Demo" width="800"/>
+  <img src="assets/demo-line.jpg" alt="LINE Demo" width="420"/>
 </div>
 
 ---

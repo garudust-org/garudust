@@ -106,7 +106,7 @@ garudust "สรุป git log จาก 7 วันที่ผ่านมา�
 
 output ออก stdout, exit code 0 เมื่อสำเร็จ ใช้กับ pipe ได้เลย
 
-### 3 — Server / Docker
+### 3 — Server / Docker with Platforms
 
 ```bash
 # แบบพื้นฐาน
@@ -127,7 +127,7 @@ garudust-server --port 3000 --approval-mode smart
 ```
 
 <div align="center">
-  <img src="../../../assets/demo-line.jpg" alt="LINE Demo" width="800"/>
+  <img src="../../../assets/demo-line.jpg" alt="LINE Demo" width="420"/>
 </div>
 
 ---

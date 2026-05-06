@@ -106,7 +106,7 @@ garudust "将过去 7 天的 git log 整理成 changelog"
 
 输出到 stdout，成功时退出码为 0，可直接与管道配合使用。
 
-### 3 — 服务器 / Docker
+### 3 — 服务器 / Docker with Platforms
 
 ```bash
 # 最简启动
@@ -127,7 +127,7 @@ garudust-server --port 3000 --approval-mode smart
 ```
 
 <div align="center">
-  <img src="../../../assets/demo-line.jpg" alt="LINE Demo" width="800"/>
+  <img src="../../../assets/demo-line.jpg" alt="LINE Demo" width="420"/>
 </div>
 
 ---
