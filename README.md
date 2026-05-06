@@ -14,6 +14,7 @@
 [![Release](https://img.shields.io/github/v/release/garudust-org/garudust-agent)](https://github.com/garudust-org/garudust-agent/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Rust 1.87+](https://img.shields.io/badge/rust-1.87+-orange.svg)
+[![Discord](https://img.shields.io/badge/Discord-Join%20Community-5865F2?logo=discord&logoColor=white&style=flat-square)](https://discord.com/channels/1501414298449088745/1501414298893942877)
 
 **A self-hostable, self-improving AI agent runtime written in Rust.**
 
@@ -508,6 +509,8 @@ cargo clippy --workspace --all-targets -- -W clippy::all -W clippy::pedantic
 ```
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) for code guidelines, commit conventions, and the full CI checklist.
+
+Have a question or found a bug? Join the [Discord community](https://discord.com/channels/1501414298449088745/1501414298893942877) or open a [GitHub issue](https://github.com/garudust-org/garudust-agent/issues).
 
 ---
 
