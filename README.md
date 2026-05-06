@@ -167,6 +167,84 @@ mcp_servers:
     args: ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/mydb"]
 ```
 
+### Deployment examples
+
+#### Telegram bot
+
+```bash
+# ~/.garudust/.env
+ANTHROPIC_API_KEY=sk-ant-...
+TELEGRAM_TOKEN=123456789:AAFxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# start
+garudust-server --telegram-token $TELEGRAM_TOKEN --anthropic-key $ANTHROPIC_API_KEY
+```
+
+#### LINE Messaging API
+
+```bash
+# ~/.garudust/.env
+OPENROUTER_API_KEY=sk-or-...
+LINE_CHANNEL_TOKEN=<channel-access-token>
+LINE_CHANNEL_SECRET=<32-char-hex-secret>
+
+# start (webhook receives at https://your-host:3002/line)
+garudust-server \
+  --api-key $OPENROUTER_API_KEY \
+  --line-channel-token $LINE_CHANNEL_TOKEN \
+  --line-channel-secret $LINE_CHANNEL_SECRET \
+  --line-port 3002
+```
+
+#### WhatsApp Business
+
+```bash
+# ~/.garudust/.env
+ANTHROPIC_API_KEY=sk-ant-...
+WHATSAPP_ACCESS_TOKEN=EAAxxxxxxx
+WHATSAPP_PHONE_NUMBER_ID=123456789012345
+WHATSAPP_VERIFY_TOKEN=my_verify_token
+WHATSAPP_APP_SECRET=<32-char-hex-secret>   # optional — skips HMAC check if empty
+
+# start (webhook receives at https://your-host:3003/whatsapp)
+garudust-server \
+  --anthropic-key $ANTHROPIC_API_KEY \
+  --whatsapp-access-token $WHATSAPP_ACCESS_TOKEN \
+  --whatsapp-phone-number-id $WHATSAPP_PHONE_NUMBER_ID \
+  --whatsapp-verify-token $WHATSAPP_VERIFY_TOKEN \
+  --whatsapp-app-secret $WHATSAPP_APP_SECRET \
+  --whatsapp-port 3003
+```
+
+#### Multi-platform (Telegram + LINE + WhatsApp + HTTP webhook)
+
+All adapters run in the same process — set whichever tokens you have and the rest are silently skipped.
+
+```bash
+# ~/.garudust/.env
+ANTHROPIC_API_KEY=sk-ant-...
+TELEGRAM_TOKEN=123456789:AAFxxx
+LINE_CHANNEL_TOKEN=<token>
+LINE_CHANNEL_SECRET=<secret>
+WHATSAPP_ACCESS_TOKEN=EAAxxx
+WHATSAPP_PHONE_NUMBER_ID=123456789012345
+WHATSAPP_VERIFY_TOKEN=my_verify_token
+
+garudust-server \
+  --anthropic-key      $ANTHROPIC_API_KEY \
+  --telegram-token     $TELEGRAM_TOKEN \
+  --line-channel-token $LINE_CHANNEL_TOKEN \
+  --line-channel-secret $LINE_CHANNEL_SECRET \
+  --whatsapp-access-token    $WHATSAPP_ACCESS_TOKEN \
+  --whatsapp-phone-number-id $WHATSAPP_PHONE_NUMBER_ID \
+  --whatsapp-verify-token    $WHATSAPP_VERIFY_TOKEN \
+  --webhook-port 3001 \
+  --line-port    3002 \
+  --whatsapp-port 3003
+```
+
+> **Tip:** Use `garudust setup` (mode 2 — Full) for an interactive wizard that writes `~/.garudust/.env` for you.
+
 ## Security
 
 ### Terminal sandbox

@@ -167,6 +167,84 @@ mcp_servers:
     args: ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/mydb"]
 ```
 
+### 部署示例
+
+#### Telegram 机器人
+
+```bash
+# ~/.garudust/.env
+ANTHROPIC_API_KEY=sk-ant-...
+TELEGRAM_TOKEN=123456789:AAFxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# 启动
+garudust-server --telegram-token $TELEGRAM_TOKEN --anthropic-key $ANTHROPIC_API_KEY
+```
+
+#### LINE Messaging API
+
+```bash
+# ~/.garudust/.env
+OPENROUTER_API_KEY=sk-or-...
+LINE_CHANNEL_TOKEN=<channel-access-token>
+LINE_CHANNEL_SECRET=<32位十六进制密钥>
+
+# 启动（Webhook 接收地址：https://your-host:3002/line）
+garudust-server \
+  --api-key $OPENROUTER_API_KEY \
+  --line-channel-token $LINE_CHANNEL_TOKEN \
+  --line-channel-secret $LINE_CHANNEL_SECRET \
+  --line-port 3002
+```
+
+#### WhatsApp Business
+
+```bash
+# ~/.garudust/.env
+ANTHROPIC_API_KEY=sk-ant-...
+WHATSAPP_ACCESS_TOKEN=EAAxxxxxxx
+WHATSAPP_PHONE_NUMBER_ID=123456789012345
+WHATSAPP_VERIFY_TOKEN=my_verify_token
+WHATSAPP_APP_SECRET=<32位十六进制密钥>   # 可选 — 留空则跳过 HMAC 验证
+
+# 启动（Webhook 接收地址：https://your-host:3003/whatsapp）
+garudust-server \
+  --anthropic-key $ANTHROPIC_API_KEY \
+  --whatsapp-access-token $WHATSAPP_ACCESS_TOKEN \
+  --whatsapp-phone-number-id $WHATSAPP_PHONE_NUMBER_ID \
+  --whatsapp-verify-token $WHATSAPP_VERIFY_TOKEN \
+  --whatsapp-app-secret $WHATSAPP_APP_SECRET \
+  --whatsapp-port 3003
+```
+
+#### 多平台同时运行（Telegram + LINE + WhatsApp + HTTP Webhook）
+
+所有适配器运行在同一进程中 — 设置所需令牌，其余平台自动跳过。
+
+```bash
+# ~/.garudust/.env
+ANTHROPIC_API_KEY=sk-ant-...
+TELEGRAM_TOKEN=123456789:AAFxxx
+LINE_CHANNEL_TOKEN=<token>
+LINE_CHANNEL_SECRET=<secret>
+WHATSAPP_ACCESS_TOKEN=EAAxxx
+WHATSAPP_PHONE_NUMBER_ID=123456789012345
+WHATSAPP_VERIFY_TOKEN=my_verify_token
+
+garudust-server \
+  --anthropic-key      $ANTHROPIC_API_KEY \
+  --telegram-token     $TELEGRAM_TOKEN \
+  --line-channel-token $LINE_CHANNEL_TOKEN \
+  --line-channel-secret $LINE_CHANNEL_SECRET \
+  --whatsapp-access-token    $WHATSAPP_ACCESS_TOKEN \
+  --whatsapp-phone-number-id $WHATSAPP_PHONE_NUMBER_ID \
+  --whatsapp-verify-token    $WHATSAPP_VERIFY_TOKEN \
+  --webhook-port 3001 \
+  --line-port    3002 \
+  --whatsapp-port 3003
+```
+
+> **提示：** 使用 `garudust setup`（模式 2 — Full）通过交互向导自动写入 `~/.garudust/.env`。
+
 ## 安全性
 
 ### 终端沙箱
