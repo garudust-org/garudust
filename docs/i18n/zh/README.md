@@ -14,6 +14,7 @@
 [![Release](https://img.shields.io/github/v/release/garudust-org/garudust-agent)](https://github.com/garudust-org/garudust-agent/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](../../../LICENSE)
 ![Rust 1.87+](https://img.shields.io/badge/rust-1.87+-orange.svg)
+[![Discord](https://img.shields.io/badge/Discord-加入社区-5865F2?logo=discord&logoColor=white&style=flat-square)](https://discord.com/channels/1501414298449088745/1501414298893942877)
 
 **用 Rust 编写的可自托管、可自我进化的 AI 智能体运行时**
 
@@ -507,6 +508,8 @@ cargo clippy --workspace --all-targets -- -W clippy::all -W clippy::pedantic
 ```
 
 请阅读 [CONTRIBUTING.md](../../../CONTRIBUTING.md) 了解代码规范、提交约定和完整 CI 检查清单。
+
+有问题或发现 Bug？加入 [Discord 社区](https://discord.com/channels/1501414298449088745/1501414298893942877) 交流，或提交 [GitHub issue](https://github.com/garudust-org/garudust-agent/issues)。
 
 ---
 
