@@ -167,7 +167,7 @@ mcp_servers:
     args: ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/mydb"]
 ```
 
-### 部署示例
+### 平台配置
 
 #### Telegram 机器人
 

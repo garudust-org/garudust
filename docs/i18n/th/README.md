@@ -167,7 +167,7 @@ mcp_servers:
     args: ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/mydb"]
 ```
 
-### ตัวอย่างการ deploy
+### การตั้งค่า Platform
 
 #### Telegram bot
 
