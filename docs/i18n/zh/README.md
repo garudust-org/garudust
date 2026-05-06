@@ -76,6 +76,7 @@ export PATH="$PATH:$(pwd)/target/release"
 
 ```bash
 garudust setup   # 首次配置向导 — 选择提供商并保存 API key
+garudust         # 启动 TUI 对话界面
 ```
 
 ### 1 — 交互式 TUI

@@ -76,6 +76,7 @@ export PATH="$PATH:$(pwd)/target/release"
 
 ```bash
 garudust setup   # first-time wizard — pick provider, save API key
+garudust         # start agent chat with TUI
 ```
 
 ### 1 — Interactive TUI

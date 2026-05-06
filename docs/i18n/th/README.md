@@ -76,6 +76,7 @@ export PATH="$PATH:$(pwd)/target/release"
 
 ```bash
 garudust setup   # wizard ตั้งค่าครั้งแรก — เลือก provider, บันทึก API key
+garudust         # เริ่ม agent chat แบบ TUI
 ```
 
 ### 1 — TUI แบบโต้ตอบ
