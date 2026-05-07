@@ -480,6 +480,20 @@ garudust tool uninstall weather     # remove tool and its folder
 garudust tool update                # re-fetch all hub-installed tools
 ```
 
+`garudust tool list` shows runtime requirements and descriptions side-by-side:
+
+```
+NAME              INSTALLED  AVAILABLE  REQUIRES  DESCRIPTION
+----------------------------------------------------------------------
+csv_to_json       1.0.0      1.0.0      python3   Convert a CSV file to a JSON array…
+fetch_title       —          1.0.0      python3   Fetch the HTML title of a webpage…
+hash_text         —          1.0.0      —         Compute the SHA-256 hash of a string
+markdown_to_html  —          1.0.0      rust      Convert a Markdown file to HTML…
+read_qr           1.0.0      1.0.0      bash      Decode a QR code from an image file
+weather           —          1.0.0      bash      Get current weather for a city…
+yaml_to_json      —          1.0.0      node      Convert a YAML file to formatted JSON
+```
+
 Installed tools are tracked in `~/.garudust/tools/registry.json` and load automatically on every agent start alongside your hand-crafted tools.
 
 | Command | Description |

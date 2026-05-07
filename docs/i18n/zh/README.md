@@ -479,6 +479,20 @@ garudust tool uninstall weather     # 移除工具及其文件夹
 garudust tool update                # 将所有 hub 工具更新至最新版本
 ```
 
+`garudust tool list` 同时显示运行时依赖和工具描述：
+
+```
+NAME              INSTALLED  AVAILABLE  REQUIRES  DESCRIPTION
+----------------------------------------------------------------------
+csv_to_json       1.0.0      1.0.0      python3   Convert a CSV file to a JSON array…
+fetch_title       —          1.0.0      python3   Fetch the HTML title of a webpage…
+hash_text         —          1.0.0      —         Compute the SHA-256 hash of a string
+markdown_to_html  —          1.0.0      rust      Convert a Markdown file to HTML…
+read_qr           1.0.0      1.0.0      bash      Decode a QR code from an image file
+weather           —          1.0.0      bash      Get current weather for a city…
+yaml_to_json      —          1.0.0      node      Convert a YAML file to formatted JSON
+```
+
 已安装的工具记录在 `~/.garudust/tools/registry.json` 中，每次 agent 启动时与手动创建的工具一起自动加载。
 
 | 命令 | 描述 |

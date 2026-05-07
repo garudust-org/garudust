@@ -481,6 +481,20 @@ garudust tool uninstall weather     # ลบ tool และ folder
 garudust tool update                # อัปเดต tool ทั้งหมดที่ติดตั้งจาก hub
 ```
 
+`garudust tool list` แสดง runtime ที่ต้องใช้และคำอธิบายแต่ละ tool:
+
+```
+NAME              INSTALLED  AVAILABLE  REQUIRES  DESCRIPTION
+----------------------------------------------------------------------
+csv_to_json       1.0.0      1.0.0      python3   Convert a CSV file to a JSON array…
+fetch_title       —          1.0.0      python3   Fetch the HTML title of a webpage…
+hash_text         —          1.0.0      —         Compute the SHA-256 hash of a string
+markdown_to_html  —          1.0.0      rust      Convert a Markdown file to HTML…
+read_qr           1.0.0      1.0.0      bash      Decode a QR code from an image file
+weather           —          1.0.0      bash      Get current weather for a city…
+yaml_to_json      —          1.0.0      node      Convert a YAML file to formatted JSON
+```
+
 tool ที่ติดตั้งจะถูกบันทึกใน `~/.garudust/tools/registry.json` และโหลดอัตโนมัติทุกครั้งที่ agent เริ่มทำงาน พร้อมกับ tool ที่สร้างเองด้วยมือ
 
 | คำสั่ง | คำอธิบาย |
