@@ -10,6 +10,23 @@ use tokio::process::Command;
 
 const MAX_OUTPUT_BYTES: usize = 32 * 1_024; // 32 KB
 
+fn check_allowed_path(path: &str, ctx: &ToolContext) -> Result<(), ToolError> {
+    let canonical = std::fs::canonicalize(path)
+        .map_err(|_| ToolError::Execution(format!("repo path not found: {path}")))?;
+    if !ctx
+        .config
+        .security
+        .allowed_read_paths
+        .iter()
+        .any(|root| std::fs::canonicalize(root).is_ok_and(|r| canonical.starts_with(&r)))
+    {
+        return Err(ToolError::Execution(
+            "repo path is outside allowed read paths".into(),
+        ));
+    }
+    Ok(())
+}
+
 async fn run_git(args: &[&str], cwd: Option<&str>) -> Result<String, ToolError> {
     let mut cmd = Command::new("git");
     cmd.args(args)
@@ -89,9 +106,12 @@ impl Tool for GitStatus {
         })
     }
 
-    async fn execute(&self, params: Value, _ctx: &ToolContext) -> Result<ToolResult, ToolError> {
+    async fn execute(&self, params: Value, ctx: &ToolContext) -> Result<ToolResult, ToolError> {
         let input: GitStatusInput =
             serde_json::from_value(params).map_err(|e| ToolError::InvalidArgs(e.to_string()))?;
+        if let Some(ref p) = input.path {
+            check_allowed_path(p, ctx)?;
+        }
         let output = run_git(&["status"], input.path.as_deref()).await?;
         Ok(ToolResult::ok("", output))
     }
@@ -143,9 +163,12 @@ impl Tool for GitLog {
         })
     }
 
-    async fn execute(&self, params: Value, _ctx: &ToolContext) -> Result<ToolResult, ToolError> {
+    async fn execute(&self, params: Value, ctx: &ToolContext) -> Result<ToolResult, ToolError> {
         let input: GitLogInput =
             serde_json::from_value(params).map_err(|e| ToolError::InvalidArgs(e.to_string()))?;
+        if let Some(ref p) = input.path {
+            check_allowed_path(p, ctx)?;
+        }
 
         let limit = input.limit.unwrap_or(20).min(200).to_string();
         let mut args = vec!["log", "--oneline", "-n", limit.as_str()];
@@ -213,9 +236,12 @@ impl Tool for GitDiff {
         })
     }
 
-    async fn execute(&self, params: Value, _ctx: &ToolContext) -> Result<ToolResult, ToolError> {
+    async fn execute(&self, params: Value, ctx: &ToolContext) -> Result<ToolResult, ToolError> {
         let input: GitDiffInput =
             serde_json::from_value(params).map_err(|e| ToolError::InvalidArgs(e.to_string()))?;
+        if let Some(ref p) = input.path {
+            check_allowed_path(p, ctx)?;
+        }
 
         let mut args = vec!["diff"];
 
@@ -316,7 +342,11 @@ mod tests {
     async fn git_in_non_repo_returns_error_output() {
         let dir = tempfile::tempdir().unwrap();
         let output = run_git(&["status"], Some(dir.path().to_str().unwrap())).await;
-        let _ = output;
+        assert!(output.is_ok());
+        assert!(
+            output.unwrap().contains("not a git repository"),
+            "expected git error message for non-repo directory"
+        );
     }
 
     #[test]

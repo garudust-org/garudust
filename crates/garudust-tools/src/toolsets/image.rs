@@ -94,17 +94,19 @@ impl Tool for ImageRead {
             ));
         }
 
+        let file_size = tokio::fs::metadata(&canonical)
+            .await
+            .map_err(|e| ToolError::Execution(format!("metadata error: {e}")))?
+            .len() as usize;
+        if file_size > MAX_IMAGE_BYTES {
+            return Err(ToolError::Execution(format!(
+                "image too large: {file_size} bytes (max {MAX_IMAGE_BYTES} bytes)"
+            )));
+        }
+
         let bytes = tokio::fs::read(&canonical)
             .await
             .map_err(|e| ToolError::Execution(format!("read error: {e}")))?;
-
-        if bytes.len() > MAX_IMAGE_BYTES {
-            return Err(ToolError::Execution(format!(
-                "image too large: {} bytes (max {} bytes)",
-                bytes.len(),
-                MAX_IMAGE_BYTES
-            )));
-        }
 
         let mime = detect_mime(&input.path, &bytes[..bytes.len().min(12)]);
         let b64 = B64.encode(&bytes);

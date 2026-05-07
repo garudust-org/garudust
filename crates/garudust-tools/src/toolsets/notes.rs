@@ -167,11 +167,19 @@ impl Tool for ListNotes {
         };
 
         let mut keys = Vec::new();
-        while let Ok(Some(entry)) = entries.next_entry().await {
-            let name = entry.file_name();
-            let name = name.to_string_lossy();
-            if name.ends_with(".md") {
-                keys.push(name.trim_end_matches(".md").to_string());
+        loop {
+            match entries.next_entry().await {
+                Ok(Some(entry)) => {
+                    let name = entry.file_name();
+                    let name = name.to_string_lossy();
+                    if name.ends_with(".md") {
+                        keys.push(name.trim_end_matches(".md").to_string());
+                    }
+                }
+                Ok(None) => break,
+                Err(e) => {
+                    return Err(ToolError::Execution(format!("list notes: {e}")));
+                }
             }
         }
 

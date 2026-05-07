@@ -96,6 +96,9 @@ mod tests {
         .unwrap();
         sched.add(job).await.unwrap();
         sched.start().await.unwrap();
+        // tokio_cron_scheduler drives its own system clock, so pause/advance
+        // won't work here. We sleep real wall-clock time and accept the ~2 s cost.
+        // Under heavy CI load this can flake if the OS delays scheduling.
         tokio::time::sleep(std::time::Duration::from_millis(2200)).await;
         sched.shutdown().await.unwrap();
         assert!(
