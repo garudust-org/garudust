@@ -1,6 +1,7 @@
 mod config_cmd;
 mod doctor;
 mod setup;
+mod tool_cmd;
 mod tui;
 
 use std::sync::Arc;
@@ -35,6 +36,34 @@ enum ConfigCmd {
 }
 
 #[derive(Subcommand)]
+enum ToolCmd {
+    /// List installed tools (and available hub tools)
+    List {
+        /// Skip fetching the hub — show only locally installed tools
+        #[arg(long)]
+        offline: bool,
+    },
+    /// Install a tool from the hub
+    Install {
+        /// Tool name as listed in the hub index
+        name: String,
+        /// Hub repository (default: garudust-org/garudust-hub)
+        #[arg(long, default_value = garudust_tools::hub::DEFAULT_HUB)]
+        hub: String,
+    },
+    /// Remove an installed tool
+    Uninstall {
+        /// Tool name to remove
+        name: String,
+    },
+    /// Update installed hub tools to the latest version
+    Update {
+        /// Specific tool to update (omit to update all)
+        name: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
 enum Cmd {
     /// Interactive first-time setup wizard
     Setup,
@@ -52,6 +81,12 @@ enum Cmd {
     Model {
         /// Model name to switch to (omit for interactive prompt)
         name: Option<String>,
+    },
+
+    /// Manage script tools (install, uninstall, update, list)
+    Tool {
+        #[command(subcommand)]
+        sub: ToolCmd,
     },
 }
 
@@ -199,6 +234,27 @@ async fn main() -> Result<()> {
         Some(Cmd::Model { name }) => {
             let config = build_config(&cli);
             config_cmd::set_model(name.as_deref(), &config)?;
+            return Ok(());
+        }
+
+        Some(Cmd::Tool { sub }) => {
+            let config = build_config(&cli);
+            let tools_dir = config.home_dir.join("tools");
+            tokio::fs::create_dir_all(&tools_dir).await?;
+            match sub {
+                ToolCmd::List { offline } => {
+                    tool_cmd::list(&tools_dir, *offline).await?;
+                }
+                ToolCmd::Install { name, hub } => {
+                    tool_cmd::install(name, &tools_dir, hub).await?;
+                }
+                ToolCmd::Uninstall { name } => {
+                    tool_cmd::uninstall(name, &tools_dir).await?;
+                }
+                ToolCmd::Update { name } => {
+                    tool_cmd::update(name.as_deref(), &tools_dir).await?;
+                }
+            }
             return Ok(());
         }
 

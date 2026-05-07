@@ -20,6 +20,7 @@
 //! | `search` | `search_files`, `search_code` — glob and content search |
 //! | `delegate` | `delegate_task` — spawn a sub-agent for a sub-task |
 
+pub mod hub;
 pub mod registry;
 pub mod security;
 pub mod toolsets;
