@@ -94,10 +94,12 @@ impl Tool for ImageRead {
             ));
         }
 
-        let file_size = tokio::fs::metadata(&canonical)
+        let file_len = tokio::fs::metadata(&canonical)
             .await
             .map_err(|e| ToolError::Execution(format!("metadata error: {e}")))?
-            .len() as usize;
+            .len();
+        let file_size = usize::try_from(file_len)
+            .map_err(|_| ToolError::Execution(format!("file too large: {file_len} bytes")))?;
         if file_size > MAX_IMAGE_BYTES {
             return Err(ToolError::Execution(format!(
                 "image too large: {file_size} bytes (max {MAX_IMAGE_BYTES} bytes)"
