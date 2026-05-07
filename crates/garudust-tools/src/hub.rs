@@ -55,10 +55,10 @@ pub async fn install_tool(repo: &str, tool_name: &str, tools_dir: &Path) -> Resu
         .with_context(|| format!("tool '{tool_name}' not found in hub {repo}"))?
         .clone();
 
-    let tool_dir = tools_dir.join(&entry.name);
-    tokio::fs::create_dir_all(&tool_dir)
+    let install_dir = tools_dir.join(&entry.name);
+    tokio::fs::create_dir_all(&install_dir)
         .await
-        .with_context(|| format!("create {}", tool_dir.display()))?;
+        .with_context(|| format!("create {}", install_dir.display()))?;
 
     let client = reqwest::Client::new();
     for file in &entry.files {
@@ -74,7 +74,7 @@ pub async fn install_tool(repo: &str, tool_name: &str, tools_dir: &Path) -> Resu
             .bytes()
             .await?;
 
-        let dest = tool_dir.join(file);
+        let dest = install_dir.join(file);
         if let Some(parent) = dest.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
@@ -84,10 +84,16 @@ pub async fn install_tool(repo: &str, tool_name: &str, tools_dir: &Path) -> Resu
 
         // Make shell/python scripts executable
         #[cfg(unix)]
-        if file.ends_with(".sh") || file.ends_with(".py") {
-            use std::os::unix::fs::PermissionsExt;
-            let perms = std::fs::Permissions::from_mode(0o755);
-            tokio::fs::set_permissions(&dest, perms).await?;
+        {
+            let ext = std::path::Path::new(file.as_str())
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("");
+            if ext.eq_ignore_ascii_case("sh") || ext.eq_ignore_ascii_case("py") {
+                use std::os::unix::fs::PermissionsExt;
+                let perms = std::fs::Permissions::from_mode(0o755);
+                tokio::fs::set_permissions(&dest, perms).await?;
+            }
         }
     }
 
@@ -115,11 +121,11 @@ pub async fn uninstall_tool(tool_name: &str, tools_dir: &Path) -> Result<()> {
         bail!("tool '{tool_name}' is not installed");
     }
 
-    let tool_dir = tools_dir.join(tool_name);
-    if tool_dir.exists() {
-        tokio::fs::remove_dir_all(&tool_dir)
+    let removal_dir = tools_dir.join(tool_name);
+    if removal_dir.exists() {
+        tokio::fs::remove_dir_all(&removal_dir)
             .await
-            .with_context(|| format!("remove {}", tool_dir.display()))?;
+            .with_context(|| format!("remove {}", removal_dir.display()))?;
     }
 
     write_registry(tools_dir, &registry).await?;
