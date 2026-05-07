@@ -66,8 +66,11 @@ pub async fn list(tools_dir: &Path, offline: bool) -> Result<()> {
 
 pub async fn install(tool_name: &str, tools_dir: &Path, hub: &str) -> Result<()> {
     println!("Installing '{tool_name}' from {hub}...");
-    hub::install_tool(hub, tool_name, tools_dir).await?;
+    let requires = hub::install_tool(hub, tool_name, tools_dir).await?;
     println!("Installed '{tool_name}' successfully.");
+    if requires != "—" && !hub::runtime_in_path(requires) {
+        eprintln!("Warning: this tool requires '{requires}' which was not found on PATH.");
+    }
     Ok(())
 }
 

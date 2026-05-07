@@ -62,9 +62,19 @@ pub async fn fetch_index(repo: &str) -> Result<HubIndex> {
 
 // ── Install ───────────────────────────────────────────────────────────────────
 
+/// Returns true if `runtime` is found on PATH (unix: `which`; otherwise assumes available).
+pub fn runtime_in_path(runtime: &str) -> bool {
+    std::process::Command::new("which")
+        .arg(runtime)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(true)
+}
+
 /// Download a tool from the hub into `tools_dir/<tool_name>/`.
 /// Updates `registry.json` on success.
-pub async fn install_tool(repo: &str, tool_name: &str, tools_dir: &Path) -> Result<()> {
+/// Returns the inferred runtime requirement (e.g. `"python3"`, `"node"`, `"—"`).
+pub async fn install_tool(repo: &str, tool_name: &str, tools_dir: &Path) -> Result<&'static str> {
     let index = fetch_index(repo).await?;
     let entry = index
         .tools
@@ -125,7 +135,7 @@ pub async fn install_tool(repo: &str, tool_name: &str, tools_dir: &Path) -> Resu
     });
     write_registry(tools_dir, &registry).await?;
 
-    Ok(())
+    Ok(entry.requires())
 }
 
 // ── Uninstall ─────────────────────────────────────────────────────────────────
@@ -166,7 +176,7 @@ pub async fn update_tool(tool_name: Option<&str>, tools_dir: &Path) -> Result<Ve
         let Some(repo) = entry.source.strip_prefix("hub:") else {
             continue; // local tools skip
         };
-        install_tool(repo, &entry.name, tools_dir).await?;
+        install_tool(repo, &entry.name, tools_dir).await?; // runtime warning handled by caller
         updated.push(entry.name.clone());
     }
 
