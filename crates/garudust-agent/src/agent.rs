@@ -569,16 +569,6 @@ impl Agent {
 
             let tool_msgs = futures::future::join_all(tool_futs).await;
             history.extend(tool_msgs);
-
-            // Nudge the model to quote tool output verbatim rather than summarise.
-            // Weak models (small local LLMs) tend to paraphrase tool results unless
-            // reminded immediately before the next generation.
-            history.push(Message::user(
-                "(Tool results are above. \
-                 Reply with ONLY the raw output from the tool — \
-                 no intro, no summary, no explanation. \
-                 แสดงผลลัพธ์จาก tool ข้างบนทั้งหมดตรงๆ ห้ามสรุป)",
-            ));
         }
     }
 
