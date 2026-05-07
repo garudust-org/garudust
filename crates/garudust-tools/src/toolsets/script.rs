@@ -56,7 +56,7 @@ pub struct ScriptTool {
 /// Internal single-quotes are replaced with `'\''` (end-quote, escaped-quote,
 /// re-open-quote), which is the standard POSIX technique.
 fn shell_quote(s: &str) -> String {
-    format!("'{}'", s.replace('\'', r"'\''"))
+    format!("'{}'", s.replace('\'', "'\\''"))
 }
 
 /// Substitute `{param_name}` placeholders in `template` with shell-quoted
@@ -213,7 +213,10 @@ mod tests {
         // sees it as one literal argument. Embedded ' is escaped via '\''.
         assert!(quoted.starts_with('\''));
         assert!(quoted.ends_with('\''));
-        assert!(quoted.contains(r"'\''"), "embedded single-quote must be escaped");
+        assert!(
+            quoted.contains("'\\''"),
+            "embedded single-quote must be escaped"
+        );
     }
 
     #[test]
@@ -244,9 +247,18 @@ mod tests {
         let result = substitute(cmd, &params);
         // The malicious city value is shell-quoted, so the shell sees it as one
         // literal argument. Embedded single-quotes are escaped via '\''.
-        assert!(result.contains("curl wttr.in/'"), "path arg must open with single quote");
-        assert!(result.ends_with('\''), "path arg must close with single quote");
-        assert!(result.contains(r"'\''"), "embedded single-quote must be escaped");
+        assert!(
+            result.contains("curl wttr.in/'"),
+            "path arg must open with single quote"
+        );
+        assert!(
+            result.ends_with('\''),
+            "path arg must close with single quote"
+        );
+        assert!(
+            result.contains("'\\''"),
+            "embedded single-quote must be escaped"
+        );
     }
 
     #[test]
