@@ -1,8 +1,12 @@
 pub mod browser;
 pub mod delegate;
 pub mod files;
+pub mod git;
+pub mod image;
+pub mod json_query;
 pub mod mcp;
 pub mod memory;
+pub mod notes;
 pub mod pdf;
 pub mod search;
 pub mod skills;

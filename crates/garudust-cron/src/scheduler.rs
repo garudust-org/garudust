@@ -69,3 +69,60 @@ impl CronScheduler {
         &self.inner
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::Arc;
+    use tokio_cron_scheduler::JobScheduler;
+
+    #[tokio::test]
+    async fn new_creates_scheduler_without_error() {
+        let sched = JobScheduler::new().await;
+        assert!(sched.is_ok());
+    }
+
+    #[tokio::test]
+    async fn fn_job_fires_on_schedule() {
+        let counter = Arc::new(AtomicU32::new(0));
+        let mut sched = JobScheduler::new().await.unwrap();
+        let counter_clone = counter.clone();
+        let job = tokio_cron_scheduler::Job::new_async("1/1 * * * * *", move |_, _| {
+            let c = counter_clone.clone();
+            Box::pin(async move {
+                c.fetch_add(1, Ordering::SeqCst);
+            })
+        })
+        .unwrap();
+        sched.add(job).await.unwrap();
+        sched.start().await.unwrap();
+        // tokio_cron_scheduler drives its own system clock, so pause/advance
+        // won't work here. We sleep real wall-clock time and accept the ~2 s cost.
+        // Under heavy CI load this can flake if the OS delays scheduling.
+        tokio::time::sleep(std::time::Duration::from_millis(2200)).await;
+        sched.shutdown().await.unwrap();
+        assert!(
+            counter.load(Ordering::SeqCst) >= 2,
+            "expected ≥2 firings, got {}",
+            counter.load(Ordering::SeqCst)
+        );
+    }
+
+    #[test]
+    fn invalid_cron_expression_returns_error() {
+        let result = tokio_cron_scheduler::Job::new_async("not-a-cron", |_, _| Box::pin(async {}));
+        assert!(result.is_err(), "invalid cron expression must fail");
+    }
+
+    #[test]
+    fn parse_empty_returns_empty() {
+        assert!(crate::parse_job_pairs("").is_empty());
+    }
+
+    #[test]
+    fn parse_task_with_equals_sign() {
+        let jobs = crate::parse_job_pairs("0 * * * *=key=value");
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs[0].1, "key=value");
+    }
+}

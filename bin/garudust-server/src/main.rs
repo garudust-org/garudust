@@ -19,8 +19,12 @@ use garudust_tools::{
         browser::BrowserTool,
         delegate::{DelegateTask, DelegateTasks},
         files::{ListDirectory, ReadFile, WriteFile},
+        git::{GitDiff, GitLog, GitStatus},
+        image::ImageRead,
+        json_query::JsonQuery,
         mcp::connect_mcp_server,
         memory::{MemoryTool, UserProfileTool},
+        notes::{ListNotes, ReadNote, WriteNote},
         pdf::PdfRead,
         search::SessionSearch,
         skills::{SkillView, SkillsList, WriteSkill},
@@ -193,6 +197,14 @@ async fn build_agent(config: Arc<AgentConfig>, db: Arc<SessionDb>) -> (Arc<Agent
     registry.register(DelegateTask);
     registry.register(DelegateTasks);
     registry.register(BrowserTool::new());
+    registry.register(GitStatus);
+    registry.register(GitLog);
+    registry.register(GitDiff);
+    registry.register(ImageRead);
+    registry.register(WriteNote);
+    registry.register(ReadNote);
+    registry.register(ListNotes);
+    registry.register(JsonQuery);
 
     let mcp_handles = attach_mcp_servers(&mut registry, &config.mcp_servers).await;
     let agent =
