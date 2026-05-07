@@ -15,32 +15,39 @@ pub async fn list(tools_dir: &Path, offline: bool) -> Result<()> {
         return Ok(());
     }
 
-    let name_w = statuses
-        .iter()
-        .map(|s| s.name.len())
-        .max()
-        .unwrap_or(4)
-        .max(4);
+    let name_w = statuses.iter().map(|s| s.name.len()).max().unwrap_or(4).max(4);
+    let req_w = statuses.iter().map(|s| s.requires.len()).max().unwrap_or(7).max(7);
     let ver_w = 9usize;
+
     println!(
-        "{:<name_w$}  {:<ver_w$}  {:<ver_w$}  SOURCE",
-        "NAME", "INSTALLED", "AVAILABLE"
+        "{:<name_w$}  {:<ver_w$}  {:<ver_w$}  {:<req_w$}  DESCRIPTION",
+        "NAME", "INSTALLED", "AVAILABLE", "REQUIRES"
     );
-    println!("{}", "-".repeat(name_w + ver_w * 2 + 20));
+    println!("{}", "-".repeat(name_w + ver_w * 2 + req_w + 40));
 
     for s in &statuses {
-        let installed = s.installed_version.as_deref().unwrap_or("—").to_string();
-        let available = s.hub_version.as_deref().unwrap_or("—").to_string();
-        let source = s.source.as_deref().unwrap_or("hub").to_string();
-
+        let installed = s.installed_version.as_deref().unwrap_or("—");
+        let available = s.hub_version.as_deref().unwrap_or("—");
         let update_marker = match (&s.installed_version, &s.hub_version) {
-            (Some(iv), Some(hv)) if iv != hv => " *",
+            (Some(iv), Some(hv)) if iv != hv => "*",
             _ => "",
+        };
+        let available_col = if update_marker.is_empty() {
+            available.to_string()
+        } else {
+            format!("{available}{update_marker}")
+        };
+
+        // Truncate description to keep output readable
+        let desc = if s.description.chars().count() > 48 {
+            format!("{}…", s.description.chars().take(47).collect::<String>())
+        } else {
+            s.description.clone()
         };
 
         println!(
-            "{:<name_w$}  {:<ver_w$}  {:<ver_w$}  {}{}",
-            s.name, installed, available, source, update_marker
+            "{:<name_w$}  {:<ver_w$}  {:<ver_w$}  {:<req_w$}  {}",
+            s.name, installed, available_col, s.requires, desc
         );
     }
 

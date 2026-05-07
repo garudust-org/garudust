@@ -29,6 +29,24 @@ pub struct HubToolEntry {
     pub files: Vec<String>,
 }
 
+impl HubToolEntry {
+    /// Infer runtime requirement from the file list.
+    pub fn requires(&self) -> &'static str {
+        let has = |ext: &str| self.files.iter().any(|f| f.ends_with(ext));
+        if has(".py") {
+            "python3"
+        } else if has(".js") || has("package.json") {
+            "node"
+        } else if has("Cargo.toml") || self.files.iter().any(|f| f.ends_with("main.rs")) {
+            "rust"
+        } else if has(".sh") {
+            "bash"
+        } else {
+            "—"
+        }
+    }
+}
+
 pub async fn fetch_index(repo: &str) -> Result<HubIndex> {
     let url = raw_url(repo, "main", "index.yaml");
     let text = reqwest::get(&url)
@@ -204,6 +222,8 @@ pub struct ToolStatus {
     pub installed_version: Option<String>,
     pub hub_version: Option<String>,
     pub source: Option<String>,
+    pub requires: String,
+    pub description: String,
 }
 
 /// List tools from both the registry and (optionally) the hub index.
@@ -219,14 +239,18 @@ pub async fn list_tools(tools_dir: &Path, fetch_hub: bool) -> Vec<ToolStatus> {
     let mut statuses: Vec<ToolStatus> = registry
         .tools
         .iter()
-        .map(|e| ToolStatus {
-            name: e.name.clone(),
-            installed_version: Some(e.version.clone()),
-            hub_version: hub_index
+        .map(|e| {
+            let hub_entry = hub_index
                 .as_ref()
-                .and_then(|idx| idx.tools.iter().find(|t| t.name == e.name))
-                .map(|t| t.version.clone()),
-            source: Some(e.source.clone()),
+                .and_then(|idx| idx.tools.iter().find(|t| t.name == e.name));
+            ToolStatus {
+                name: e.name.clone(),
+                installed_version: Some(e.version.clone()),
+                hub_version: hub_entry.map(|t| t.version.clone()),
+                source: Some(e.source.clone()),
+                requires: hub_entry.map_or("—".into(), |t| t.requires().to_string()),
+                description: hub_entry.map_or(String::new(), |t| t.description.clone()),
+            }
         })
         .collect();
 
@@ -239,6 +263,8 @@ pub async fn list_tools(tools_dir: &Path, fetch_hub: bool) -> Vec<ToolStatus> {
                     installed_version: None,
                     hub_version: Some(hub_tool.version.clone()),
                     source: None,
+                    requires: hub_tool.requires().to_string(),
+                    description: hub_tool.description.clone(),
                 });
             }
         }
