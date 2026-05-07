@@ -16,9 +16,9 @@
 ![Rust 1.87+](https://img.shields.io/badge/rust-1.87+-orange.svg)
 [![Discord](https://img.shields.io/badge/Discord-加入社区-5865F2?logo=discord&logoColor=white&style=flat-square)](https://discord.com/channels/1501414298449088745/1501414298893942877)
 
-**用 Rust 编写的可自托管、可自我进化的 AI 智能体运行时**
+**你的 AI 智能体。你的服务器。你的规则。**
 
-从终端聊天，连接 Telegram / Discord / Slack / Matrix / LINE / WhatsApp，或通过 HTTP 调用 — 一个二进制文件搞定一切。它记住你教给它的东西，说你的语言，每次使用都变得更聪明。
+几分钟内在自己的服务器上运行一个功能完整的 AI 智能体 — 无云端锁定，数据不离开本机。单一二进制文件处理一切：终端聊天、在 Telegram / Discord / Slack / LINE / WhatsApp 上回复，或开放 REST + WebSocket API。用 YAML 文件添加自定义工具，连接任意 MCP 服务器，或让智能体自己编写可复用的技能。每次会话都让它更聪明，它永远不会忘记你教给它的东西。
 
 ### 演示
 

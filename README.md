@@ -16,9 +16,9 @@
 ![Rust 1.87+](https://img.shields.io/badge/rust-1.87+-orange.svg)
 [![Discord](https://img.shields.io/badge/Discord-Join%20Community-5865F2?logo=discord&logoColor=white&style=flat-square)](https://discord.com/channels/1501414298449088745/1501414298893942877)
 
-**A self-hostable, self-improving AI agent runtime written in Rust.**
+**Your AI agent. Your server. Your rules.**
 
-Chat from your terminal, connect it to Telegram / Discord / Slack / Matrix / LINE / WhatsApp, or call it over HTTP — all from a single binary. It remembers what you teach it, speaks your language, and gets smarter with every session.
+Run a fully capable AI agent on your own hardware in minutes — no cloud lock-in, no data leaving your machine. One binary handles everything: chat in the terminal, reply on Telegram / Discord / Slack / LINE / WhatsApp, or expose a REST + WebSocket API. Add custom tools with a YAML file, connect any MCP server, or let the agent write its own reusable skills. Every session makes it smarter, and it never forgets what you teach it.
 
 ### Demo
 

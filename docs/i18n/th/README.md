@@ -16,9 +16,9 @@
 ![Rust 1.87+](https://img.shields.io/badge/rust-1.87+-orange.svg)
 [![Discord](https://img.shields.io/badge/Discord-ชุมชน-5865F2?logo=discord&logoColor=white&style=flat-square)](https://discord.com/channels/1501414298449088745/1501414298893942877)
 
-**ระบบรันไทม์ AI agent ที่โฮสต์เองได้ พัฒนาตัวเองได้ เขียนด้วย Rust**
+**AI agent ของคุณ เซิร์ฟเวอร์ของคุณ กฎของคุณ**
 
-แชทจากเทอร์มินัล เชื่อมต่อกับ Telegram / Discord / Slack / Matrix / LINE / WhatsApp หรือเรียกใช้ผ่าน HTTP — ทั้งหมดจากไบนารีเดียว มันจำสิ่งที่คุณสอน พูดภาษาของคุณ และฉลาดขึ้นทุกเซสชัน
+รัน AI agent ที่มีความสามารถเต็มรูปแบบบนเครื่องของคุณเองภายในไม่กี่นาที ไม่ผูกติดกับคลาวด์ ข้อมูลไม่ออกจากเครื่องคุณ ไบนารีเดียวจัดการได้ทุกอย่าง: แชทในเทอร์มินัล ตอบบน Telegram / Discord / Slack / LINE / WhatsApp หรือเปิด REST + WebSocket API เพิ่ม tool เองด้วยไฟล์ YAML เชื่อมต่อ MCP server ใดก็ได้ หรือให้ agent เขียน skill ที่นำกลับมาใช้ซ้ำได้เอง ทุก session ทำให้มันฉลาดขึ้น และไม่มีวันลืมสิ่งที่คุณสอน
 
 ### ตัวอย่างการใช้งาน
 
