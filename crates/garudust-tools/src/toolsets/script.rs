@@ -263,11 +263,11 @@ mod tests {
 
     #[test]
     fn parse_minimal_yaml() {
-        let yaml = r#"
+        let yaml = "
 name: greet
 description: Say hello
 command: echo hello
-"#;
+";
         let def: ScriptToolDef = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(def.name, "greet");
         assert_eq!(def.toolset, "script");
