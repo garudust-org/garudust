@@ -67,8 +67,7 @@ pub fn runtime_in_path(runtime: &str) -> bool {
     std::process::Command::new("which")
         .arg(runtime)
         .output()
-        .map(|o| o.status.success())
-        .unwrap_or(true)
+        .map_or(true, |o| o.status.success())
 }
 
 /// Download a tool from the hub into `tools_dir/<tool_name>/`.
