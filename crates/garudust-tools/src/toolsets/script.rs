@@ -413,4 +413,122 @@ command: "curl -s wttr.in/{city}?format=3"
         let tools = load_script_tools(dir.path()).await;
         assert!(tools.is_empty());
     }
+
+    // ── execute() integration tests ───────────────────────────────────────────
+
+    fn make_ctx() -> garudust_core::tool::ToolContext {
+        use garudust_core::{
+            budget::IterationBudget,
+            config::AgentConfig,
+            error::AgentError,
+            memory::{MemoryContent, MemoryStore},
+            tool::{ApprovalDecision, CommandApprover, SkillPermissions},
+        };
+        use std::sync::Arc;
+
+        struct NopMemory;
+        #[async_trait::async_trait]
+        impl MemoryStore for NopMemory {
+            async fn read_memory(&self) -> Result<MemoryContent, AgentError> {
+                Ok(MemoryContent::default())
+            }
+            async fn write_memory(&self, _: &MemoryContent) -> Result<(), AgentError> {
+                Ok(())
+            }
+            async fn read_user_profile(&self) -> Result<String, AgentError> {
+                Ok(String::new())
+            }
+            async fn write_user_profile(&self, _: &str) -> Result<(), AgentError> {
+                Ok(())
+            }
+        }
+
+        struct AutoApprove;
+        #[async_trait::async_trait]
+        impl CommandApprover for AutoApprove {
+            async fn approve(&self, _: &str, _: &str) -> ApprovalDecision {
+                ApprovalDecision::Approved
+            }
+        }
+
+        garudust_core::tool::ToolContext {
+            session_id: "test".into(),
+            agent_id: "test".into(),
+            iteration: 0,
+            budget: Arc::new(IterationBudget::new(10)),
+            memory: Arc::new(NopMemory),
+            config: Arc::new(AgentConfig::default()),
+            approver: Arc::new(AutoApprove),
+            sub_agent: None,
+            skill_permissions: Arc::new(tokio::sync::RwLock::new(SkillPermissions::default())),
+        }
+    }
+
+    fn make_tool(tool_dir: std::path::PathBuf, command: &str) -> ScriptTool {
+        ScriptTool {
+            name: "test_tool".into(),
+            description: "test".into(),
+            toolset: "script".into(),
+            schema: json!({ "type": "object", "properties": {} }),
+            command: command.into(),
+            destructive: false,
+            tool_dir,
+        }
+    }
+
+    #[tokio::test]
+    async fn execute_returns_stdout() {
+        let dir = tempfile::tempdir().unwrap();
+        let tool = make_tool(dir.path().to_path_buf(), "echo hello");
+        let ctx = make_ctx();
+        let result = tool.execute(json!({}), &ctx).await.unwrap();
+        assert_eq!(result.content.trim(), "hello");
+    }
+
+    #[tokio::test]
+    async fn execute_substitutes_params() {
+        let dir = tempfile::tempdir().unwrap();
+        let tool = make_tool(dir.path().to_path_buf(), "echo {msg}");
+        let ctx = make_ctx();
+        let result = tool.execute(json!({ "msg": "world" }), &ctx).await.unwrap();
+        assert_eq!(result.content.trim(), "world");
+    }
+
+    #[tokio::test]
+    async fn execute_runs_in_tool_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        // Write a file in the tool folder and verify the command can see it via ./
+        tokio::fs::write(dir.path().join("sentinel.txt"), b"ok")
+            .await
+            .unwrap();
+        let tool = make_tool(dir.path().to_path_buf(), "cat ./sentinel.txt");
+        let ctx = make_ctx();
+        let result = tool.execute(json!({}), &ctx).await.unwrap();
+        assert_eq!(result.content.trim(), "ok");
+    }
+
+    #[tokio::test]
+    async fn execute_sets_tool_dir_env() {
+        let dir = tempfile::tempdir().unwrap();
+        let tool = make_tool(dir.path().to_path_buf(), "echo $TOOL_DIR");
+        let ctx = make_ctx();
+        let result = tool.execute(json!({}), &ctx).await.unwrap();
+        assert_eq!(
+            result.content.trim(),
+            dir.path().to_str().unwrap(),
+            "TOOL_DIR must equal the tool folder path"
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_failed_command_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let tool = make_tool(dir.path().to_path_buf(), "exit 1");
+        let ctx = make_ctx();
+        let err = tool.execute(json!({}), &ctx).await.unwrap_err();
+        assert!(
+            matches!(err, garudust_core::error::ToolError::Execution(_)),
+            "non-zero exit must produce ToolError::Execution"
+        );
+    }
 }
