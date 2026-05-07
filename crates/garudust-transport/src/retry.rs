@@ -125,6 +125,7 @@ mod tests {
     use std::sync::Arc;
 
     use async_trait::async_trait;
+    use futures::StreamExt as _;
     use garudust_core::{
         error::TransportError,
         transport::{ApiMode, ProviderTransport, StreamResult},
@@ -186,7 +187,15 @@ mod tests {
             _config: &InferenceConfig,
             _tools: &[ToolSchema],
         ) -> Result<StreamResult, TransportError> {
-            unimplemented!()
+            let n = self.calls.fetch_add(1, Ordering::SeqCst);
+            if n < self.fail_times {
+                Err(TransportError::Http {
+                    status: 503,
+                    body: "unavailable".into(),
+                })
+            } else {
+                Ok(Box::pin(futures::stream::empty()))
+            }
         }
     }
 
@@ -214,5 +223,44 @@ mod tests {
         let result = retry.chat(&[], &dummy_config(), &[]).await;
         assert!(result.is_err());
         assert_eq!(calls.load(Ordering::SeqCst), 3); // initial + 2 retries
+    }
+
+    #[tokio::test]
+    async fn stream_retries_on_503_then_succeeds() {
+        let calls = Arc::new(AtomicU32::new(0));
+        let inner = Arc::new(CountingTransport {
+            calls: calls.clone(),
+            fail_times: 1,
+        });
+        let retry = RetryTransport::new(inner, 3, 0);
+        let result = retry.chat_stream(&[], &dummy_config(), &[]).await;
+        assert!(result.is_ok());
+        assert_eq!(calls.load(Ordering::SeqCst), 2); // 1 fail + 1 success
+    }
+
+    #[tokio::test]
+    async fn stream_fails_after_max_retries() {
+        let calls = Arc::new(AtomicU32::new(0));
+        let inner = Arc::new(CountingTransport {
+            calls: calls.clone(),
+            fail_times: 10,
+        });
+        let retry = RetryTransport::new(inner, 2, 0);
+        let result = retry.chat_stream(&[], &dummy_config(), &[]).await;
+        assert!(result.is_err());
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test]
+    async fn stream_returns_empty_on_success() {
+        let calls = Arc::new(AtomicU32::new(0));
+        let inner = Arc::new(CountingTransport {
+            calls: calls.clone(),
+            fail_times: 0,
+        });
+        let retry = RetryTransport::new(inner, 1, 0);
+        let mut stream = retry.chat_stream(&[], &dummy_config(), &[]).await.unwrap();
+        // CountingTransport returns an empty stream on success
+        assert!(stream.next().await.is_none());
     }
 }

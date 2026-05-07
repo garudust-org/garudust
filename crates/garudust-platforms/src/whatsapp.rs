@@ -381,7 +381,44 @@ mod tests {
 
     #[test]
     fn verify_sig_rejects_bad_hex_when_secret_nonempty() {
-        // Non-matching signature must fail even with a valid secret
         assert!(!verify_sig("secret", b"body", "sha256=00000000"));
+    }
+
+    #[test]
+    fn verify_sig_rejects_missing_prefix() {
+        // Header must start with "sha256=" — bare hex must be rejected.
+        use hmac::Mac;
+        let secret = "s";
+        let body = b"x";
+        let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).unwrap();
+        mac.update(body);
+        let bare_hex = hex::encode(mac.finalize().into_bytes());
+        assert!(!verify_sig(secret, body, &bare_hex));
+    }
+
+    #[test]
+    fn verify_sig_accepts_empty_body() {
+        use hmac::Mac;
+        let secret = "s";
+        let body = b"";
+        let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).unwrap();
+        mac.update(body);
+        let sig = format!("sha256={}", hex::encode(mac.finalize().into_bytes()));
+        assert!(verify_sig(secret, body, &sig));
+    }
+
+    #[test]
+    fn chunk_text_exactly_at_limit_is_single_chunk() {
+        let text = "a".repeat(WA_TEXT_LIMIT);
+        let chunks = chunk_text(&text);
+        assert_eq!(chunks.len(), 1);
+    }
+
+    #[test]
+    fn chunk_text_one_over_limit_splits() {
+        let text = "a".repeat(WA_TEXT_LIMIT + 1);
+        let chunks = chunk_text(&text);
+        assert_eq!(chunks.len(), 2);
+        assert_eq!(chunks.join(""), text);
     }
 }
