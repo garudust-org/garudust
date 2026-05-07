@@ -12,8 +12,8 @@ use garudust_core::config::AgentConfig;
 use garudust_core::config::McpServerConfig;
 use garudust_memory::{FileMemoryStore, SessionDb};
 use garudust_tools::{
-    register_standard_tools, security::docker_available, toolsets::mcp::connect_mcp_server,
-    ToolRegistry,
+    load_script_tools, register_standard_tools, security::docker_available,
+    toolsets::mcp::connect_mcp_server, ToolRegistry,
 };
 use garudust_transport::build_transport;
 use tokio::sync::mpsc;
@@ -123,6 +123,10 @@ async fn build_agent(config: Arc<AgentConfig>) -> (Arc<Agent>, McpHandles) {
     register_standard_tools(&mut registry, db.clone());
 
     let mcp_handles = attach_mcp_servers(&mut registry, &config.mcp_servers).await;
+
+    for tool in load_script_tools(&config.home_dir).await {
+        registry.register(tool);
+    }
 
     let agent = Agent::new(transport, Arc::new(registry), memory, config);
     let agent = match db {

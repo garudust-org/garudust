@@ -14,8 +14,8 @@ use garudust_platforms::{
     telegram::TelegramAdapter, webhook::WebhookAdapter, whatsapp::WhatsAppAdapter,
 };
 use garudust_tools::{
-    register_standard_tools, security::docker_available, toolsets::mcp::connect_mcp_server,
-    ToolRegistry,
+    load_script_tools, register_standard_tools, security::docker_available,
+    toolsets::mcp::connect_mcp_server, ToolRegistry,
 };
 use garudust_transport::build_transport;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
@@ -174,6 +174,11 @@ async fn build_agent(config: Arc<AgentConfig>, db: Arc<SessionDb>) -> (Arc<Agent
     register_standard_tools(&mut registry, Some(db.clone()));
 
     let mcp_handles = attach_mcp_servers(&mut registry, &config.mcp_servers).await;
+
+    for tool in load_script_tools(&config.home_dir).await {
+        registry.register(tool);
+    }
+
     let agent =
         Arc::new(Agent::new(transport, Arc::new(registry), memory, config).with_session_db(db));
     (agent, mcp_handles)

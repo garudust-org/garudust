@@ -25,6 +25,7 @@ pub mod security;
 pub mod toolsets;
 
 pub use registry::ToolRegistry;
+pub use toolsets::script::load_script_tools;
 
 /// Register the full standard tool suite into `registry`.
 ///

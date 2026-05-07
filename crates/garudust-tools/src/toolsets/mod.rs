@@ -8,6 +8,7 @@ pub mod mcp;
 pub mod memory;
 pub mod notes;
 pub mod pdf;
+pub mod script;
 pub mod search;
 pub mod skills;
 pub mod terminal;
