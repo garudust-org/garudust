@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 use garudust_core::{
@@ -48,6 +48,9 @@ pub struct ScriptTool {
     schema: Value,
     command: String,
     destructive: bool,
+    /// The tool's folder; `sh -c` runs here so `./run.py` and sibling files
+    /// resolve correctly. `$TOOL_DIR` is also set in the environment.
+    tool_dir: PathBuf,
 }
 
 // ── Shell quoting ─────────────────────────────────────────────────────────────
@@ -111,9 +114,11 @@ impl Tool for ScriptTool {
         let out = Command::new("sh")
             .arg("-c")
             .arg(&command)
+            .current_dir(&self.tool_dir)
             .env_clear()
             .env("PATH", std::env::var("PATH").unwrap_or_default())
             .env("HOME", std::env::var("HOME").unwrap_or_default())
+            .env("TOOL_DIR", &self.tool_dir)
             .output()
             .await
             .map_err(|e| ToolError::Execution(format!("script tool spawn error: {e}")))?;
@@ -135,8 +140,20 @@ impl Tool for ScriptTool {
 
 // ── Loader ────────────────────────────────────────────────────────────────────
 
-/// Load all `*.yaml` files from `<home_dir>/tools/` as script tools.
-/// Files that fail to parse are skipped with a warning.
+/// Load script tools from `<home_dir>/tools/`.
+///
+/// Each tool is a subdirectory containing a `tool.yaml` file:
+///
+/// ```text
+/// ~/.garudust/tools/
+/// └── my_tool/
+///     ├── tool.yaml   ← metadata and command
+///     └── run.py      ← script (referenced as ./run.py in command)
+/// ```
+///
+/// The command runs with `current_dir` set to the tool folder so relative
+/// paths like `./run.py` resolve correctly. `$TOOL_DIR` is also set.
+/// Subdirectories without `tool.yaml` are silently skipped.
 pub async fn load_script_tools(home_dir: &Path) -> Vec<ScriptTool> {
     let tools_dir = home_dir.join("tools");
     let mut tools = Vec::new();
@@ -147,40 +164,53 @@ pub async fn load_script_tools(home_dir: &Path) -> Vec<ScriptTool> {
 
     while let Ok(Some(entry)) = entries.next_entry().await {
         let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("yaml") {
-            continue;
-        }
-
-        let Ok(content) = tokio::fs::read_to_string(&path).await else {
-            tracing::warn!(path = %path.display(), "script tool: failed to read file");
+        let Ok(meta) = tokio::fs::metadata(&path).await else {
             continue;
         };
 
-        let def: ScriptToolDef = match serde_yaml::from_str(&content) {
-            Ok(d) => d,
-            Err(e) => {
-                tracing::warn!(path = %path.display(), "script tool: parse error: {e}");
-                continue;
-            }
-        };
-
-        if def.name.is_empty() || def.command.is_empty() {
-            tracing::warn!(path = %path.display(), "script tool: name and command are required");
+        if !meta.is_dir() {
             continue;
         }
 
-        tracing::info!(name = %def.name, "loaded script tool");
-        tools.push(ScriptTool {
-            name: def.name,
-            description: def.description,
-            toolset: def.toolset,
-            schema: def.schema,
-            command: def.command,
-            destructive: def.destructive,
-        });
+        if let Some(tool) = load_tool_from_folder(&path).await {
+            tools.push(tool);
+        }
     }
 
     tools
+}
+
+async fn load_tool_from_folder(dir: &Path) -> Option<ScriptTool> {
+    let yaml_path = dir.join("tool.yaml");
+
+    let content = match tokio::fs::read_to_string(&yaml_path).await {
+        Ok(c) => c,
+        Err(_) => return None, // no tool.yaml — not a tool folder, silently skip
+    };
+
+    let def: ScriptToolDef = match serde_yaml::from_str(&content) {
+        Ok(d) => d,
+        Err(e) => {
+            tracing::warn!(path = %yaml_path.display(), "script tool: parse error: {e}");
+            return None;
+        }
+    };
+
+    if def.name.is_empty() || def.command.is_empty() {
+        tracing::warn!(path = %yaml_path.display(), "script tool: name and command are required");
+        return None;
+    }
+
+    tracing::info!(name = %def.name, dir = %dir.display(), "loaded script tool");
+    Some(ScriptTool {
+        name: def.name,
+        description: def.description,
+        toolset: def.toolset,
+        schema: def.schema,
+        command: def.command,
+        destructive: def.destructive,
+        tool_dir: dir.to_path_buf(),
+    })
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -303,13 +333,14 @@ command: "curl -s wttr.in/{city}?format=3"
     }
 
     #[tokio::test]
-    async fn load_valid_yaml_file() {
+    async fn load_tool_from_folder_sets_tool_dir() {
         let dir = tempfile::tempdir().unwrap();
         let tools_dir = dir.path().join("tools");
-        tokio::fs::create_dir_all(&tools_dir).await.unwrap();
+        let tool_folder = tools_dir.join("greet");
+        tokio::fs::create_dir_all(&tool_folder).await.unwrap();
         tokio::fs::write(
-            tools_dir.join("greet.yaml"),
-            b"name: greet\ndescription: Say hello\ncommand: echo hello\n",
+            tool_folder.join("tool.yaml"),
+            b"name: greet\ndescription: Say hello\ncommand: ./run.sh\n",
         )
         .await
         .unwrap();
@@ -317,14 +348,14 @@ command: "curl -s wttr.in/{city}?format=3"
         let tools = load_script_tools(dir.path()).await;
         assert_eq!(tools.len(), 1);
         assert_eq!(tools[0].name(), "greet");
+        assert_eq!(tools[0].tool_dir, tool_folder);
     }
 
     #[tokio::test]
-    async fn skip_invalid_yaml_file() {
+    async fn folder_without_tool_yaml_is_skipped() {
         let dir = tempfile::tempdir().unwrap();
         let tools_dir = dir.path().join("tools");
-        tokio::fs::create_dir_all(&tools_dir).await.unwrap();
-        tokio::fs::write(tools_dir.join("bad.yaml"), b"not: valid: yaml: [[[")
+        tokio::fs::create_dir_all(tools_dir.join("empty_folder"))
             .await
             .unwrap();
 
@@ -333,11 +364,49 @@ command: "curl -s wttr.in/{city}?format=3"
     }
 
     #[tokio::test]
-    async fn skip_non_yaml_files() {
+    async fn multiple_tool_folders_all_loaded() {
+        let dir = tempfile::tempdir().unwrap();
+        let tools_dir = dir.path().join("tools");
+
+        for name in ["weather", "analyze"] {
+            let folder = tools_dir.join(name);
+            tokio::fs::create_dir_all(&folder).await.unwrap();
+            tokio::fs::write(
+                folder.join("tool.yaml"),
+                format!("name: {name}\ndescription: {name} tool\ncommand: ./run.sh\n").as_bytes(),
+            )
+            .await
+            .unwrap();
+        }
+
+        let tools = load_script_tools(dir.path()).await;
+        assert_eq!(tools.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn files_in_tools_dir_are_ignored() {
         let dir = tempfile::tempdir().unwrap();
         let tools_dir = dir.path().join("tools");
         tokio::fs::create_dir_all(&tools_dir).await.unwrap();
-        tokio::fs::write(tools_dir.join("greet.toml"), b"name = 'greet'")
+        // Flat .yaml files are no longer supported — must be ignored
+        tokio::fs::write(
+            tools_dir.join("greet.yaml"),
+            b"name: greet\ndescription: Say hello\ncommand: echo hello\n",
+        )
+        .await
+        .unwrap();
+
+        let tools = load_script_tools(dir.path()).await;
+        assert!(tools.is_empty());
+    }
+
+    #[tokio::test]
+    async fn skip_folder_with_invalid_tool_yaml() {
+        let dir = tempfile::tempdir().unwrap();
+        let tools_dir = dir.path().join("tools");
+        let tool_folder = tools_dir.join("bad");
+        tokio::fs::create_dir_all(&tool_folder).await.unwrap();
+        tokio::fs::write(tool_folder.join("tool.yaml"), b"not: valid: yaml: [[[")
             .await
             .unwrap();
 
