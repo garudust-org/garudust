@@ -443,6 +443,31 @@ Set the relevant key in `~/.garudust/.env`, then switch models with `garudust mo
 
 **MCP tools** — connect any [MCP](https://modelcontextprotocol.io) server by adding it to the `mcp_servers` list in `config.yaml` (see Configuration).
 
+**Script tools** — add custom tools without writing Rust. Drop a folder containing `tool.yaml` and an optional script into `~/.garudust/tools/` and restart the agent:
+
+```
+~/.garudust/tools/
+└── get_weather/
+    ├── tool.yaml   ← name, description, schema, command
+    └── run.py      ← referenced as ./run.py in command (optional)
+```
+
+```yaml
+# tool.yaml
+name: get_weather
+description: Get current weather for a city
+destructive: false
+schema:
+  type: object
+  properties:
+    city:
+      type: string
+  required: [city]
+command: "curl -s wttr.in/{city}?format=3"
+```
+
+Parameters are shell-quoted automatically. The command runs with `$TOOL_DIR` set and `current_dir` inside the tool folder, so `./run.py` and sibling files resolve correctly.
+
 ---
 
 ## Architecture

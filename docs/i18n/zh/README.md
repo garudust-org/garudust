@@ -442,6 +442,31 @@ curl http://localhost:3000/metrics   # Prometheus 兼容
 
 **MCP 工具** — 通过在 `config.yaml` 的 `mcp_servers` 列表中添加条目，连接任意 [MCP](https://modelcontextprotocol.io) 服务器（见配置章节）。
 
+**脚本工具** — 无需编写 Rust 即可添加自定义工具。将包含 `tool.yaml` 和可选脚本的文件夹放入 `~/.garudust/tools/`，然后重启 agent：
+
+```
+~/.garudust/tools/
+└── get_weather/
+    ├── tool.yaml   ← 名称、描述、schema、命令
+    └── run.py      ← 脚本，在 command 中以 ./run.py 引用（可选）
+```
+
+```yaml
+# tool.yaml
+name: get_weather
+description: 获取某城市的当前天气
+destructive: false
+schema:
+  type: object
+  properties:
+    city:
+      type: string
+  required: [city]
+command: "curl -s wttr.in/{city}?format=3"
+```
+
+参数会自动进行 shell 引号转义。命令在 tool 文件夹内运行，并设置 `$TOOL_DIR` 环境变量，因此 `./run.py` 及同目录文件均可正确解析。
+
 ---
 
 ## 架构

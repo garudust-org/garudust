@@ -444,6 +444,31 @@ curl http://localhost:3000/metrics   # รองรับ Prometheus
 
 **MCP tools** — เชื่อมต่อ [MCP](https://modelcontextprotocol.io) server ใด ๆ โดยเพิ่มในรายการ `mcp_servers` ใน `config.yaml` (ดูที่หัวข้อการตั้งค่า)
 
+**Script tools** — เพิ่ม tool เองโดยไม่ต้องเขียน Rust วาง folder ที่มี `tool.yaml` และ script ลงใน `~/.garudust/tools/` แล้ว restart agent:
+
+```
+~/.garudust/tools/
+└── get_weather/
+    ├── tool.yaml   ← ชื่อ, คำอธิบาย, schema, คำสั่ง
+    └── run.py      ← script (อ้างอิงเป็น ./run.py ใน command — ไม่บังคับ)
+```
+
+```yaml
+# tool.yaml
+name: get_weather
+description: ดึงข้อมูลสภาพอากาศของเมือง
+destructive: false
+schema:
+  type: object
+  properties:
+    city:
+      type: string
+  required: [city]
+command: "curl -s wttr.in/{city}?format=3"
+```
+
+ค่า parameter จะถูก shell-quote อัตโนมัติ คำสั่งรันใน `current_dir` ของ tool folder และมี `$TOOL_DIR` ตั้งให้ ทำให้ `./run.py` และไฟล์ข้างเคียง resolve ได้ถูกต้อง
+
 ---
 
 ## สถาปัตยกรรม
