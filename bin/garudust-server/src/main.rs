@@ -14,23 +14,7 @@ use garudust_platforms::{
     telegram::TelegramAdapter, webhook::WebhookAdapter, whatsapp::WhatsAppAdapter,
 };
 use garudust_tools::{
-    security::docker_available,
-    toolsets::{
-        browser::BrowserTool,
-        delegate::{DelegateTask, DelegateTasks},
-        files::{ListDirectory, ReadFile, WriteFile},
-        git::{GitDiff, GitLog, GitStatus},
-        image::ImageRead,
-        json_query::JsonQuery,
-        mcp::connect_mcp_server,
-        memory::{MemoryTool, UserProfileTool},
-        notes::{ListNotes, ReadNote, WriteNote},
-        pdf::PdfRead,
-        search::SessionSearch,
-        skills::{SkillView, SkillsList, WriteSkill},
-        terminal::Terminal,
-        web::{HttpRequest, WebFetch, WebSearch},
-    },
+    register_standard_tools, security::docker_available, toolsets::mcp::connect_mcp_server,
     ToolRegistry,
 };
 use garudust_transport::build_transport;
@@ -180,31 +164,7 @@ async fn build_agent(config: Arc<AgentConfig>, db: Arc<SessionDb>) -> (Arc<Agent
     }
 
     let mut registry = ToolRegistry::new();
-    registry.register(WebFetch);
-    registry.register(WebSearch);
-    registry.register(HttpRequest);
-    registry.register(ReadFile);
-    registry.register(WriteFile);
-    registry.register(ListDirectory);
-    registry.register(PdfRead);
-    registry.register(Terminal);
-    registry.register(MemoryTool);
-    registry.register(UserProfileTool);
-    registry.register(SessionSearch::new(db.clone()));
-    registry.register(SkillsList);
-    registry.register(SkillView);
-    registry.register(WriteSkill);
-    registry.register(DelegateTask);
-    registry.register(DelegateTasks);
-    registry.register(BrowserTool::new());
-    registry.register(GitStatus);
-    registry.register(GitLog);
-    registry.register(GitDiff);
-    registry.register(ImageRead);
-    registry.register(WriteNote);
-    registry.register(ReadNote);
-    registry.register(ListNotes);
-    registry.register(JsonQuery);
+    register_standard_tools(&mut registry, Some(db.clone()));
 
     let mcp_handles = attach_mcp_servers(&mut registry, &config.mcp_servers).await;
     let agent =

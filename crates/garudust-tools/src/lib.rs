@@ -25,3 +25,57 @@ pub mod security;
 pub mod toolsets;
 
 pub use registry::ToolRegistry;
+
+/// Register the full standard tool suite into `registry`.
+///
+/// `db` is `Some` when session-search history is available (always in the
+/// server, optional in the CLI). Callers that don't need the session-search
+/// tool pass `None`.
+pub fn register_standard_tools(
+    registry: &mut ToolRegistry,
+    db: Option<std::sync::Arc<garudust_memory::SessionDb>>,
+) {
+    use toolsets::{
+        browser::BrowserTool,
+        delegate::{DelegateTask, DelegateTasks},
+        files::{ListDirectory, ReadFile, WriteFile},
+        git::{GitDiff, GitLog, GitStatus},
+        image::ImageRead,
+        json_query::JsonQuery,
+        memory::{MemoryTool, UserProfileTool},
+        notes::{ListNotes, ReadNote, WriteNote},
+        pdf::PdfRead,
+        search::SessionSearch,
+        skills::{SkillView, SkillsList, WriteSkill},
+        terminal::Terminal,
+        web::{HttpRequest, WebFetch, WebSearch},
+    };
+
+    registry.register(WebFetch);
+    registry.register(WebSearch);
+    registry.register(HttpRequest);
+    registry.register(ReadFile);
+    registry.register(WriteFile);
+    registry.register(ListDirectory);
+    registry.register(PdfRead);
+    registry.register(Terminal);
+    registry.register(MemoryTool);
+    registry.register(UserProfileTool);
+    if let Some(db) = db {
+        registry.register(SessionSearch::new(db));
+    }
+    registry.register(SkillsList);
+    registry.register(SkillView);
+    registry.register(WriteSkill);
+    registry.register(DelegateTask);
+    registry.register(DelegateTasks);
+    registry.register(BrowserTool::new());
+    registry.register(GitStatus);
+    registry.register(GitLog);
+    registry.register(GitDiff);
+    registry.register(ImageRead);
+    registry.register(WriteNote);
+    registry.register(ReadNote);
+    registry.register(ListNotes);
+    registry.register(JsonQuery);
+}
