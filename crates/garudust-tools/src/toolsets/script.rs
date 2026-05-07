@@ -183,9 +183,9 @@ pub async fn load_script_tools(home_dir: &Path) -> Vec<ScriptTool> {
 async fn load_tool_from_folder(dir: &Path) -> Option<ScriptTool> {
     let yaml_path = dir.join("tool.yaml");
 
-    let content = match tokio::fs::read_to_string(&yaml_path).await {
-        Ok(c) => c,
-        Err(_) => return None, // no tool.yaml — not a tool folder, silently skip
+    // no tool.yaml — not a tool folder, silently skip
+    let Ok(content) = tokio::fs::read_to_string(&yaml_path).await else {
+        return None;
     };
 
     let def: ScriptToolDef = match serde_yaml::from_str(&content) {
