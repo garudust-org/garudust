@@ -163,6 +163,13 @@ async fn build_agent(config: Arc<AgentConfig>, db: Arc<SessionDb>) -> (Arc<Agent
         );
     }
 
+    if config.security.terminal_sandbox == garudust_core::config::TerminalSandbox::None {
+        tracing::warn!(
+            "terminal_sandbox is 'none' — terminal commands run directly on the host. \
+             Set GARUDUST_TERMINAL_SANDBOX=docker to isolate execution in a container."
+        );
+    }
+
     let mut registry = ToolRegistry::new();
     register_standard_tools(&mut registry, Some(db.clone()));
 
