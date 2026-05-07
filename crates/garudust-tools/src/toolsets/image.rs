@@ -7,6 +7,7 @@ use garudust_core::{
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
+use tokio::io::AsyncReadExt as _;
 
 /// Maximum image size passed to the model (bytes).
 /// Larger files are rejected with a clear error rather than flooding the context.
@@ -94,21 +95,25 @@ impl Tool for ImageRead {
             ));
         }
 
-        let file_len = tokio::fs::metadata(&canonical)
+        // Open once and use take() so the size check and read share the same
+        // file descriptor — eliminates the TOCTOU window between a separate
+        // metadata() call and the subsequent read().
+        let file = tokio::fs::File::open(&canonical)
             .await
-            .map_err(|e| ToolError::Execution(format!("metadata error: {e}")))?
-            .len();
-        let file_size = usize::try_from(file_len)
-            .map_err(|_| ToolError::Execution(format!("file too large: {file_len} bytes")))?;
-        if file_size > MAX_IMAGE_BYTES {
-            return Err(ToolError::Execution(format!(
-                "image too large: {file_size} bytes (max {MAX_IMAGE_BYTES} bytes)"
-            )));
-        }
-
-        let bytes = tokio::fs::read(&canonical)
+            .map_err(|e| ToolError::Execution(format!("open error: {e}")))?;
+        let limit = u64::try_from(MAX_IMAGE_BYTES)
+            .map_err(|_| ToolError::Execution("MAX_IMAGE_BYTES overflows u64".into()))?
+            .saturating_add(1);
+        let mut bytes = Vec::new();
+        file.take(limit)
+            .read_to_end(&mut bytes)
             .await
             .map_err(|e| ToolError::Execution(format!("read error: {e}")))?;
+        if bytes.len() > MAX_IMAGE_BYTES {
+            return Err(ToolError::Execution(format!(
+                "image too large (max {MAX_IMAGE_BYTES} bytes)"
+            )));
+        }
 
         let mime = detect_mime(&input.path, &bytes[..bytes.len().min(12)]);
         let b64 = B64.encode(&bytes);
