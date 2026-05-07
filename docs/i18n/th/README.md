@@ -528,3 +528,15 @@ cargo clippy --workspace --all-targets -- -W clippy::all -W clippy::pedantic
 ## ใบอนุญาต
 
 MIT — ดูที่ [LICENSE](../../../LICENSE)
+
+---
+
+## ประวัติ Star
+
+[![Star History Chart](https://api.star-history.com/svg?repos=garudust-org/garudust-agent&type=Date)](https://star-history.com/#garudust-org/garudust-agent&Date)
+
+---
+
+<div align="center">
+  <img src="https://visitor-badge.laobi.icu/badge?page_id=garudust-org.garudust-agent&style=flat" alt="visitors"/>
+</div>
