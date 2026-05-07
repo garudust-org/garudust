@@ -50,6 +50,11 @@ fn apply_path(value: &Value, expr: &str) -> Result<Value, String> {
         // Array index or wildcard
         match idx_str {
             "*" => {
+                if !tail.is_empty() {
+                    return Err(format!(
+                        "chaining after [*] is not supported (got '.{tail}')"
+                    ));
+                }
                 let arr = value
                     .as_array()
                     .ok_or_else(|| format!("[*]: not an array (got {value})"))?;
@@ -57,7 +62,6 @@ fn apply_path(value: &Value, expr: &str) -> Result<Value, String> {
                     .iter()
                     .map(|v| serde_json::to_string(v).unwrap_or_default())
                     .collect();
-                // Wildcard returns early — further chaining not supported after [*]
                 return Ok(Value::String(items.join("\n")));
             }
             n => {
@@ -144,7 +148,7 @@ impl Tool for JsonQuery {
     }
 
     fn toolset(&self) -> &'static str {
-        "web"
+        "json"
     }
 
     fn schema(&self) -> Value {
@@ -228,6 +232,12 @@ mod tests {
         let v = json!([1, 2, 3]);
         let result = q(&v, ".[*]").unwrap();
         assert_eq!(result, json!("1\n2\n3"));
+    }
+
+    #[test]
+    fn wildcard_chaining_errors() {
+        let v = json!([{"name": "a"}, {"name": "b"}]);
+        assert!(q(&v, ".[*].name").is_err());
     }
 
     #[test]

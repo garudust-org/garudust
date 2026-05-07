@@ -33,13 +33,20 @@ async fn run_git(args: &[&str], cwd: Option<&str>) -> Result<String, ToolError> 
     }
 
     if combined.len() > MAX_OUTPUT_BYTES {
-        let head = MAX_OUTPUT_BYTES * 2 / 5;
-        let tail = MAX_OUTPUT_BYTES - head;
+        let mut head = MAX_OUTPUT_BYTES * 2 / 5;
+        while !combined.is_char_boundary(head) {
+            head -= 1;
+        }
+        let tail_start_raw = combined.len().saturating_sub(MAX_OUTPUT_BYTES - head);
+        let mut tail_start = tail_start_raw;
+        while !combined.is_char_boundary(tail_start) {
+            tail_start += 1;
+        }
+        let skipped = tail_start.saturating_sub(head);
         let truncated = format!(
-            "{}\n\n[… {} bytes truncated …]\n\n{}",
+            "{}\n\n[… {skipped} bytes truncated …]\n\n{}",
             &combined[..head],
-            combined.len() - head - tail,
-            &combined[combined.len() - tail..]
+            &combined[tail_start..]
         );
         return Ok(truncated);
     }
@@ -218,6 +225,9 @@ impl Tool for GitDiff {
 
         let ref_owned;
         if let Some(ref r) = input.git_ref {
+            if r.starts_with('-') {
+                return Err(ToolError::InvalidArgs("ref must not start with '-'".into()));
+            }
             ref_owned = r.clone();
             args.push(ref_owned.as_str());
         }
@@ -242,45 +252,86 @@ impl Tool for GitDiff {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::process::Command as StdCommand;
+
+    fn make_temp_repo() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().to_str().unwrap();
+        StdCommand::new("git")
+            .args(["init", "-b", "main"])
+            .current_dir(p)
+            .output()
+            .unwrap();
+        StdCommand::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(p)
+            .output()
+            .unwrap();
+        StdCommand::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(p)
+            .output()
+            .unwrap();
+        std::fs::write(dir.path().join("README.md"), b"hello").unwrap();
+        StdCommand::new("git")
+            .args(["add", "."])
+            .current_dir(p)
+            .output()
+            .unwrap();
+        StdCommand::new("git")
+            .args(["commit", "-m", "init"])
+            .current_dir(p)
+            .output()
+            .unwrap();
+        dir
+    }
 
     #[tokio::test]
     async fn git_status_runs_in_repo() {
-        let output = run_git(
-            &["status"],
-            Some("/Users/ninenox-14/Desktop/garudust-agent"),
-        )
-        .await;
+        let repo = make_temp_repo();
+        let output = run_git(&["status"], Some(repo.path().to_str().unwrap())).await;
         assert!(output.is_ok());
     }
 
     #[tokio::test]
-    async fn git_log_default_limit() {
+    async fn git_log_shows_commit() {
+        let repo = make_temp_repo();
         let output = run_git(
             &["log", "--oneline", "-n", "5"],
-            Some("/Users/ninenox-14/Desktop/garudust-agent"),
+            Some(repo.path().to_str().unwrap()),
         )
         .await;
         assert!(output.is_ok());
-        let text = output.unwrap();
-        // Each line is a commit hash + message
-        assert!(!text.is_empty());
+        assert!(output.unwrap().contains("init"));
     }
 
     #[tokio::test]
-    async fn git_diff_no_changes_returns_empty_or_ok() {
-        let output = run_git(
-            &["diff", "--cached"],
-            Some("/Users/ninenox-14/Desktop/garudust-agent"),
-        )
-        .await;
+    async fn git_diff_no_staged_changes() {
+        let repo = make_temp_repo();
+        let output = run_git(&["diff", "--cached"], Some(repo.path().to_str().unwrap())).await;
         assert!(output.is_ok());
     }
 
     #[tokio::test]
     async fn git_in_non_repo_returns_error_output() {
-        let output = run_git(&["status"], Some("/tmp")).await;
-        // git returns non-zero exit; our function still returns Ok with stderr
-        // or Err — either is acceptable, just must not panic.
+        let dir = tempfile::tempdir().unwrap();
+        let output = run_git(&["status"], Some(dir.path().to_str().unwrap())).await;
         let _ = output;
+    }
+
+    #[test]
+    fn truncation_respects_char_boundary() {
+        let mut s = String::new();
+        while s.len() < MAX_OUTPUT_BYTES + 100 {
+            s.push_str("こんにちは"); // 3 bytes per char; crossing boundary must not panic
+        }
+        if s.len() > MAX_OUTPUT_BYTES {
+            let mut head = MAX_OUTPUT_BYTES * 2 / 5;
+            while !s.is_char_boundary(head) {
+                head -= 1;
+            }
+            assert!(s.is_char_boundary(head));
+            let _ = &s[..head]; // must not panic
+        }
     }
 }
