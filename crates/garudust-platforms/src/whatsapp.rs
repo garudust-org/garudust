@@ -239,6 +239,13 @@ impl WhatsAppAdapter {
         verify_token: String,
         port: u16,
     ) -> Self {
+        if app_secret.is_empty() {
+            tracing::warn!(
+                "WhatsApp: WHATSAPP_APP_SECRET is not set — \
+                 incoming webhook HMAC verification is DISABLED. \
+                 Set the env var to enable request authentication."
+            );
+        }
         Self {
             port,
             inner: Arc::new(Inner {

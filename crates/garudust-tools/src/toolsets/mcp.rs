@@ -92,6 +92,14 @@ impl Tool for McpProxyTool {
 }
 
 /// Connect to an MCP server via stdio and return discovered tools plus an opaque
+fn is_valid_mcp_tool_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 128
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
 /// keep-alive handle. The caller must hold the handle for the lifetime of the tools.
 pub async fn connect_mcp_server(
     command: &str,
@@ -114,15 +122,23 @@ pub async fn connect_mcp_server(
         .list_all_tools()
         .await?
         .into_iter()
-        .map(|t| {
+        .filter_map(|t| {
+            if !is_valid_mcp_tool_name(&t.name) {
+                tracing::warn!(
+                    name = %t.name,
+                    server = %server_name,
+                    "MCP: skipping tool with invalid name (must be 1-128 alphanumeric/underscore/hyphen chars)"
+                );
+                return None;
+            }
             let input_schema = Value::Object((*t.input_schema).clone());
-            Arc::new(McpProxyTool::new(
+            Some(Arc::new(McpProxyTool::new(
                 t.name.to_string(),
                 t.description.as_deref().unwrap_or("").to_string(),
                 input_schema,
                 server_name.clone(),
                 peer.clone(),
-            )) as Arc<McpProxyTool>
+            )) as Arc<McpProxyTool>)
         })
         .collect();
 

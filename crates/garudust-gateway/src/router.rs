@@ -24,7 +24,25 @@ use tokio_stream::StreamExt;
 use tower::limit::ConcurrencyLimitLayer;
 use tower_governor::{governor::GovernorConfigBuilder, GovernorLayer};
 
+use hmac::{Hmac, KeyInit, Mac};
+use sha2::Sha256;
+
 use crate::state::AppState;
+
+/// Constant-time API key comparison via HMAC-SHA256.
+///
+/// Both keys are MACed with a fixed message so the comparison is always on
+/// equal-length 32-byte digests — `verify_slice` uses `subtle::ConstantTimeEq`
+/// internally, preventing timing-based key recovery.
+fn api_keys_match(expected: &str, provided: &str) -> bool {
+    let mut mac = Hmac::<Sha256>::new_from_slice(b"api-key").expect("HMAC accepts any key length");
+    mac.update(expected.as_bytes());
+    let expected_tag = mac.finalize().into_bytes();
+
+    let mut mac = Hmac::<Sha256>::new_from_slice(b"api-key").expect("HMAC accepts any key length");
+    mac.update(provided.as_bytes());
+    mac.verify_slice(&expected_tag).is_ok()
+}
 
 /// Bearer token middleware — rejects requests to /chat* if a key is configured
 /// and the Authorization header does not match.
@@ -38,8 +56,9 @@ async fn require_auth(
             .headers()
             .get(axum::http::header::AUTHORIZATION)
             .and_then(|v| v.to_str().ok())
-            .and_then(|s| s.strip_prefix("Bearer "));
-        if provided != Some(expected.as_str()) {
+            .and_then(|s| s.strip_prefix("Bearer "))
+            .unwrap_or("");
+        if !api_keys_match(expected, provided) {
             return (StatusCode::UNAUTHORIZED, "Unauthorized\n").into_response();
         }
     }
