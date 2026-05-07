@@ -15,8 +15,18 @@ pub async fn list(tools_dir: &Path, offline: bool) -> Result<()> {
         return Ok(());
     }
 
-    let name_w = statuses.iter().map(|s| s.name.len()).max().unwrap_or(4).max(4);
-    let req_w = statuses.iter().map(|s| s.requires.len()).max().unwrap_or(7).max(7);
+    let name_w = statuses
+        .iter()
+        .map(|s| s.name.len())
+        .max()
+        .unwrap_or(4)
+        .max(4);
+    let req_w = statuses
+        .iter()
+        .map(|s| s.requires.len())
+        .max()
+        .unwrap_or(7)
+        .max(7);
     let ver_w = 9usize;
 
     println!(
