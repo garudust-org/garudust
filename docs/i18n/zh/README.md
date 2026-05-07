@@ -467,6 +467,31 @@ command: "curl -s wttr.in/{city}?format=3"
 
 参数会自动进行 shell 引号转义。命令在 tool 文件夹内运行，并设置 `$TOOL_DIR` 环境变量，因此 `./run.py` 及同目录文件均可正确解析。
 
+### Tool Hub
+
+通过一条命令从 [garudust-hub](https://github.com/garudust-org/garudust-hub) 安装社区构建的脚本工具 — 无需手动创建文件夹：
+
+```bash
+garudust tool list                  # 浏览可用工具和已安装工具
+garudust tool install weather       # 下载到 ~/.garudust/tools/weather/
+garudust tool install hash_text
+garudust tool uninstall weather     # 移除工具及其文件夹
+garudust tool update                # 将所有 hub 工具更新至最新版本
+```
+
+已安装的工具记录在 `~/.garudust/tools/registry.json` 中，每次 agent 启动时与手动创建的工具一起自动加载。
+
+| 命令 | 描述 |
+|------|------|
+| `tool list` | 并列显示已安装工具和 hub 可用工具 |
+| `tool list --offline` | 仅显示本地已安装工具（不发起网络请求） |
+| `tool install <名称>` | 从 hub 下载到 `~/.garudust/tools/<名称>/` |
+| `tool install <名称> --hub <owner/repo>` | 从自定义 hub 仓库安装 |
+| `tool uninstall <名称>` | 删除工具文件夹和注册表条目 |
+| `tool update` | 将所有来自 hub 的工具重新下载为最新版本 |
+
+如需向 hub 贡献工具，请在 [garudust-org/garudust-hub](https://github.com/garudust-org/garudust-hub) 提交 PR。
+
 ---
 
 ## 架构

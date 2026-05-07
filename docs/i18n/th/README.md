@@ -469,6 +469,31 @@ command: "curl -s wttr.in/{city}?format=3"
 
 ค่า parameter จะถูก shell-quote อัตโนมัติ คำสั่งรันใน `current_dir` ของ tool folder และมี `$TOOL_DIR` ตั้งให้ ทำให้ `./run.py` และไฟล์ข้างเคียง resolve ได้ถูกต้อง
 
+### Tool Hub
+
+ติดตั้ง script tool จากชุมชนผ่าน [garudust-hub](https://github.com/garudust-org/garudust-hub) ด้วยคำสั่งเดียว ไม่ต้องสร้าง folder เอง:
+
+```bash
+garudust tool list                  # ดู tool ที่มีอยู่และที่ติดตั้งแล้ว
+garudust tool install weather       # ดาวน์โหลดไปที่ ~/.garudust/tools/weather/
+garudust tool install hash_text
+garudust tool uninstall weather     # ลบ tool และ folder
+garudust tool update                # อัปเดต tool ทั้งหมดที่ติดตั้งจาก hub
+```
+
+tool ที่ติดตั้งจะถูกบันทึกใน `~/.garudust/tools/registry.json` และโหลดอัตโนมัติทุกครั้งที่ agent เริ่มทำงาน พร้อมกับ tool ที่สร้างเองด้วยมือ
+
+| คำสั่ง | คำอธิบาย |
+|--------|----------|
+| `tool list` | แสดง tool ที่ติดตั้งแล้วและ tool ที่มีใน hub แบบเปรียบเทียบ |
+| `tool list --offline` | แสดงเฉพาะ tool ที่ติดตั้งในเครื่อง (ไม่เรียก network) |
+| `tool install <ชื่อ>` | ดาวน์โหลดจาก hub ไปที่ `~/.garudust/tools/<ชื่อ>/` |
+| `tool install <ชื่อ> --hub <owner/repo>` | ติดตั้งจาก hub repository อื่น |
+| `tool uninstall <ชื่อ>` | ลบ tool folder และ registry entry |
+| `tool update` | ดาวน์โหลด tool ทุกตัวที่มาจาก hub ใหม่เป็น version ล่าสุด |
+
+หากต้องการเพิ่ม tool เข้า hub เปิด PR ได้ที่ [garudust-org/garudust-hub](https://github.com/garudust-org/garudust-hub)
+
 ---
 
 ## สถาปัตยกรรม

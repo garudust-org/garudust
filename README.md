@@ -468,6 +468,31 @@ command: "curl -s wttr.in/{city}?format=3"
 
 Parameters are shell-quoted automatically. The command runs with `$TOOL_DIR` set and `current_dir` inside the tool folder, so `./run.py` and sibling files resolve correctly.
 
+### Tool Hub
+
+Install community-built script tools from [garudust-hub](https://github.com/garudust-org/garudust-hub) with one command — no manual folder setup:
+
+```bash
+garudust tool list                  # browse available and installed tools
+garudust tool install weather       # download to ~/.garudust/tools/weather/
+garudust tool install hash_text
+garudust tool uninstall weather     # remove tool and its folder
+garudust tool update                # re-fetch all hub-installed tools
+```
+
+Installed tools are tracked in `~/.garudust/tools/registry.json` and load automatically on every agent start alongside your hand-crafted tools.
+
+| Command | Description |
+|---------|-------------|
+| `tool list` | Show installed tools and available hub tools side-by-side |
+| `tool list --offline` | Show only locally installed tools (no network call) |
+| `tool install <name>` | Download from hub into `~/.garudust/tools/<name>/` |
+| `tool install <name> --hub <owner/repo>` | Install from a custom hub repository |
+| `tool uninstall <name>` | Remove the tool folder and registry entry |
+| `tool update` | Re-download all hub tools to the latest version |
+
+To contribute a tool, open a PR at [garudust-org/garudust-hub](https://github.com/garudust-org/garudust-hub).
+
 ---
 
 ## Architecture
