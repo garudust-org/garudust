@@ -530,6 +530,12 @@ MIT — see [LICENSE](LICENSE).
 
 ---
 
+## Contributors
+
+[![](https://contrib.rocks/image?repo=garudust-org/garudust-agent)](https://github.com/garudust-org/garudust-agent/graphs/contributors)
+
+---
+
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=garudust-org/garudust-agent&type=Date)](https://star-history.com/#garudust-org/garudust-agent&Date)

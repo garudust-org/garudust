@@ -531,6 +531,12 @@ MIT — ดูที่ [LICENSE](../../../LICENSE)
 
 ---
 
+## ผู้มีส่วนร่วม
+
+[![](https://contrib.rocks/image?repo=garudust-org/garudust-agent)](https://github.com/garudust-org/garudust-agent/graphs/contributors)
+
+---
+
 ## ประวัติ Star
 
 [![Star History Chart](https://api.star-history.com/svg?repos=garudust-org/garudust-agent&type=Date)](https://star-history.com/#garudust-org/garudust-agent&Date)
