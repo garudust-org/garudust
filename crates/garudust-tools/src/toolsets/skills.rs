@@ -306,7 +306,7 @@ impl Tool for WriteSkill {
             Some(map) if !map.is_empty() => {
                 let mut entries = String::new();
                 for (k, v) in map {
-                    let _ = write!(entries, "  {k}: {}\n", v.as_bool().unwrap_or(false));
+                    let _ = writeln!(entries, "  {k}: {}", v.as_bool().unwrap_or(false));
                 }
                 format!("permissions:\n{entries}")
             }
@@ -362,8 +362,8 @@ mod tests {
         );
         let skill = parse_skill_md(&md, PathBuf::from("SKILL.md")).unwrap();
         let perms = skill.permissions.unwrap();
-        assert_eq!(perms["terminal"], true);
-        assert_eq!(perms["web_fetch"], false);
+        assert!(perms["terminal"]);
+        assert!(!perms["web_fetch"]);
     }
 
     #[test]
@@ -401,8 +401,8 @@ mod tests {
         let md = skill_md("deploy", perms_yaml, "Deploy instructions.");
         let skill = parse_skill_md(&md, PathBuf::from("SKILL.md")).unwrap();
         let perms = skill.permissions.unwrap();
-        assert_eq!(perms["terminal"], true);
-        assert_eq!(perms["web_fetch"], false);
+        assert!(perms["terminal"]);
+        assert!(!perms["web_fetch"]);
     }
 
     #[test]
