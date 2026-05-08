@@ -173,10 +173,7 @@ impl Tui {
         }
 
         disable_raw_mode()?;
-        execute!(
-            term.backend_mut(),
-            LeaveAlternateScreen,
-        )?;
+        execute!(term.backend_mut(), LeaveAlternateScreen,)?;
         Ok(())
     }
 
