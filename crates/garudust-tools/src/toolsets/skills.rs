@@ -268,7 +268,12 @@ impl Tool for WriteSkill {
                 "name":        { "type": "string", "description": "Skill identifier (alphanumeric, hyphens, underscores only)" },
                 "description": { "type": "string", "description": "One-line description shown in skills_list" },
                 "body":        { "type": "string", "description": "Full Markdown instructions for the skill" },
-                "version":     { "type": "string", "description": "Optional semver version string (e.g. '1.0.0')" }
+                "version":     { "type": "string", "description": "Optional semver version string (e.g. '1.0.0')" },
+                "permissions": {
+                    "type": "object",
+                    "description": "Optional per-skill tool allowlist. Map of tool name to true (allow) or false (deny). Tools not listed are unrestricted.",
+                    "additionalProperties": { "type": "boolean" }
+                }
             },
             "required": ["name", "description", "body"]
         })
@@ -296,13 +301,24 @@ impl Tool for WriteSkill {
             .ok_or_else(|| ToolError::InvalidArgs("body required".into()))?;
         let version = params["version"].as_str().unwrap_or("1.0.0");
 
+        let permissions_block = match params["permissions"].as_object() {
+            Some(map) if !map.is_empty() => {
+                let entries: String = map
+                    .iter()
+                    .map(|(k, v)| format!("  {k}: {}\n", v.as_bool().unwrap_or(false)))
+                    .collect();
+                format!("permissions:\n{entries}")
+            }
+            _ => String::new(),
+        };
+
         let skill_dir = ctx.config.home_dir.join("skills").join(name);
         tokio::fs::create_dir_all(&skill_dir)
             .await
             .map_err(|e| ToolError::Execution(format!("failed to create skill dir: {e}")))?;
 
         let content = format!(
-            "---\nname: {name}\ndescription: {description}\nversion: {version}\n---\n\n{body}\n"
+            "---\nname: {name}\ndescription: {description}\nversion: {version}\n{permissions_block}---\n\n{body}\n"
         );
 
         let skill_path = skill_dir.join("SKILL.md");
