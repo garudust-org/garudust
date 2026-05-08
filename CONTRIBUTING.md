@@ -1,6 +1,6 @@
 # Contributing to Garudust
 
-Thanks for your interest in contributing to Garudust!
+Thanks for your interest in contributing to Garudust! Please read our [Code of Conduct](CODE_OF_CONDUCT.md) before participating.
 
 ## Quick Start
 
