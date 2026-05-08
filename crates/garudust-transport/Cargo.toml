@@ -8,11 +8,11 @@ repository   = { workspace = true }
 homepage     = { workspace = true }
 rust-version = { workspace = true }
 description  = "Anthropic and OpenRouter transport with streaming and retry for Garudust agents"
-keywords     = ["ai", "anthropic", "llm", "streaming", "agent"]
+keywords     = ["ai", "llm", "anthropic", "openrouter", "streaming"]
 categories   = ["network-programming", "asynchronous"]
 
 [dependencies]
-garudust-core = { path = "../garudust-core", version = "0.2.3" }
+garudust-core = { path = "../garudust-core", version = "0.2.4" }
 async-trait   = { workspace = true }
 reqwest       = { workspace = true }
 serde         = { workspace = true }
