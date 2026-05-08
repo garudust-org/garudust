@@ -18,7 +18,7 @@
 
 **你的 AI 智能体。你的服务器。你的规则。**
 
-几分钟内在自己的服务器上运行一个功能完整的 AI 智能体 — 无云端锁定，数据不离开本机。单一二进制文件处理一切：终端聊天、在 Telegram / Discord / Slack / LINE / WhatsApp 上回复，或开放 REST + WebSocket API。用 YAML 文件添加自定义工具，连接任意 MCP 服务器，或让智能体自己编写可复用的技能。每次会话都让它更聪明，它永远不会忘记你教给它的东西。
+基于 Rust 构建的自进化 AI 智能体运行时 — 以单一 ~10 MB binary 交付，无任何运行时依赖。一个 binary 处理一切：终端聊天、跨多平台回复（Telegram、Discord、Slack、LINE、WhatsApp），或开放 REST + WebSocket API。通过 Tool Hub 即时扩展能力，或直接放置 YAML 文件添加自定义工具。连接任意 MCP 服务器，或让智能体自行编写并优化可复用的技能。无遥测、无供应商锁定 — 数据仅发送至您所选择的 LLM 提供商。
 
 ### 演示
 

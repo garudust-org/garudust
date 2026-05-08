@@ -18,7 +18,7 @@
 
 **AI agent ของคุณ เซิร์ฟเวอร์ของคุณ กฎของคุณ**
 
-รัน AI agent ที่มีความสามารถเต็มรูปแบบบนเครื่องของคุณเองภายในไม่กี่นาที ไม่ผูกติดกับคลาวด์ ข้อมูลไม่ออกจากเครื่องคุณ ไบนารีเดียวจัดการได้ทุกอย่าง: แชทในเทอร์มินัล ตอบบน Telegram / Discord / Slack / LINE / WhatsApp หรือเปิด REST + WebSocket API เพิ่ม tool เองด้วยไฟล์ YAML เชื่อมต่อ MCP server ใดก็ได้ หรือให้ agent เขียน skill ที่นำกลับมาใช้ซ้ำได้เอง ทุก session ทำให้มันฉลาดขึ้น และไม่มีวันลืมสิ่งที่คุณสอน
+AI agent runtime แบบ self-improving เขียนด้วย Rust — ส่งมอบเป็น binary เดียวขนาด ~10 MB ไม่มี runtime dependency ไบนารีเดียวจัดการได้ทุกอย่าง: แชทในเทอร์มินัล ตอบบน multi-platform (Telegram, Discord, Slack, LINE, WhatsApp) หรือเปิด REST + WebSocket API ขยายความสามารถได้ทันทีผ่าน Tool Hub หรือวาง YAML file เพื่อเพิ่ม tool เอง เชื่อมต่อ MCP server ใดก็ได้ หรือให้ agent เขียนและปรับปรุง skill ที่นำกลับมาใช้ซ้ำได้เอง ไม่มี telemetry ไม่ผูกติดกับ vendor — ข้อมูลของคุณส่งไปแค่ LLM provider ที่คุณเลือกเท่านั้น
 
 ### ตัวอย่างการใช้งาน
 

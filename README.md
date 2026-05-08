@@ -18,7 +18,7 @@
 
 **Your AI agent. Your server. Your rules.**
 
-Run a fully capable AI agent on your own hardware in minutes — no cloud lock-in, no data leaving your machine. One binary handles everything: chat in the terminal, reply on Telegram / Discord / Slack / LINE / WhatsApp, or expose a REST + WebSocket API. Add custom tools with a YAML file, connect any MCP server, or let the agent write its own reusable skills. Every session makes it smarter, and it never forgets what you teach it.
+A self-improving AI agent runtime written in Rust — delivered as a single ~10 MB binary with no runtime dependencies. One binary handles everything: chat in the terminal, reply across multiple platforms (Telegram, Discord, Slack, LINE, WhatsApp), or expose a REST + WebSocket API. Extend it instantly via the Tool Hub or drop a YAML file to add your own tools. Connect any MCP server, or let the agent write and refine its own reusable skills. No telemetry, no lock-in — your data goes only to the LLM provider you choose.
 
 ### Demo
 
