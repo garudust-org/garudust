@@ -1,7 +1,7 @@
 use std::io;
 
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
+    event::{self, Event, KeyCode, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -70,7 +70,7 @@ impl Tui {
     ) -> io::Result<()> {
         enable_raw_mode()?;
         let mut stdout = io::stdout();
-        execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+        execute!(stdout, EnterAlternateScreen)?;
         let backend = CrosstermBackend::new(stdout);
         let mut term = Terminal::new(backend)?;
 
@@ -176,7 +176,6 @@ impl Tui {
         execute!(
             term.backend_mut(),
             LeaveAlternateScreen,
-            DisableMouseCapture
         )?;
         Ok(())
     }
