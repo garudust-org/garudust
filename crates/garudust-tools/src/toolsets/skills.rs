@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    fmt::Write as _,
     path::{Path, PathBuf},
 };
 
@@ -303,10 +304,10 @@ impl Tool for WriteSkill {
 
         let permissions_block = match params["permissions"].as_object() {
             Some(map) if !map.is_empty() => {
-                let entries: String = map
-                    .iter()
-                    .map(|(k, v)| format!("  {k}: {}\n", v.as_bool().unwrap_or(false)))
-                    .collect();
+                let mut entries = String::new();
+                for (k, v) in map {
+                    let _ = write!(entries, "  {k}: {}\n", v.as_bool().unwrap_or(false));
+                }
                 format!("permissions:\n{entries}")
             }
             _ => String::new(),
@@ -330,5 +331,93 @@ impl Tool for WriteSkill {
             "",
             format!("Skill '{name}' saved to {}", skill_path.display()),
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use garudust_core::tool::SkillPermissions;
+
+    use super::*;
+
+    fn skill_md(name: &str, extra: &str, body: &str) -> String {
+        format!("---\nname: {name}\ndescription: test\nversion: 1.0.0\n{extra}---\n\n{body}\n")
+    }
+
+    #[test]
+    fn parse_minimal_skill() {
+        let md = skill_md("my-skill", "", "Do something.");
+        let skill = parse_skill_md(&md, PathBuf::from("SKILL.md")).unwrap();
+        assert_eq!(skill.name, "my-skill");
+        assert_eq!(skill.body, "Do something.");
+        assert!(skill.permissions.is_none());
+    }
+
+    #[test]
+    fn parse_skill_with_permissions() {
+        let md = skill_md(
+            "git-workflow",
+            "permissions:\n  terminal: true\n  web_fetch: false\n",
+            "Always write conventional commits.",
+        );
+        let skill = parse_skill_md(&md, PathBuf::from("SKILL.md")).unwrap();
+        let perms = skill.permissions.unwrap();
+        assert_eq!(perms["terminal"], true);
+        assert_eq!(perms["web_fetch"], false);
+    }
+
+    #[test]
+    fn parse_invalid_frontmatter_returns_none() {
+        let md = "no frontmatter at all";
+        assert!(parse_skill_md(md, PathBuf::from("SKILL.md")).is_none());
+    }
+
+    #[test]
+    fn skill_permissions_merge_union_semantics() {
+        let mut sp = SkillPermissions::default();
+        sp.merge(&HashMap::from([
+            ("terminal".into(), false),
+            ("read_file".into(), true),
+        ]));
+        sp.merge(&HashMap::from([("terminal".into(), true)]));
+        // allow wins over deny
+        assert_eq!(sp.check("terminal"), Some(true));
+        assert_eq!(sp.check("read_file"), Some(true));
+        // unlisted tool is unrestricted
+        assert_eq!(sp.check("web_fetch"), None);
+    }
+
+    #[test]
+    fn skill_permissions_deny_when_no_allow() {
+        let mut sp = SkillPermissions::default();
+        sp.merge(&HashMap::from([("write_file".into(), false)]));
+        assert_eq!(sp.check("write_file"), Some(false));
+    }
+
+    #[test]
+    fn permissions_block_written_to_frontmatter() {
+        // Verify the generated SKILL.md can be round-tripped through the parser.
+        let perms_yaml = "permissions:\n  terminal: true\n  web_fetch: false\n";
+        let md = skill_md("deploy", perms_yaml, "Deploy instructions.");
+        let skill = parse_skill_md(&md, PathBuf::from("SKILL.md")).unwrap();
+        let perms = skill.permissions.unwrap();
+        assert_eq!(perms["terminal"], true);
+        assert_eq!(perms["web_fetch"], false);
+    }
+
+    #[test]
+    fn platform_filter_matches_all_when_no_platforms() {
+        let md = skill_md("any", "", "body");
+        let skill = parse_skill_md(&md, PathBuf::from("SKILL.md")).unwrap();
+        assert!(skill.matches_platform("telegram"));
+        assert!(skill.matches_platform("cli"));
+    }
+
+    #[test]
+    fn platform_filter_restricts_to_listed_platforms() {
+        let md = skill_md("telegram-only", "platforms:\n  - telegram\n", "body");
+        let skill = parse_skill_md(&md, PathBuf::from("SKILL.md")).unwrap();
+        assert!(skill.matches_platform("telegram"));
+        assert!(!skill.matches_platform("cli"));
     }
 }
