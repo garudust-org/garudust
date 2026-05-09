@@ -32,6 +32,8 @@ A self-improving AI agent runtime written in Rust — delivered as a single ~10 
 
 - **~10 MB binary, < 20 ms cold start** — single statically-linked binary, no runtime dependencies for local use
 - **Self-improving** — learns your preferences, saves reusable workflows as skills, and corrects itself without being told twice
+- **agentskills.io compatible** — install skills from the [agentskills.io](https://agentskills.io) hub or any GitHub repo with one command; `allowed-tools`, version pinning, and scripts work out of the box
+- **One-command Tool Hub** — browse and install community-built script tools instantly with `garudust tool install <name>`; no manual folder setup, no runtime wrangling
 - **Speaks your language** — detects Thai, Chinese, Japanese, Arabic, Korean, and more automatically; no configuration needed
 - **Swap providers with one env var** — Anthropic, OpenRouter, AWS Bedrock, Ollama, vLLM, or any OpenAI-compatible endpoint
 - **Secure by design** — Docker sandbox, hardline command blocks, memory-poisoning protection, and automatic secret redaction from tool output
@@ -321,7 +323,23 @@ Reusable instruction sets stored in `~/.garudust/skills/`, hot-reloaded on every
 
 The agent scans all skills before every message and loads any that are relevant. It creates and patches skill files automatically when it discovers or corrects a workflow.
 
-Garudust is compatible with the [agentskills.io](https://agentskills.io) open standard — skills from the agentskills.io hub load and run without modification, including `allowed-tools` restrictions.
+Garudust is compatible with the [agentskills.io](https://agentskills.io) open standard — skills load and run without modification, including `allowed-tools` restrictions and `scripts/` execution.
+
+Install skills from the agentskills.io hub or any GitHub repo with one command:
+
+```bash
+# From GitHub (owner/repo/path)
+garudust skill install agentskills-org/hub/git-workflow
+
+# From a direct URL
+garudust skill install https://example.com/skills/my-skill/SKILL.md
+
+# From a well-known endpoint
+garudust skill install well-known:https://example.com --name my-skill
+
+garudust skill list                      # show installed skills
+garudust skill uninstall git-workflow    # remove a skill
+```
 
 Minimal `SKILL.md`:
 

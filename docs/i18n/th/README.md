@@ -32,6 +32,8 @@ AI agent runtime แบบ self-improving เขียนด้วย Rust — �
 
 - **ไบนารีขนาด ~10 MB, cold start < 20 ms** — ไฟล์เดียว ไม่ต้องพึ่ง runtime อื่นสำหรับใช้งานบนเครื่องท้องถิ่น
 - **พัฒนาตัวเองได้** — เรียนรู้ความชอบของคุณ บันทึก workflow ที่ใช้ซ้ำได้เป็นสกิล และแก้ไขตัวเองโดยไม่ต้องบอกสองครั้ง
+- **รองรับ agentskills.io standard** — ติดตั้ง skill จาก [agentskills.io](https://agentskills.io) hub หรือ GitHub repo ใดก็ได้ด้วยคำสั่งเดียว รองรับ `allowed-tools`, version pinning และ scripts ครบ
+- **Tool Hub ติดตั้งง่าย** — เรียกดูและติดตั้ง script tool จากชุมชนได้ทันทีด้วย `garudust tool install <name>` ไม่ต้องจัดการ folder เอง
 - **พูดภาษาของคุณ** — ตรวจจับภาษาไทย จีน ญี่ปุ่น อาหรับ เกาหลี และอื่น ๆ โดยอัตโนมัติ ไม่ต้องตั้งค่าเพิ่ม
 - **เปลี่ยน LLM ด้วย env var เดียว** — รองรับ Anthropic, OpenRouter, AWS Bedrock, Ollama, vLLM หรือ endpoint ที่เข้ากันได้กับ OpenAI
 - **ปลอดภัยตั้งแต่ต้น** — Docker sandbox, การบล็อคคำสั่งอันตรายแบบไม่มีข้อยกเว้น, ป้องกันการฝังคำสั่งผ่าน memory และการ redact secret อัตโนมัติจาก output ของ tool
@@ -323,7 +325,23 @@ agent: [บันทึกความจำ] เข้าใจแล้ว จ
 
 agent สแกนสกิลทั้งหมดก่อนทุกข้อความและโหลดสกิลที่เกี่ยวข้อง สร้างและแก้ไขไฟล์สกิลโดยอัตโนมัติเมื่อค้นพบหรือแก้ไข workflow
 
-Garudust รองรับ [agentskills.io](https://agentskills.io) open standard — สามารถใช้ skill จาก agentskills.io hub ได้โดยตรงโดยไม่ต้องแปลงไฟล์ รวมถึง `allowed-tools` restrictions ด้วย
+Garudust รองรับ [agentskills.io](https://agentskills.io) open standard — ใช้ skill ได้โดยตรงโดยไม่ต้องแปลงไฟล์ รวมถึง `allowed-tools` restrictions และการรัน `scripts/` ครบ
+
+ติดตั้ง skill จาก agentskills.io hub หรือ GitHub repo ใดก็ได้ด้วยคำสั่งเดียว:
+
+```bash
+# จาก GitHub (owner/repo/path)
+garudust skill install agentskills-org/hub/git-workflow
+
+# จาก URL โดยตรง
+garudust skill install https://example.com/skills/my-skill/SKILL.md
+
+# จาก well-known endpoint
+garudust skill install well-known:https://example.com --name my-skill
+
+garudust skill list                      # ดู skill ที่ติดตั้งอยู่
+garudust skill uninstall git-workflow    # ลบ skill
+```
 
 ตัวอย่าง `SKILL.md` ขั้นต่ำ:
 

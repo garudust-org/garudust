@@ -32,6 +32,8 @@
 
 - **二进制文件 ~10 MB，冷启动 < 20 ms** — 单一静态链接二进制文件，本地使用无需任何运行时依赖
 - **自我进化** — 学习你的偏好，将可复用的工作流保存为技能，无需提醒两次便能自我修正
+- **兼容 agentskills.io 标准** — 一条命令从 [agentskills.io](https://agentskills.io) hub 或任意 GitHub 仓库安装技能；`allowed-tools`、版本锁定与 `scripts/` 执行开箱即用
+- **Tool Hub 一键安装** — 用 `garudust tool install <name>` 即可浏览并安装社区工具，无需手动管理文件夹
 - **说你的语言** — 自动检测中文、泰语、日语、阿拉伯语、韩语等，无需任何配置
 - **一个环境变量切换 LLM 提供商** — 支持 Anthropic、OpenRouter、AWS Bedrock、Ollama、vLLM 或任何 OpenAI 兼容端点
 - **安全优先设计** — Docker 沙箱、无条件命令拦截、内存投毒防护，以及工具输出的自动密钥脱敏
@@ -321,7 +323,23 @@ garudust-server \
 
 智能体在每条消息前扫描所有技能并加载相关技能，发现或纠正工作流时自动创建和修补技能文件。
 
-Garudust 兼容 [agentskills.io](https://agentskills.io) 开放标准 — 来自 agentskills.io hub 的技能无需修改即可直接使用，包括 `allowed-tools` 权限限制。
+Garudust 兼容 [agentskills.io](https://agentskills.io) 开放标准 — 技能无需修改即可直接使用，包括 `allowed-tools` 权限限制与 `scripts/` 脚本执行。
+
+一条命令从 agentskills.io hub 或任意 GitHub 仓库安装技能：
+
+```bash
+# 从 GitHub（owner/repo/path）
+garudust skill install agentskills-org/hub/git-workflow
+
+# 从直接 URL
+garudust skill install https://example.com/skills/my-skill/SKILL.md
+
+# 从 well-known 端点
+garudust skill install well-known:https://example.com --name my-skill
+
+garudust skill list                      # 查看已安装的技能
+garudust skill uninstall git-workflow    # 删除技能
+```
 
 最小化 `SKILL.md`：
 
