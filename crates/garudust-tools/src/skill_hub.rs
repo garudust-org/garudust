@@ -57,8 +57,7 @@ fn resolve_source(source: &str, skill_name: &str) -> Result<SkillSource> {
             path: (*path).to_string(),
         }),
         _ => bail!(
-            "cannot resolve source '{}'. Use: owner/repo/path, https://…/SKILL.md, or well-known:https://…",
-            source
+            "cannot resolve source '{source}'. Use: owner/repo/path, https://…/SKILL.md, or well-known:https://…"
         ),
     }
 }
@@ -127,12 +126,12 @@ pub async fn install_skill(source: &str, skill_name: &str, skills_dir: &Path) ->
         bail!("downloaded content does not look like a valid SKILL.md (missing frontmatter)");
     }
 
-    let skill_dir = skills_dir.join(&name);
-    tokio::fs::create_dir_all(&skill_dir)
+    let dest_dir = skills_dir.join(&name);
+    tokio::fs::create_dir_all(&dest_dir)
         .await
-        .with_context(|| format!("create {}", skill_dir.display()))?;
+        .with_context(|| format!("create {}", dest_dir.display()))?;
 
-    let skill_path = skill_dir.join("SKILL.md");
+    let skill_path = dest_dir.join("SKILL.md");
     tokio::fs::write(&skill_path, &content)
         .await
         .with_context(|| format!("write {}", skill_path.display()))?;
@@ -165,10 +164,10 @@ pub async fn list_installed(skills_dir: &Path) -> Vec<InstalledSkill> {
 
 /// Remove a skill folder from `skills_dir`.
 pub async fn uninstall_skill(skill_name: &str, skills_dir: &Path) -> Result<()> {
-    let skill_dir = find_skill_dir(skills_dir, skill_name).await?;
-    tokio::fs::remove_dir_all(&skill_dir)
+    let target_dir = find_skill_dir(skills_dir, skill_name).await?;
+    tokio::fs::remove_dir_all(&target_dir)
         .await
-        .with_context(|| format!("remove {}", skill_dir.display()))
+        .with_context(|| format!("remove {}", target_dir.display()))
 }
 
 /// Walk `skills_dir` recursively to find the folder whose SKILL.md has `name: <skill_name>`.
