@@ -29,6 +29,10 @@ impl Tool for DelegateTask {
         "agent"
     }
 
+    fn bypass_dispatch_timeout(&self) -> bool {
+        true
+    }
+
     fn schema(&self) -> Value {
         json!({
             "type": "object",
@@ -97,6 +101,10 @@ impl Tool for DelegateTasks {
 
     fn toolset(&self) -> &'static str {
         "agent"
+    }
+
+    fn bypass_dispatch_timeout(&self) -> bool {
+        true
     }
 
     fn schema(&self) -> Value {
