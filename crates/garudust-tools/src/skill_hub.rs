@@ -1,8 +1,10 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
+use serde::Deserialize;
 
 const RAW_BASE: &str = "https://raw.githubusercontent.com";
+const GITHUB_API: &str = "https://api.github.com";
 
 // ── Source resolution ─────────────────────────────────────────────────────────
 
@@ -73,9 +75,92 @@ async fn fetch_text(url: &str) -> Result<String> {
         .context("read response body")
 }
 
+// ── GitHub scripts/ download ──────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct GitHubEntry {
+    name: String,
+    #[serde(rename = "type")]
+    kind: String,
+    download_url: Option<String>,
+}
+
+/// Fetch the `scripts/` directory from a GitHub skill path and write files to
+/// `dest_dir/scripts/`. Returns the number of files downloaded. Silently
+/// returns 0 if the directory does not exist (404) — not all skills have one.
+async fn download_scripts_github(
+    owner: &str,
+    repo: &str,
+    path: &str,
+    dest_dir: &Path,
+) -> Result<usize> {
+    let api_url = format!("{GITHUB_API}/repos/{owner}/{repo}/contents/{path}/scripts");
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&api_url)
+        .header("User-Agent", "garudust")
+        .send()
+        .await
+        .with_context(|| format!("fetch {api_url}"))?;
+
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(0);
+    }
+
+    let entries: Vec<GitHubEntry> = resp
+        .error_for_status()
+        .with_context(|| format!("HTTP error listing scripts at {api_url}"))?
+        .json()
+        .await
+        .context("parse GitHub directory listing")?;
+
+    let scripts_dir = dest_dir.join("scripts");
+    tokio::fs::create_dir_all(&scripts_dir)
+        .await
+        .with_context(|| format!("create {}", scripts_dir.display()))?;
+
+    let mut count = 0usize;
+    for entry in entries {
+        if entry.kind != "file" {
+            continue;
+        }
+        let Some(dl_url) = entry.download_url else {
+            continue;
+        };
+        let content = fetch_text(&dl_url)
+            .await
+            .with_context(|| format!("download script {}", entry.name))?;
+        let file_path = scripts_dir.join(&entry.name);
+        tokio::fs::write(&file_path, content.as_bytes())
+            .await
+            .with_context(|| format!("write {}", file_path.display()))?;
+
+        #[cfg(unix)]
+        make_executable(&file_path).await?;
+
+        count += 1;
+    }
+
+    Ok(count)
+}
+
+#[cfg(unix)]
+async fn make_executable(path: &Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let meta = tokio::fs::metadata(path).await?;
+    let mut perms = meta.permissions();
+    perms.set_mode(perms.mode() | 0o111);
+    tokio::fs::set_permissions(path, perms).await?;
+    Ok(())
+}
+
 // ── Install ───────────────────────────────────────────────────────────────────
 
 /// Download and install a skill into `skills_dir/<name>/SKILL.md`.
+///
+/// For GitHub sources the `scripts/` subdirectory is also downloaded (if present)
+/// so agentskills.io-compatible skills work out of the box.
 ///
 /// `source` accepts:
 /// - `owner/repo` or `owner/repo/path/to/skill` (GitHub)
@@ -86,10 +171,10 @@ async fn fetch_text(url: &str) -> Result<String> {
 pub async fn install_skill(source: &str, skill_name: &str, skills_dir: &Path) -> Result<String> {
     let resolved = resolve_source(source, skill_name)?;
 
-    let (content, name) = match &resolved {
+    // (content, name, github_coords_for_scripts)
+    let (content, name, gh) = match &resolved {
         SkillSource::Url(url) => {
             let text = fetch_text(url).await?;
-            // Derive name from URL filename if not given
             let name = if skill_name.is_empty() {
                 url.trim_end_matches('/')
                     .rsplit('/')
@@ -100,7 +185,7 @@ pub async fn install_skill(source: &str, skill_name: &str, skills_dir: &Path) ->
             } else {
                 skill_name.to_string()
             };
-            (text, name)
+            (text, name, None)
         }
 
         SkillSource::GitHub { owner, repo, path } => {
@@ -109,7 +194,8 @@ pub async fn install_skill(source: &str, skill_name: &str, skills_dir: &Path) ->
                 .await
                 .with_context(|| format!("skill not found at {url}"))?;
             let name = path.rsplit('/').next().unwrap_or(path).to_string();
-            (text, name)
+            let coords = (owner.clone(), repo.clone(), path.clone());
+            (text, name, Some(coords))
         }
 
         SkillSource::WellKnown { base, name } => {
@@ -117,7 +203,7 @@ pub async fn install_skill(source: &str, skill_name: &str, skills_dir: &Path) ->
             let text = fetch_text(&url)
                 .await
                 .with_context(|| format!("skill not found at {url}"))?;
-            (text, name.clone())
+            (text, name.clone(), None)
         }
     };
 
@@ -135,6 +221,11 @@ pub async fn install_skill(source: &str, skill_name: &str, skills_dir: &Path) ->
     tokio::fs::write(&skill_path, &content)
         .await
         .with_context(|| format!("write {}", skill_path.display()))?;
+
+    // Download scripts/ if this is a GitHub source
+    if let Some((owner, repo, path)) = gh {
+        download_scripts_github(&owner, &repo, &path, &dest_dir).await?;
+    }
 
     Ok(name)
 }
