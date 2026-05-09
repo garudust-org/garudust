@@ -53,11 +53,22 @@ pub fn parse_skill_md(content: &str, path: PathBuf) -> Option<Skill> {
             .filter_map(|v| v.as_str().map(str::to_string))
             .collect()
     });
-    let permissions = yaml["permissions"].as_mapping().map(|map| {
-        map.iter()
-            .filter_map(|(k, v)| Some((k.as_str()?.to_string(), v.as_bool()?)))
-            .collect()
-    });
+    // Garudust-native permissions map: { terminal: true, web_fetch: false }
+    let mut permissions: Option<HashMap<String, bool>> =
+        yaml["permissions"].as_mapping().map(|map| {
+            map.iter()
+                .filter_map(|(k, v)| Some((k.as_str()?.to_string(), v.as_bool()?)))
+                .collect()
+        });
+
+    // agentskills.io compatible: allowed-tools is a space-separated allowlist.
+    // Merge into permissions with allow=true so both formats work side-by-side.
+    if let Some(allowed) = yaml["allowed-tools"].as_str() {
+        let map = permissions.get_or_insert_with(HashMap::new);
+        for tool in allowed.split_whitespace() {
+            map.entry(tool.to_string()).or_insert(true);
+        }
+    }
 
     Some(Skill {
         name,
@@ -134,12 +145,18 @@ pub async fn build_skills_index(skills_dir: &Path, platform: &str) -> String {
 // ─── Name sanitizer ──────────────────────────────────────────────────────────
 
 /// Allow only alphanumeric, hyphens, and underscores to prevent path traversal.
+/// Validate a skill name against the agentskills.io spec:
+/// lowercase letters, digits, and hyphens only; max 64 chars;
+/// must not start/end with `-` or contain `--`.
 fn sanitize_skill_name(name: &str) -> Option<&str> {
     if name.is_empty()
         || name.len() > 64
+        || name.starts_with('-')
+        || name.ends_with('-')
+        || name.contains("--")
         || !name
             .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
     {
         None
     } else {
@@ -290,7 +307,7 @@ impl Tool for WriteSkill {
             .ok_or_else(|| ToolError::InvalidArgs("name required".into()))?;
         let name = sanitize_skill_name(name).ok_or_else(|| {
             ToolError::InvalidArgs(
-                "name must be alphanumeric/hyphens/underscores only, max 64 chars".into(),
+                "name must use lowercase letters, digits, and hyphens only (agentskills.io compatible); max 64 chars; cannot start/end with '-' or contain '--'".into(),
             )
         })?;
 
@@ -419,5 +436,62 @@ mod tests {
         let skill = parse_skill_md(&md, PathBuf::from("SKILL.md")).unwrap();
         assert!(skill.matches_platform("telegram"));
         assert!(!skill.matches_platform("cli"));
+    }
+
+    // ── agentskills.io compatibility ─────────────────────────────────────────
+
+    #[test]
+    fn parse_allowed_tools_field() {
+        let md = skill_md("git-ops", "allowed-tools: terminal read_file\n", "body");
+        let skill = parse_skill_md(&md, PathBuf::from("SKILL.md")).unwrap();
+        let perms = skill.permissions.unwrap();
+        assert!(perms["terminal"]);
+        assert!(perms["read_file"]);
+    }
+
+    #[test]
+    fn allowed_tools_does_not_override_explicit_deny() {
+        // explicit permissions deny wins — allowed-tools only inserts with or_insert
+        let md = skill_md(
+            "mixed",
+            "permissions:\n  terminal: false\nallowed-tools: terminal read_file\n",
+            "body",
+        );
+        let skill = parse_skill_md(&md, PathBuf::from("SKILL.md")).unwrap();
+        let perms = skill.permissions.unwrap();
+        // permissions map set terminal=false first; allowed-tools uses or_insert so it stays false
+        assert!(!perms["terminal"]);
+        assert!(perms["read_file"]);
+    }
+
+    #[test]
+    fn sanitize_rejects_uppercase() {
+        assert!(sanitize_skill_name("MySkill").is_none());
+    }
+
+    #[test]
+    fn sanitize_rejects_underscore() {
+        assert!(sanitize_skill_name("my_skill").is_none());
+    }
+
+    #[test]
+    fn sanitize_rejects_leading_hyphen() {
+        assert!(sanitize_skill_name("-skill").is_none());
+    }
+
+    #[test]
+    fn sanitize_rejects_trailing_hyphen() {
+        assert!(sanitize_skill_name("skill-").is_none());
+    }
+
+    #[test]
+    fn sanitize_rejects_double_hyphen() {
+        assert!(sanitize_skill_name("my--skill").is_none());
+    }
+
+    #[test]
+    fn sanitize_accepts_valid_name() {
+        assert!(sanitize_skill_name("git-workflow").is_some());
+        assert!(sanitize_skill_name("pdf2json").is_some());
     }
 }
