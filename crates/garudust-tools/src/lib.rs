@@ -23,6 +23,7 @@
 pub mod hub;
 pub mod registry;
 pub mod security;
+pub mod skill_hub;
 pub mod toolsets;
 
 pub use registry::ToolRegistry;

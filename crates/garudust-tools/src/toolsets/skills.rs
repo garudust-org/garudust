@@ -257,9 +257,17 @@ impl Tool for SkillView {
             ctx.skill_permissions.write().await.merge(perms);
         }
 
+        let install_dir = skill.path.parent().unwrap_or(&skill.path);
+        let scripts_dir = install_dir.join("scripts");
+        let scripts_note = if scripts_dir.exists() {
+            format!("\n\n**Scripts directory:** `{}`", scripts_dir.display())
+        } else {
+            String::new()
+        };
+
         Ok(ToolResult::ok(
             "",
-            format!("# {}\n\n{}", skill.name, skill.body),
+            format!("# {}{}\n\n{}", skill.name, scripts_note, skill.body),
         ))
     }
 }

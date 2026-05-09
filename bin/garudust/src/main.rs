@@ -1,6 +1,7 @@
 mod config_cmd;
 mod doctor;
 mod setup;
+mod skill_cmd;
 mod tool_cmd;
 mod tui;
 
@@ -64,6 +65,30 @@ enum ToolCmd {
 }
 
 #[derive(Subcommand)]
+enum SkillCmd {
+    /// List installed skills
+    List,
+    /// Install a skill from GitHub, a direct URL, or a well-known endpoint
+    ///
+    /// Sources:
+    ///   owner/repo/path      — GitHub (raw.githubusercontent.com)
+    ///   https://…/SKILL.md   — direct URL
+    ///   well-known:https://… — /.well-known/skills/<name>/SKILL.md
+    Install {
+        /// Source (GitHub path, URL, or well-known prefix)
+        source: String,
+        /// Skill name to use when saving (inferred from source if omitted)
+        #[arg(long, default_value = "")]
+        name: String,
+    },
+    /// Remove an installed skill
+    Uninstall {
+        /// Skill name as shown in `garudust skill list`
+        name: String,
+    },
+}
+
+#[derive(Subcommand)]
 enum Cmd {
     /// Interactive first-time setup wizard
     Setup,
@@ -87,6 +112,12 @@ enum Cmd {
     Tool {
         #[command(subcommand)]
         sub: ToolCmd,
+    },
+
+    /// Manage skills (install, uninstall, list)
+    Skill {
+        #[command(subcommand)]
+        sub: SkillCmd,
     },
 }
 
@@ -253,6 +284,24 @@ async fn main() -> Result<()> {
                 }
                 ToolCmd::Update { name } => {
                     tool_cmd::update(name.as_deref(), &tools_dir).await?;
+                }
+            }
+            return Ok(());
+        }
+
+        Some(Cmd::Skill { sub }) => {
+            let config = build_config(&cli);
+            let skills_dir = config.home_dir.join("skills");
+            tokio::fs::create_dir_all(&skills_dir).await?;
+            match sub {
+                SkillCmd::List => {
+                    skill_cmd::list(&skills_dir).await?;
+                }
+                SkillCmd::Install { source, name } => {
+                    skill_cmd::install(source, name, &skills_dir).await?;
+                }
+                SkillCmd::Uninstall { name } => {
+                    skill_cmd::uninstall(name, &skills_dir).await?;
                 }
             }
             return Ok(());
