@@ -323,6 +323,8 @@ agent: [บันทึกความจำ] เข้าใจแล้ว จ
 
 agent สแกนสกิลทั้งหมดก่อนทุกข้อความและโหลดสกิลที่เกี่ยวข้อง สร้างและแก้ไขไฟล์สกิลโดยอัตโนมัติเมื่อค้นพบหรือแก้ไข workflow
 
+Garudust รองรับ [agentskills.io](https://agentskills.io) open standard — สามารถใช้ skill จาก agentskills.io hub ได้โดยตรงโดยไม่ต้องแปลงไฟล์ รวมถึง `allowed-tools` restrictions ด้วย
+
 ตัวอย่าง `SKILL.md` ขั้นต่ำ:
 
 ```markdown

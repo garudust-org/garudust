@@ -321,6 +321,8 @@ garudust-server \
 
 智能体在每条消息前扫描所有技能并加载相关技能，发现或纠正工作流时自动创建和修补技能文件。
 
+Garudust 兼容 [agentskills.io](https://agentskills.io) 开放标准 — 来自 agentskills.io hub 的技能无需修改即可直接使用，包括 `allowed-tools` 权限限制。
+
 最小化 `SKILL.md`：
 
 ```markdown

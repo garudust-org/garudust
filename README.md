@@ -321,6 +321,8 @@ Reusable instruction sets stored in `~/.garudust/skills/`, hot-reloaded on every
 
 The agent scans all skills before every message and loads any that are relevant. It creates and patches skill files automatically when it discovers or corrects a workflow.
 
+Garudust is compatible with the [agentskills.io](https://agentskills.io) open standard — skills from the agentskills.io hub load and run without modification, including `allowed-tools` restrictions.
+
 Minimal `SKILL.md`:
 
 ```markdown
