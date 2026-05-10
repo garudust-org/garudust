@@ -151,11 +151,7 @@ pub async fn install_tool(repo: &str, tool_name: &str, tools_dir: &Path) -> Resu
 
 /// Download a skill from the hub into `skills_dir/<skill_name>/`.
 /// Files listed in the index entry are fetched from `skills/<name>/` in the hub repo.
-pub async fn install_skill_from_hub(
-    repo: &str,
-    skill_name: &str,
-    skills_dir: &Path,
-) -> Result<()> {
+pub async fn install_skill_from_hub(repo: &str, skill_name: &str, skills_dir: &Path) -> Result<()> {
     let index = fetch_index(repo).await?;
     let entry = index
         .skills
