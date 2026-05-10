@@ -88,7 +88,7 @@ tera = "1"
 
 # CLI / TUI
 clap      = { version = "4", features = ["derive", "env"] }
-ratatui   = "0.30"
+ratatui   = { version = "0.30", features = ["unstable-rendered-line-info"] }
 crossterm = "0.28"
 
 # Cron

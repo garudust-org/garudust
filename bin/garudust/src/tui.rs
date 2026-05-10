@@ -44,6 +44,7 @@ pub struct Tui {
     status: String,
     scroll: u16,
     streaming: bool,
+    thinking_since: Option<std::time::Instant>,
     toolsets: BTreeMap<String, Vec<String>>,
     skill_names: Vec<String>,
 }
@@ -63,6 +64,7 @@ impl Tui {
             status: "Ready — press Enter to send, Ctrl+C to quit".into(),
             scroll: 0,
             streaming: false,
+            thinking_since: None,
             toolsets,
             skill_names,
         }
@@ -189,12 +191,14 @@ impl Tui {
                     }
                 } else {
                     self.streaming = true;
+                    self.status = "Streaming…".into();
                     self.messages.push((Role::Assistant, delta));
                 }
                 self.scroll = u16::MAX;
             }
             AgentEvent::Thinking => {
                 self.streaming = false;
+                self.thinking_since = Some(std::time::Instant::now());
                 self.status = "Thinking…".into();
             }
             AgentEvent::Done {
@@ -203,14 +207,17 @@ impl Tui {
                 output_tokens,
             } => {
                 self.streaming = false;
+                self.thinking_since = None;
                 self.status = format!(
                     "Done — {iterations} iter | {input_tokens} in / {output_tokens} out tokens"
                 );
             }
             AgentEvent::Error(e) => {
                 self.streaming = false;
+                self.thinking_since = None;
                 self.messages.push((Role::Error, format!("Error: {e}")));
                 self.status = "Error — ready for next task".into();
+                self.scroll = u16::MAX;
             }
         }
     }
@@ -370,23 +377,43 @@ impl Tui {
 
         let all_lines: Vec<Line<'static>> = banner.into_iter().chain(chat_lines).collect();
 
-        let total_lines = u16::try_from(all_lines.len()).unwrap_or(u16::MAX);
         let visible = chunks[0].height.saturating_sub(2);
-        let scroll = if self.scroll == u16::MAX {
-            total_lines.saturating_sub(visible)
-        } else {
-            self.scroll.min(total_lines.saturating_sub(visible))
-        };
 
+        // Build Paragraph first so we can query its wrapped line count.
+        // With Wrap enabled, ratatui's scroll is in visual rows (after wrapping),
+        // not logical lines.  line_count() gives the correct total visual rows.
         let messages = Paragraph::new(Text::from(all_lines))
             .block(Block::default().borders(Borders::ALL).title(" Garudust "))
-            .wrap(Wrap { trim: false })
-            .scroll((scroll, 0));
+            .wrap(Wrap { trim: false });
+
+        let text_w = chunks[0].width.saturating_sub(2);
+        // line_count(text_w) returns wrapped_rows + top_border + bottom_border (= +2 for Borders::ALL).
+        // visible already excludes the 2 border rows (chunks[0].height - 2).
+        // So the scrollable content rows = total_visual - 2; max_scroll = content_rows - visible.
+        let total_visual = u16::try_from(messages.line_count(text_w)).unwrap_or(u16::MAX);
+        let max_scroll = total_visual.saturating_sub(visible + 2);
+        let scroll = if self.scroll == u16::MAX {
+            max_scroll
+        } else {
+            self.scroll.min(max_scroll)
+        };
+
+        let messages = messages.scroll((scroll, 0));
         f.render_widget(messages, chunks[0]);
 
         // ── Status bar ──
+        let status_text = if let Some(since) = self.thinking_since {
+            let secs = since.elapsed().as_secs();
+            if secs > 0 {
+                format!("{} ({}s)", self.status, secs)
+            } else {
+                self.status.clone()
+            }
+        } else {
+            self.status.clone()
+        };
         let status =
-            Paragraph::new(self.status.as_str()).style(Style::default().fg(Color::DarkGray));
+            Paragraph::new(status_text.as_str()).style(Style::default().fg(Color::DarkGray));
         f.render_widget(status, chunks[1]);
 
         // ── Input box ──

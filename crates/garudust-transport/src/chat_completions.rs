@@ -274,7 +274,7 @@ impl ProviderTransport for ChatCompletionsTransport {
             // tool call accumulator: index → (id, name, args)
             let mut tc_acc: Vec<(String, String, String)> = Vec::new();
 
-            while let Some(chunk) = byte_stream.next().await {
+            'outer: while let Some(chunk) = byte_stream.next().await {
                 let bytes = chunk.map_err(|e| TransportError::Stream(e.to_string()))?;
                 buf.push_str(&String::from_utf8_lossy(&bytes));
 
@@ -287,7 +287,7 @@ impl ProviderTransport for ChatCompletionsTransport {
                     };
                     let data = d.to_string();
                     if data == "[DONE]" {
-                        break;
+                        break 'outer;  // exit both loops; don't wait for server to close connection
                     }
 
                     let Ok(event) = serde_json::from_str::<Value>(&data) else {
@@ -358,6 +358,23 @@ impl ProviderTransport for ChatCompletionsTransport {
                                         None
                                     },
                                     args_delta: args.to_string(),
+                                };
+                            }
+                        }
+                    }
+
+                    // Some providers (e.g. vLLM with zero-arg tools) send finish_reason
+                    // "tool_calls" in the same chunk as the tool call delta but never send
+                    // an "arguments" field. Emit a ToolCallDelta here so stream_turn sees
+                    // the call; use "{}" as the argument payload.
+                    if choice["finish_reason"].as_str() == Some("tool_calls") {
+                        for (idx, (acc_id, acc_name, acc_args)) in tc_acc.iter().enumerate() {
+                            if !acc_id.is_empty() && acc_args.is_empty() {
+                                yield StreamChunk::ToolCallDelta {
+                                    index: idx,
+                                    id: Some(acc_id.clone()),
+                                    name: Some(acc_name.clone()),
+                                    args_delta: "{}".to_string(),
                                 };
                             }
                         }

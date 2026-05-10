@@ -68,18 +68,22 @@ enum ToolCmd {
 enum SkillCmd {
     /// List installed skills
     List,
-    /// Install a skill from GitHub, a direct URL, or a well-known endpoint
+    /// Install a skill from the hub, GitHub, a direct URL, or a well-known endpoint
     ///
     /// Sources:
+    ///   git-workflow         — short name (resolved via hub index)
     ///   owner/repo/path      — GitHub (raw.githubusercontent.com)
     ///   https://…/SKILL.md   — direct URL
     ///   well-known:https://… — /.well-known/skills/<name>/SKILL.md
     Install {
-        /// Source (GitHub path, URL, or well-known prefix)
+        /// Skill name (short) or full source path / URL
         source: String,
         /// Skill name to use when saving (inferred from source if omitted)
         #[arg(long, default_value = "")]
         name: String,
+        /// Hub repository (default: garudust-org/garudust-hub)
+        #[arg(long, default_value = garudust_tools::hub::DEFAULT_HUB)]
+        hub: String,
     },
     /// Remove an installed skill
     Uninstall {
@@ -297,8 +301,8 @@ async fn main() -> Result<()> {
                 SkillCmd::List => {
                     skill_cmd::list(&skills_dir).await?;
                 }
-                SkillCmd::Install { source, name } => {
-                    skill_cmd::install(source, name, &skills_dir).await?;
+                SkillCmd::Install { source, name, hub } => {
+                    skill_cmd::install(source, name, hub, &skills_dir).await?;
                 }
                 SkillCmd::Uninstall { name } => {
                     skill_cmd::uninstall(name, &skills_dir).await?;

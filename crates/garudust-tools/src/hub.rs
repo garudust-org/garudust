@@ -17,6 +17,16 @@ fn raw_url(repo: &str, branch: &str, path: &str) -> String {
 pub struct HubIndex {
     #[serde(default)]
     pub tools: Vec<HubToolEntry>,
+    #[serde(default)]
+    pub skills: Vec<HubSkillEntry>,
+}
+
+#[derive(Deserialize, Clone)]
+pub struct HubSkillEntry {
+    pub name: String,
+    pub description: String,
+    pub version: String,
+    pub files: Vec<String>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -135,6 +145,63 @@ pub async fn install_tool(repo: &str, tool_name: &str, tools_dir: &Path) -> Resu
     write_registry(tools_dir, &registry).await?;
 
     Ok(entry.requires())
+}
+
+// ── Install skill from hub ────────────────────────────────────────────────────
+
+/// Download a skill from the hub into `skills_dir/<skill_name>/`.
+/// Files listed in the index entry are fetched from `skills/<name>/` in the hub repo.
+pub async fn install_skill_from_hub(repo: &str, skill_name: &str, skills_dir: &Path) -> Result<()> {
+    let index = fetch_index(repo).await?;
+    let entry = index
+        .skills
+        .iter()
+        .find(|s| s.name == skill_name)
+        .with_context(|| format!("skill '{skill_name}' not found in hub {repo}"))?
+        .clone();
+
+    let install_dir = skills_dir.join(&entry.name);
+    tokio::fs::create_dir_all(&install_dir)
+        .await
+        .with_context(|| format!("create {}", install_dir.display()))?;
+
+    let client = reqwest::Client::new();
+    for file in &entry.files {
+        let hub_path = format!("skills/{}/{file}", entry.name);
+        let url = raw_url(repo, "main", &hub_path);
+        let bytes = client
+            .get(&url)
+            .send()
+            .await
+            .with_context(|| format!("fetch {url}"))?
+            .error_for_status()
+            .with_context(|| format!("file not found: {url}"))?
+            .bytes()
+            .await?;
+
+        let dest = install_dir.join(file);
+        if let Some(parent) = dest.parent() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
+        tokio::fs::write(&dest, &bytes)
+            .await
+            .with_context(|| format!("write {}", dest.display()))?;
+
+        #[cfg(unix)]
+        {
+            let ext = std::path::Path::new(file.as_str())
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("");
+            if ext.eq_ignore_ascii_case("sh") || ext.eq_ignore_ascii_case("py") {
+                use std::os::unix::fs::PermissionsExt;
+                let perms = std::fs::Permissions::from_mode(0o755);
+                tokio::fs::set_permissions(&dest, perms).await?;
+            }
+        }
+    }
+
+    Ok(())
 }
 
 // ── Uninstall ─────────────────────────────────────────────────────────────────
