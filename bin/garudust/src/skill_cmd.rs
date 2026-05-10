@@ -37,10 +37,21 @@ pub async fn list(skills_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-pub async fn install(source: &str, name: &str, skills_dir: &Path) -> Result<()> {
-    println!("Installing skill from '{source}'...");
-    let installed_name = skill_hub::install_skill(source, name, skills_dir).await?;
-    println!("Installed skill '{installed_name}'.");
+pub async fn install(source: &str, name: &str, hub: &str, skills_dir: &Path) -> Result<()> {
+    let is_short_name = !source.contains('/')
+        && !source.starts_with("https://")
+        && !source.starts_with("http://")
+        && !source.starts_with("well-known:");
+
+    if is_short_name {
+        println!("Installing skill '{source}' from hub {hub}...");
+        garudust_tools::hub::install_skill_from_hub(hub, source, skills_dir).await?;
+        println!("Installed skill '{source}'.");
+    } else {
+        println!("Installing skill from '{source}'...");
+        let installed_name = skill_hub::install_skill(source, name, skills_dir).await?;
+        println!("Installed skill '{installed_name}'.");
+    }
     Ok(())
 }
 
