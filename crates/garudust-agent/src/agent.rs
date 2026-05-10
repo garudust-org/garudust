@@ -216,6 +216,10 @@ impl Agent {
         self.tools.tool_names()
     }
 
+    pub fn tool_names_by_toolset(&self) -> std::collections::BTreeMap<String, Vec<String>> {
+        self.tools.tool_names_by_toolset()
+    }
+
     #[cfg(test)]
     pub(crate) fn budget_remaining(&self) -> u32 {
         self.budget.remaining()

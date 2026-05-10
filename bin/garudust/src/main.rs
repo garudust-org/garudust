@@ -404,14 +404,14 @@ async fn main() -> Result<()> {
             }
         });
 
-        let tool_names = agent.tool_names();
+        let toolsets = agent.tool_names_by_toolset();
         let skill_names =
             garudust_tools::toolsets::skills::load_skills_from_dir(&config.home_dir.join("skills"))
                 .await
                 .into_iter()
                 .map(|s| s.name)
                 .collect::<Vec<_>>();
-        tui::Tui::run(tx_event, rx_agent, tool_names, skill_names).await?;
+        tui::Tui::run(tx_event, rx_agent, toolsets, skill_names).await?;
     }
 
     Ok(())

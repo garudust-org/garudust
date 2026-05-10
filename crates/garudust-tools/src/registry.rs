@@ -145,6 +145,20 @@ impl ToolRegistry {
         names
     }
 
+    pub fn tool_names_by_toolset(&self) -> std::collections::BTreeMap<String, Vec<String>> {
+        let mut map: std::collections::BTreeMap<String, Vec<String>> =
+            std::collections::BTreeMap::new();
+        for tool in self.tools.values() {
+            map.entry(tool.toolset().to_string())
+                .or_default()
+                .push(tool.name().to_string());
+        }
+        for names in map.values_mut() {
+            names.sort();
+        }
+        map
+    }
+
     /// Returns `true` if the named tool opts out of the global dispatch timeout.
     pub fn bypass_dispatch_timeout(&self, name: &str) -> bool {
         self.tools

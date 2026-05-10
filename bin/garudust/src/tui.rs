@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::io;
 
 use crossterm::{
@@ -43,7 +44,7 @@ pub struct Tui {
     status: String,
     scroll: u16,
     streaming: bool,
-    tool_names: Vec<String>,
+    toolsets: BTreeMap<String, Vec<String>>,
     skill_names: Vec<String>,
 }
 
@@ -52,18 +53,17 @@ enum Role {
     User,
     Assistant,
     Error,
-    Banner,
 }
 
 impl Tui {
-    pub fn new(tool_names: Vec<String>, skill_names: Vec<String>) -> Self {
+    pub fn new(toolsets: BTreeMap<String, Vec<String>>, skill_names: Vec<String>) -> Self {
         Self {
             input: String::new(),
             messages: Vec::new(),
             status: "Ready — press Enter to send, Ctrl+C to quit".into(),
             scroll: 0,
             streaming: false,
-            tool_names,
+            toolsets,
             skill_names,
         }
     }
@@ -71,7 +71,7 @@ impl Tui {
     pub async fn run(
         tx_event: mpsc::Sender<TuiEvent>,
         mut rx_agent: mpsc::Receiver<AgentEvent>,
-        tool_names: Vec<String>,
+        toolsets: BTreeMap<String, Vec<String>>,
         skill_names: Vec<String>,
     ) -> io::Result<()> {
         enable_raw_mode()?;
@@ -80,28 +80,19 @@ impl Tui {
         let backend = CrosstermBackend::new(stdout);
         let mut term = Terminal::new(backend)?;
 
-        let mut tui = Tui::new(tool_names, skill_names);
-        let v = env!("CARGO_PKG_VERSION");
-        tui.messages.push((
-            Role::Banner,
-            format!(
-                "        ★\n       /|\\\n   \\\\ (◉ ◉) //\n    \\\\  ▼  //\n     \\\\ | //\n      \\|||/\n       |||\n      /   \\\n\n  G A R U D U S T   v{v}\n  AI Agent Runtime"
-            ),
-        ));
+        let mut tui = Tui::new(toolsets, skill_names);
         tui.messages.push((
             Role::Assistant,
             "Type your task and press Enter.  /help for commands.".into(),
         ));
 
         loop {
-            // Drain agent events (non-blocking)
             while let Ok(ev) = rx_agent.try_recv() {
                 tui.handle_agent_event(ev);
             }
 
             term.draw(|f| tui.render(f))?;
 
-            // Poll keyboard (50 ms timeout so agent events render promptly)
             if event::poll(std::time::Duration::from_millis(50))? {
                 if let Event::Key(key) = event::read()? {
                     match (key.code, key.modifiers) {
@@ -213,7 +204,7 @@ impl Tui {
             } => {
                 self.streaming = false;
                 self.status = format!(
-                    "Done — {iterations} iterations | {input_tokens} in / {output_tokens} out tokens"
+                    "Done — {iterations} iter | {input_tokens} in / {output_tokens} out tokens"
                 );
             }
             AgentEvent::Error(e) => {
@@ -224,8 +215,118 @@ impl Tui {
         }
     }
 
+    // Build the startup banner lines (logo left, tools+skills right).
+    // `pane_w` is the full width of the messages block including borders.
+    fn build_banner_lines(&self, pane_w: u16) -> Vec<Line<'static>> {
+        const LOGO_W: usize = 20;
+        const LOGO: &[&str] = &[
+            "         ★         ",
+            "        /|\\        ",
+            "   \\ (◉ ◉) //  ",
+            "    \\  ▼  //   ",
+            "     \\ | //    ",
+            "      \\|||/    ",
+            "       |||     ",
+            "      /   \\    ",
+            "               ",
+        ];
+
+        let accent = Style::default()
+            .fg(Color::Rgb(245, 166, 35))
+            .add_modifier(Modifier::BOLD);
+        let dim = Style::default().fg(Color::DarkGray);
+        let bold_w = Style::default()
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD);
+        let normal = Style::default().fg(Color::White);
+
+        let inner_w = pane_w.saturating_sub(2) as usize;
+        let right_w = inner_w.saturating_sub(LOGO_W);
+
+        // ── Build right-column content ───────────────────────────────────────
+        // Each entry is a vec of Spans for one line.
+        let mut right: Vec<Vec<Span<'static>>> = Vec::new();
+
+        let tool_total: usize = self.toolsets.values().map(Vec::len).sum();
+        right.push(vec![Span::styled(
+            format!("Available Tools ({tool_total})"),
+            bold_w,
+        )]);
+
+        for (toolset, names) in &self.toolsets {
+            let prefix = format!("  {toolset}: ");
+            let avail = right_w.saturating_sub(prefix.len());
+            let joined = names.join(", ");
+            let display = if joined.len() > avail && avail > 3 {
+                format!("{}...", &joined[..avail.saturating_sub(3)])
+            } else {
+                joined
+            };
+            right.push(vec![
+                Span::styled(prefix, dim),
+                Span::styled(display, normal),
+            ]);
+        }
+
+        right.push(vec![Span::raw("")]);
+
+        let skill_total = self.skill_names.len();
+        right.push(vec![Span::styled(
+            format!("Available Skills ({skill_total})"),
+            bold_w,
+        )]);
+
+        if self.skill_names.is_empty() {
+            right.push(vec![Span::styled("  —", dim)]);
+        } else {
+            let joined = self.skill_names.join(", ");
+            let avail = right_w.saturating_sub(2);
+            let display = if joined.len() > avail && avail > 3 {
+                format!("{}...", &joined[..avail.saturating_sub(3)])
+            } else {
+                joined
+            };
+            right.push(vec![Span::styled(format!("  {display}"), normal)]);
+        }
+
+        // ── Combine logo (left) + right column ──────────────────────────────
+        let n_rows = LOGO.len().max(right.len());
+        let mut lines: Vec<Line<'static>> = Vec::new();
+
+        // Header
+        let v = env!("CARGO_PKG_VERSION");
+        lines.push(Line::from(vec![
+            Span::styled(format!(" Garudust v{v}"), accent),
+            Span::styled(
+                format!(" · {tool_total} tools · {skill_total} skills · /help for commands"),
+                dim,
+            ),
+        ]));
+
+        for i in 0..n_rows {
+            let logo_str = LOGO.get(i).copied().unwrap_or("");
+            // Pad logo line to fixed width
+            let pad = LOGO_W.saturating_sub(logo_str.chars().count());
+            let logo_padded = format!("{logo_str}{:>pad$}", "", pad = pad);
+
+            let mut spans: Vec<Span<'static>> = vec![Span::styled(logo_padded, accent)];
+            if let Some(right_spans) = right.get(i).cloned() {
+                spans.extend(right_spans);
+            }
+            lines.push(Line::from(spans));
+        }
+
+        // Separator before chat
+        lines.push(Line::from(Span::styled(
+            "─".repeat(inner_w),
+            Style::default().fg(Color::Rgb(60, 60, 60)),
+        )));
+
+        lines
+    }
+
     fn render(&self, f: &mut ratatui::Frame) {
-        let outer = Layout::default()
+        let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Min(3),
@@ -234,26 +335,13 @@ impl Tui {
             ])
             .split(f.area());
 
-        // ── Main row: messages (left) + stats sidebar (right) ──
-        let main_row = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Min(0), Constraint::Length(28)])
-            .split(outer[0]);
+        // ── Build banner + chat lines ──
+        let banner = self.build_banner_lines(chunks[0].width);
 
-        // ── Messages pane ──
-        let lines: Vec<Line> = self
+        let chat_lines: Vec<Line<'static>> = self
             .messages
             .iter()
-            .flat_map(|(role, text)| -> Vec<Line> {
-                if let Role::Banner = role {
-                    let style = Style::default()
-                        .fg(Color::Rgb(245, 166, 35))
-                        .add_modifier(Modifier::BOLD);
-                    return text
-                        .lines()
-                        .map(|line| Line::from(Span::styled(line.to_string(), style)))
-                        .collect();
-                }
+            .flat_map(|(role, text)| -> Vec<Line<'static>> {
                 let (prefix, style) = match role {
                     Role::User => (
                         "You  › ",
@@ -263,14 +351,13 @@ impl Tui {
                     ),
                     Role::Assistant => ("  AI › ", Style::default().fg(Color::Green)),
                     Role::Error => ("  !! › ", Style::default().fg(Color::Red)),
-                    Role::Banner => unreachable!(),
                 };
                 text.lines()
                     .enumerate()
                     .map(move |(i, line)| {
                         if i == 0 {
                             Line::from(vec![
-                                Span::styled(prefix, style),
+                                Span::styled(prefix.to_string(), style),
                                 Span::raw(line.to_string()),
                             ])
                         } else {
@@ -281,70 +368,34 @@ impl Tui {
             })
             .collect();
 
-        let total_lines = u16::try_from(lines.len()).unwrap_or(u16::MAX);
-        let visible = main_row[0].height.saturating_sub(2);
+        let all_lines: Vec<Line<'static>> = banner.into_iter().chain(chat_lines).collect();
+
+        let total_lines = u16::try_from(all_lines.len()).unwrap_or(u16::MAX);
+        let visible = chunks[0].height.saturating_sub(2);
         let scroll = if self.scroll == u16::MAX {
             total_lines.saturating_sub(visible)
         } else {
             self.scroll.min(total_lines.saturating_sub(visible))
         };
 
-        let messages = Paragraph::new(Text::from(lines))
+        let messages = Paragraph::new(Text::from(all_lines))
             .block(Block::default().borders(Borders::ALL).title(" Garudust "))
             .wrap(Wrap { trim: false })
             .scroll((scroll, 0));
-        f.render_widget(messages, main_row[0]);
-
-        // ── Stats sidebar ──
-        let accent = Style::default()
-            .fg(Color::Rgb(245, 166, 35))
-            .add_modifier(Modifier::BOLD);
-        let dim = Style::default().fg(Color::DarkGray);
-        let tool_list = self.tool_names.join(", ");
-        let skill_list = if self.skill_names.is_empty() {
-            "—".to_string()
-        } else {
-            self.skill_names.join(", ")
-        };
-        let sidebar_lines = vec![
-            Line::from(vec![
-                Span::styled(" Tools (", dim),
-                Span::styled(self.tool_names.len().to_string(), accent),
-                Span::styled(")", dim),
-            ]),
-            Line::from(Span::styled(
-                format!(" {tool_list}"),
-                Style::default().fg(Color::White),
-            )),
-            Line::from(""),
-            Line::from(vec![
-                Span::styled(" Skills (", dim),
-                Span::styled(self.skill_names.len().to_string(), accent),
-                Span::styled(")", dim),
-            ]),
-            Line::from(Span::styled(
-                format!(" {skill_list}"),
-                Style::default().fg(Color::White),
-            )),
-        ];
-        let sidebar = Paragraph::new(Text::from(sidebar_lines))
-            .block(Block::default().borders(Borders::ALL))
-            .wrap(Wrap { trim: false });
-        f.render_widget(sidebar, main_row[1]);
+        f.render_widget(messages, chunks[0]);
 
         // ── Status bar ──
         let status =
             Paragraph::new(self.status.as_str()).style(Style::default().fg(Color::DarkGray));
-        f.render_widget(status, outer[1]);
+        f.render_widget(status, chunks[1]);
 
         // ── Input box ──
         let input = Paragraph::new(self.input.as_str())
             .block(Block::default().borders(Borders::ALL).title(" Input "))
             .style(Style::default().fg(Color::White));
-        f.render_widget(input, outer[2]);
+        f.render_widget(input, chunks[2]);
 
-        // Show cursor inside input box
         let input_len = u16::try_from(self.input.len()).unwrap_or(u16::MAX);
-        f.set_cursor_position((outer[2].x + input_len + 1, outer[2].y + 1));
+        f.set_cursor_position((chunks[2].x + input_len + 1, chunks[2].y + 1));
     }
 }
