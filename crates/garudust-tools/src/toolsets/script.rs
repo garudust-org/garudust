@@ -86,6 +86,25 @@ fn substitute(template: &str, params: &Value) -> String {
 
 // ── Tool impl ─────────────────────────────────────────────────────────────────
 
+/// Parse a `.env` file into key-value pairs to forward to subprocess environments.
+/// Skips blank lines, comments, and malformed entries; never panics.
+fn read_dotenv(path: &std::path::Path) -> Vec<(String, String)> {
+    let Ok(content) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    content
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                return None;
+            }
+            let (k, v) = line.split_once('=')?;
+            Some((k.trim().to_string(), v.trim().to_string()))
+        })
+        .collect()
+}
+
 #[async_trait]
 impl Tool for ScriptTool {
     fn name(&self) -> &str {
@@ -108,17 +127,24 @@ impl Tool for ScriptTool {
         self.destructive
     }
 
-    async fn execute(&self, params: Value, _ctx: &ToolContext) -> Result<ToolResult, ToolError> {
+    async fn execute(&self, params: Value, ctx: &ToolContext) -> Result<ToolResult, ToolError> {
         let command = substitute(&self.command, &params);
 
-        let out = Command::new("sh")
-            .arg("-c")
+        let dotenv_vars = read_dotenv(&ctx.config.home_dir.join(".env"));
+
+        let mut cmd = Command::new("sh");
+        cmd.arg("-c")
             .arg(&command)
             .current_dir(&self.tool_dir)
             .env_clear()
             .env("PATH", std::env::var("PATH").unwrap_or_default())
             .env("HOME", std::env::var("HOME").unwrap_or_default())
-            .env("TOOL_DIR", &self.tool_dir)
+            .env("LANG", "en_US.UTF-8")
+            .env("TOOL_DIR", &self.tool_dir);
+        for (k, v) in &dotenv_vars {
+            cmd.env(k, v);
+        }
+        let out = cmd
             .output()
             .await
             .map_err(|e| ToolError::Execution(format!("script tool spawn error: {e}")))?;
