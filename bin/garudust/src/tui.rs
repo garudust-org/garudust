@@ -220,15 +220,15 @@ impl Tui {
     fn build_banner_lines(&self, pane_w: u16) -> Vec<Line<'static>> {
         const LOGO_W: usize = 20;
         const LOGO: &[&str] = &[
-            "         ★         ",
-            "        /|\\        ",
-            "   \\ (◉ ◉) //  ",
-            "    \\  ▼  //   ",
-            "     \\ | //    ",
-            "      \\|||/    ",
-            "       |||     ",
-            "      /   \\    ",
-            "               ",
+            "         ★          ",
+            "        /|\\         ",
+            "   \\\\ (◉ ◉) //  ",
+            "    \\\\  ▼  //   ",
+            "     \\\\ | //    ",
+            "      \\|||/      ",
+            "       |||       ",
+            "      /   \\     ",
+            "                  ",
         ];
 
         let accent = Style::default()
