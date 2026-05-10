@@ -135,6 +135,10 @@ impl ToolRegistry {
         self.tools.keys().map(String::as_str).collect()
     }
 
+    pub fn tool_count(&self) -> usize {
+        self.tools.len()
+    }
+
     /// Returns `true` if the named tool opts out of the global dispatch timeout.
     pub fn bypass_dispatch_timeout(&self, name: &str) -> bool {
         self.tools

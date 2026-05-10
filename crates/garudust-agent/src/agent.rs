@@ -208,6 +208,10 @@ impl Agent {
         self
     }
 
+    pub fn tool_count(&self) -> usize {
+        self.tools.tool_count()
+    }
+
     #[cfg(test)]
     pub(crate) fn budget_remaining(&self) -> u32 {
         self.budget.remaining()

@@ -404,7 +404,12 @@ async fn main() -> Result<()> {
             }
         });
 
-        tui::Tui::run(tx_event, rx_agent).await?;
+        let tool_count = agent.tool_count();
+        let skill_count =
+            garudust_tools::toolsets::skills::load_skills_from_dir(&config.home_dir.join("skills"))
+                .await
+                .len();
+        tui::Tui::run(tx_event, rx_agent, tool_count, skill_count).await?;
     }
 
     Ok(())

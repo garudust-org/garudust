@@ -43,6 +43,8 @@ pub struct Tui {
     status: String,
     scroll: u16,
     streaming: bool,
+    tool_count: usize,
+    skill_count: usize,
 }
 
 #[derive(Clone)]
@@ -54,19 +56,23 @@ enum Role {
 }
 
 impl Tui {
-    pub fn new() -> Self {
+    pub fn new(tool_count: usize, skill_count: usize) -> Self {
         Self {
             input: String::new(),
             messages: Vec::new(),
             status: "Ready — press Enter to send, Ctrl+C to quit".into(),
             scroll: 0,
             streaming: false,
+            tool_count,
+            skill_count,
         }
     }
 
     pub async fn run(
         tx_event: mpsc::Sender<TuiEvent>,
         mut rx_agent: mpsc::Receiver<AgentEvent>,
+        tool_count: usize,
+        skill_count: usize,
     ) -> io::Result<()> {
         enable_raw_mode()?;
         let mut stdout = io::stdout();
@@ -74,7 +80,7 @@ impl Tui {
         let backend = CrosstermBackend::new(stdout);
         let mut term = Terminal::new(backend)?;
 
-        let mut tui = Tui::new();
+        let mut tui = Tui::new(tool_count, skill_count);
         let v = env!("CARGO_PKG_VERSION");
         tui.messages.push((
             Role::Banner,
@@ -219,7 +225,7 @@ impl Tui {
     }
 
     fn render(&self, f: &mut ratatui::Frame) {
-        let chunks = Layout::default()
+        let outer = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Min(3),
@@ -227,6 +233,12 @@ impl Tui {
                 Constraint::Length(3),
             ])
             .split(f.area());
+
+        // ── Main row: messages (left) + stats sidebar (right) ──
+        let main_row = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Min(0), Constraint::Length(20)])
+            .split(outer[0]);
 
         // ── Messages pane ──
         let lines: Vec<Line> = self
@@ -270,7 +282,7 @@ impl Tui {
             .collect();
 
         let total_lines = u16::try_from(lines.len()).unwrap_or(u16::MAX);
-        let visible = chunks[0].height.saturating_sub(2);
+        let visible = main_row[0].height.saturating_sub(2);
         let scroll = if self.scroll == u16::MAX {
             total_lines.saturating_sub(visible)
         } else {
@@ -281,21 +293,42 @@ impl Tui {
             .block(Block::default().borders(Borders::ALL).title(" Garudust "))
             .wrap(Wrap { trim: false })
             .scroll((scroll, 0));
-        f.render_widget(messages, chunks[0]);
+        f.render_widget(messages, main_row[0]);
+
+        // ── Stats sidebar ──
+        let accent = Style::default()
+            .fg(Color::Rgb(245, 166, 35))
+            .add_modifier(Modifier::BOLD);
+        let dim = Style::default().fg(Color::DarkGray);
+        let sidebar_lines = vec![
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("  Tools   ", dim),
+                Span::styled(self.tool_count.to_string(), accent),
+            ]),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("  Skills  ", dim),
+                Span::styled(self.skill_count.to_string(), accent),
+            ]),
+        ];
+        let sidebar =
+            Paragraph::new(Text::from(sidebar_lines)).block(Block::default().borders(Borders::ALL));
+        f.render_widget(sidebar, main_row[1]);
 
         // ── Status bar ──
         let status =
             Paragraph::new(self.status.as_str()).style(Style::default().fg(Color::DarkGray));
-        f.render_widget(status, chunks[1]);
+        f.render_widget(status, outer[1]);
 
         // ── Input box ──
         let input = Paragraph::new(self.input.as_str())
             .block(Block::default().borders(Borders::ALL).title(" Input "))
             .style(Style::default().fg(Color::White));
-        f.render_widget(input, chunks[2]);
+        f.render_widget(input, outer[2]);
 
         // Show cursor inside input box
         let input_len = u16::try_from(self.input.len()).unwrap_or(u16::MAX);
-        f.set_cursor_position((chunks[2].x + input_len + 1, chunks[2].y + 1));
+        f.set_cursor_position((outer[2].x + input_len + 1, outer[2].y + 1));
     }
 }
