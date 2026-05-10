@@ -16,11 +16,11 @@ name = "garudust"
 path = "src/main.rs"
 
 [dependencies]
-garudust-core      = { path = "../../crates/garudust-core",      version = "0.2.5" }
-garudust-agent     = { path = "../../crates/garudust-agent",     version = "0.2.5" }
-garudust-memory    = { path = "../../crates/garudust-memory",    version = "0.2.5" }
-garudust-transport = { path = "../../crates/garudust-transport", version = "0.2.5" }
-garudust-tools     = { path = "../../crates/garudust-tools",     version = "0.2.5" }
+garudust-core      = { path = "../../crates/garudust-core",      version = "0.2.6" }
+garudust-agent     = { path = "../../crates/garudust-agent",     version = "0.2.6" }
+garudust-memory    = { path = "../../crates/garudust-memory",    version = "0.2.6" }
+garudust-transport = { path = "../../crates/garudust-transport", version = "0.2.6" }
+garudust-tools     = { path = "../../crates/garudust-tools",     version = "0.2.6" }
 clap               = { workspace = true }
 ratatui            = { workspace = true }
 crossterm          = { workspace = true }
