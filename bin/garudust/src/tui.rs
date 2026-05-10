@@ -43,8 +43,8 @@ pub struct Tui {
     status: String,
     scroll: u16,
     streaming: bool,
-    tool_count: usize,
-    skill_count: usize,
+    tool_names: Vec<String>,
+    skill_names: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -56,23 +56,23 @@ enum Role {
 }
 
 impl Tui {
-    pub fn new(tool_count: usize, skill_count: usize) -> Self {
+    pub fn new(tool_names: Vec<String>, skill_names: Vec<String>) -> Self {
         Self {
             input: String::new(),
             messages: Vec::new(),
             status: "Ready — press Enter to send, Ctrl+C to quit".into(),
             scroll: 0,
             streaming: false,
-            tool_count,
-            skill_count,
+            tool_names,
+            skill_names,
         }
     }
 
     pub async fn run(
         tx_event: mpsc::Sender<TuiEvent>,
         mut rx_agent: mpsc::Receiver<AgentEvent>,
-        tool_count: usize,
-        skill_count: usize,
+        tool_names: Vec<String>,
+        skill_names: Vec<String>,
     ) -> io::Result<()> {
         enable_raw_mode()?;
         let mut stdout = io::stdout();
@@ -80,7 +80,7 @@ impl Tui {
         let backend = CrosstermBackend::new(stdout);
         let mut term = Terminal::new(backend)?;
 
-        let mut tui = Tui::new(tool_count, skill_count);
+        let mut tui = Tui::new(tool_names, skill_names);
         let v = env!("CARGO_PKG_VERSION");
         tui.messages.push((
             Role::Banner,
@@ -237,7 +237,7 @@ impl Tui {
         // ── Main row: messages (left) + stats sidebar (right) ──
         let main_row = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Min(0), Constraint::Length(20)])
+            .constraints([Constraint::Min(0), Constraint::Length(28)])
             .split(outer[0]);
 
         // ── Messages pane ──
@@ -300,20 +300,36 @@ impl Tui {
             .fg(Color::Rgb(245, 166, 35))
             .add_modifier(Modifier::BOLD);
         let dim = Style::default().fg(Color::DarkGray);
+        let tool_list = self.tool_names.join(", ");
+        let skill_list = if self.skill_names.is_empty() {
+            "—".to_string()
+        } else {
+            self.skill_names.join(", ")
+        };
         let sidebar_lines = vec![
+            Line::from(vec![
+                Span::styled(" Tools (", dim),
+                Span::styled(self.tool_names.len().to_string(), accent),
+                Span::styled(")", dim),
+            ]),
+            Line::from(Span::styled(
+                format!(" {tool_list}"),
+                Style::default().fg(Color::White),
+            )),
             Line::from(""),
             Line::from(vec![
-                Span::styled("  Tools   ", dim),
-                Span::styled(self.tool_count.to_string(), accent),
+                Span::styled(" Skills (", dim),
+                Span::styled(self.skill_names.len().to_string(), accent),
+                Span::styled(")", dim),
             ]),
-            Line::from(""),
-            Line::from(vec![
-                Span::styled("  Skills  ", dim),
-                Span::styled(self.skill_count.to_string(), accent),
-            ]),
+            Line::from(Span::styled(
+                format!(" {skill_list}"),
+                Style::default().fg(Color::White),
+            )),
         ];
-        let sidebar =
-            Paragraph::new(Text::from(sidebar_lines)).block(Block::default().borders(Borders::ALL));
+        let sidebar = Paragraph::new(Text::from(sidebar_lines))
+            .block(Block::default().borders(Borders::ALL))
+            .wrap(Wrap { trim: false });
         f.render_widget(sidebar, main_row[1]);
 
         // ── Status bar ──

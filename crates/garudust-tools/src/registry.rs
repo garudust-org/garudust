@@ -139,6 +139,12 @@ impl ToolRegistry {
         self.tools.len()
     }
 
+    pub fn tool_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = self.tools.keys().cloned().collect();
+        names.sort();
+        names
+    }
+
     /// Returns `true` if the named tool opts out of the global dispatch timeout.
     pub fn bypass_dispatch_timeout(&self, name: &str) -> bool {
         self.tools

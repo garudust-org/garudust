@@ -212,6 +212,10 @@ impl Agent {
         self.tools.tool_count()
     }
 
+    pub fn tool_names(&self) -> Vec<String> {
+        self.tools.tool_names()
+    }
+
     #[cfg(test)]
     pub(crate) fn budget_remaining(&self) -> u32 {
         self.budget.remaining()
