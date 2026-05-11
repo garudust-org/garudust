@@ -353,7 +353,7 @@ fn tools_to_converse(tools: &[ToolSchema]) -> Vec<Value> {
         .collect()
 }
 
-fn bedrock_thinking_budget(effort: &Option<ReasoningEffort>) -> Option<u32> {
+fn bedrock_thinking_budget(effort: Option<&ReasoningEffort>) -> Option<u32> {
     match effort {
         Some(ReasoningEffort::Low) => Some(1_024),
         Some(ReasoningEffort::Medium) => Some(5_000),
@@ -451,7 +451,7 @@ impl ProviderTransport for BedrockTransport {
         if !converse_tools.is_empty() {
             body["toolConfig"] = json!({ "tools": converse_tools });
         }
-        if let Some(b) = bedrock_thinking_budget(&config.reasoning_effort) {
+        if let Some(b) = bedrock_thinking_budget(config.reasoning_effort.as_ref()) {
             body["inferenceConfig"]["thinkingConfig"] =
                 json!({ "type": "enabled", "budgetTokens": b });
         }
@@ -516,7 +516,7 @@ impl ProviderTransport for BedrockTransport {
         if !converse_tools.is_empty() {
             body["toolConfig"] = json!({ "tools": converse_tools });
         }
-        if let Some(b) = bedrock_thinking_budget(&config.reasoning_effort) {
+        if let Some(b) = bedrock_thinking_budget(config.reasoning_effort.as_ref()) {
             body["inferenceConfig"]["thinkingConfig"] =
                 json!({ "type": "enabled", "budgetTokens": b });
         }

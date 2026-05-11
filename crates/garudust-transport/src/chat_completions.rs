@@ -113,7 +113,7 @@ fn tools_to_json(tools: &[ToolSchema]) -> Vec<Value> {
         .collect()
 }
 
-fn oai_reasoning_effort(effort: &Option<ReasoningEffort>) -> Option<&'static str> {
+fn oai_reasoning_effort(effort: Option<&ReasoningEffort>) -> Option<&'static str> {
     match effort {
         Some(ReasoningEffort::Low) => Some("low"),
         Some(ReasoningEffort::Medium) => Some("medium"),
@@ -161,7 +161,7 @@ impl ProviderTransport for ChatCompletionsTransport {
         if !oai_tools.is_empty() {
             body["tools"] = json!(oai_tools);
         }
-        if let Some(effort) = oai_reasoning_effort(&config.reasoning_effort) {
+        if let Some(effort) = oai_reasoning_effort(config.reasoning_effort.as_ref()) {
             body["reasoning_effort"] = json!(effort);
         }
 
@@ -265,7 +265,7 @@ impl ProviderTransport for ChatCompletionsTransport {
         if !oai_tools.is_empty() {
             body["tools"] = json!(oai_tools);
         }
-        if let Some(effort) = oai_reasoning_effort(&config.reasoning_effort) {
+        if let Some(effort) = oai_reasoning_effort(config.reasoning_effort.as_ref()) {
             body["reasoning_effort"] = json!(effort);
         }
 
