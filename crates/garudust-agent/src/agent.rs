@@ -343,6 +343,7 @@ impl Agent {
         let user_msg = if has_skills(&self.config.home_dir) {
             format!(
                 "{user_msg}\n\n[System: Before proceeding, scan the '# Skills' section. \
+                 Match skills by meaning — not just keywords — regardless of the user's language. \
                  If any skill is relevant to this task — even partially — call skill_view \
                  first to load its full instructions.]"
             )
