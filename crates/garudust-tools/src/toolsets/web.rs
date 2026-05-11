@@ -93,9 +93,11 @@ impl Tool for WebFetch {
             .map_err(|e| ToolError::Execution(e.to_string()))?;
 
         let body = if bytes.len() > RESPONSE_BODY_LIMIT {
+            let s = String::from_utf8_lossy(&bytes);
+            let boundary = s.floor_char_boundary(RESPONSE_BODY_LIMIT);
             format!(
                 "{}\n[truncated — response was {} bytes, showing first {} KB]",
-                String::from_utf8_lossy(&bytes[..RESPONSE_BODY_LIMIT]),
+                &s[..boundary],
                 bytes.len(),
                 RESPONSE_BODY_LIMIT / 1_024,
             )
@@ -284,9 +286,11 @@ impl Tool for HttpRequest {
             .map_err(|e| ToolError::Execution(e.to_string()))?;
 
         let body_str = if body_bytes.len() > RESPONSE_BODY_LIMIT {
+            let s = String::from_utf8_lossy(&body_bytes);
+            let boundary = s.floor_char_boundary(RESPONSE_BODY_LIMIT);
             format!(
                 "{}\n[truncated — response was {} bytes, showing first {} KB]",
-                String::from_utf8_lossy(&body_bytes[..RESPONSE_BODY_LIMIT]),
+                &s[..boundary],
                 body_bytes.len(),
                 RESPONSE_BODY_LIMIT / 1_024,
             )

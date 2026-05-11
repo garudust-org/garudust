@@ -15,6 +15,11 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - **`max_output_tokens` config** — `AgentConfig.max_output_tokens` lets users cap per-request output tokens via `config.yaml` (useful for small-context local models)
 - **`serde(default)` on all `AgentConfig` fields** — a minimal `config.yaml` (e.g. only `max_output_tokens: 4096`) now deserialises correctly without silently falling back to defaults
 
+### Fixed
+- **Panic on multibyte output truncation** — `truncate_output` in `terminal.rs` now uses `floor_char_boundary` instead of raw byte slicing; Thai/CJK/emoji in command output no longer causes a panic
+- **UTF-8 corruption in `web_fetch` and `http_request`** — response body truncation at 512 KB now respects char boundaries via `floor_char_boundary` instead of slicing raw bytes
+- **UTF-8 corruption in `read_file`** — file content truncation at 512 KB now respects char boundaries
+
 ---
 
 ## [0.2.2] — 2026-05-06
