@@ -349,3 +349,82 @@ pub async fn list_tools(tools_dir: &Path, fetch_hub: bool) -> Vec<ToolStatus> {
     statuses.sort_by(|a, b| a.name.cmp(&b.name));
     statuses
 }
+
+// ── Skill list / update ───────────────────────────────────────────────────────
+
+pub struct SkillStatus {
+    pub name: String,
+    pub installed_version: Option<String>,
+    pub hub_version: Option<String>,
+    pub description: String,
+}
+
+/// List skills from both installed directory and (optionally) the hub index.
+pub async fn list_skills(skills_dir: &Path, fetch_hub: bool) -> Vec<SkillStatus> {
+    let installed = crate::skill_hub::list_installed(skills_dir).await;
+
+    let hub_index = if fetch_hub {
+        fetch_index(DEFAULT_HUB).await.ok()
+    } else {
+        None
+    };
+
+    let mut statuses: Vec<SkillStatus> = installed
+        .iter()
+        .map(|s| {
+            let hub_entry = hub_index
+                .as_ref()
+                .and_then(|idx| idx.skills.iter().find(|h| h.name == s.name));
+            SkillStatus {
+                name: s.name.clone(),
+                installed_version: Some(s.version.clone()),
+                hub_version: hub_entry.map(|h| h.version.clone()),
+                description: s.description.clone(),
+            }
+        })
+        .collect();
+
+    // Also include hub skills not yet installed
+    if let Some(idx) = &hub_index {
+        for hub_skill in &idx.skills {
+            if !statuses.iter().any(|s| s.name == hub_skill.name) {
+                statuses.push(SkillStatus {
+                    name: hub_skill.name.clone(),
+                    installed_version: None,
+                    hub_version: Some(hub_skill.version.clone()),
+                    description: hub_skill.description.clone(),
+                });
+            }
+        }
+    }
+
+    statuses.sort_by(|a, b| a.name.cmp(&b.name));
+    statuses
+}
+
+/// Re-download installed skills that exist in the hub index.
+pub async fn update_skill(skill_name: Option<&str>, skills_dir: &Path) -> Result<Vec<String>> {
+    let installed = crate::skill_hub::list_installed(skills_dir).await;
+    let index = fetch_index(DEFAULT_HUB).await?;
+    let mut updated = Vec::new();
+
+    for skill in &installed {
+        if let Some(name) = skill_name {
+            if skill.name != name {
+                continue;
+            }
+        }
+        if index.skills.iter().any(|h| h.name == skill.name) {
+            install_skill_from_hub(DEFAULT_HUB, &skill.name, skills_dir).await?;
+            updated.push(skill.name.clone());
+        }
+    }
+
+    if let Some(name) = skill_name {
+        if updated.is_empty() {
+            bail!("skill '{name}' is not installed or not available in the hub");
+        }
+    }
+
+    Ok(updated)
+}

@@ -66,8 +66,12 @@ enum ToolCmd {
 
 #[derive(Subcommand)]
 enum SkillCmd {
-    /// List installed skills
-    List,
+    /// List installed skills (and available hub skills)
+    List {
+        /// Skip fetching the hub — show only locally installed skills
+        #[arg(long)]
+        offline: bool,
+    },
     /// Install a skill from the hub, GitHub, a direct URL, or a well-known endpoint
     ///
     /// Sources:
@@ -89,6 +93,11 @@ enum SkillCmd {
     Uninstall {
         /// Skill name as shown in `garudust skill list`
         name: String,
+    },
+    /// Update installed hub skills to the latest version
+    Update {
+        /// Specific skill to update (omit to update all)
+        name: Option<String>,
     },
 }
 
@@ -298,14 +307,17 @@ async fn main() -> Result<()> {
             let skills_dir = config.home_dir.join("skills");
             tokio::fs::create_dir_all(&skills_dir).await?;
             match sub {
-                SkillCmd::List => {
-                    skill_cmd::list(&skills_dir).await?;
+                SkillCmd::List { offline } => {
+                    skill_cmd::list(&skills_dir, *offline).await?;
                 }
                 SkillCmd::Install { source, name, hub } => {
                     skill_cmd::install(source, name, hub, &skills_dir).await?;
                 }
                 SkillCmd::Uninstall { name } => {
                     skill_cmd::uninstall(name, &skills_dir).await?;
+                }
+                SkillCmd::Update { name } => {
+                    skill_cmd::update(name.as_deref(), &skills_dir).await?;
                 }
             }
             return Ok(());
