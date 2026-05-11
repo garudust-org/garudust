@@ -198,9 +198,9 @@ fn truncate_output(s: String) -> String {
     if s.len() <= MAX_OUTPUT_BYTES {
         return s;
     }
-    let head_len = s.floor_char_boundary(MAX_OUTPUT_BYTES * 2 / 5);
+    let head_len = super::floor_char_boundary(&s, MAX_OUTPUT_BYTES * 2 / 5);
     let tail_len = MAX_OUTPUT_BYTES - MAX_OUTPUT_BYTES * 2 / 5;
-    let tail_start = s.floor_char_boundary(s.len().saturating_sub(tail_len));
+    let tail_start = super::floor_char_boundary(&s, s.len().saturating_sub(tail_len));
     let head = &s[..head_len];
     let tail = &s[tail_start..];
     let omitted = tail_start - head_len;

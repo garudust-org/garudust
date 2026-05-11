@@ -92,7 +92,7 @@ impl Tool for ReadFile {
 
         let content = if bytes.len() > MAX_FILE_READ_BYTES {
             let s = String::from_utf8_lossy(&bytes);
-            let boundary = s.floor_char_boundary(MAX_FILE_READ_BYTES);
+            let boundary = super::floor_char_boundary(&s, MAX_FILE_READ_BYTES);
             format!(
                 "{}\n[truncated — file is {} bytes, showing first {} KB]",
                 &s[..boundary],
