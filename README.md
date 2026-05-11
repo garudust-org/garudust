@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/logo.png" alt="Garudust" width="260"/>
+  <img src="assets/logo.jpg" alt="Garudust" width="260"/>
 
   <a href="README.md"><img src="https://img.shields.io/badge/🇺🇸-English-blue?style=flat-square" alt="English"/></a>
   <a href="docs/i18n/th/README.md"><img src="https://img.shields.io/badge/🇹🇭-ภาษาไทย-red?style=flat-square" alt="ภาษาไทย"/></a>
