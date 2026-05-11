@@ -9,11 +9,16 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+---
+
+## [0.2.6] — 2026-05-11
+
 ### Added
 - **Serper.dev web search** — `web_search` now uses Serper (Google results) when `SERPER_API_KEY` is set; priority order is Serper → Brave → DuckDuckGo
 - **`get_secret()` helper** — reads secrets from real env or `~/.garudust/.env` for Rust tools that don't go through script.rs env forwarding
 - **`max_output_tokens` config** — `AgentConfig.max_output_tokens` lets users cap per-request output tokens via `config.yaml` (useful for small-context local models)
 - **`serde(default)` on all `AgentConfig` fields** — a minimal `config.yaml` (e.g. only `max_output_tokens: 4096`) now deserialises correctly without silently falling back to defaults
+- **Cross-language skill matching** — universal skill-check note now instructs the model to match skills by meaning regardless of the user's language, improving trigger reliability for local models (e.g. Qwen3) with non-English prompts
 
 ### Fixed
 - **Panic on multibyte output truncation** — `truncate_output` in `terminal.rs` now uses `floor_char_boundary` instead of raw byte slicing; Thai/CJK/emoji in command output no longer causes a panic
@@ -133,7 +138,8 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Pre-built binaries for `x86_64-musl` and `aarch64-apple-darwin` via release workflow
 - MIT license
 
-[Unreleased]: https://github.com/garudust-org/garudust-agent/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/garudust-org/garudust-agent/compare/v0.2.6...HEAD
+[0.2.6]: https://github.com/garudust-org/garudust-agent/compare/v0.2.2...v0.2.6
 [0.2.2]: https://github.com/garudust-org/garudust-agent/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/garudust-org/garudust-agent/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/garudust-org/garudust-agent/compare/v0.1.1...v0.2.0
