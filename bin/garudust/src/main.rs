@@ -127,7 +127,7 @@ enum Cmd {
         sub: ToolCmd,
     },
 
-    /// Manage skills (install, uninstall, list)
+    /// Manage skills (install, uninstall, update, list)
     Skill {
         #[command(subcommand)]
         sub: SkillCmd,
