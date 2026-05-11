@@ -91,6 +91,10 @@ pub struct AgentConfig {
     /// `None` means no limit.
     #[serde(default)]
     pub max_tokens_per_task: Option<u32>,
+    /// Maximum output tokens per LLM request. Default: 8192.
+    /// Lower this for models with small context windows (e.g. 4096 for a 27k-ctx model).
+    #[serde(default)]
+    pub max_output_tokens: Option<u32>,
 }
 
 fn default_nudge_interval() -> u32 {
@@ -317,6 +321,7 @@ impl Default for AgentConfig {
             tool_timeout_secs: default_tool_timeout_secs(),
             shutdown_timeout_secs: default_shutdown_timeout_secs(),
             max_tokens_per_task: None,
+            max_output_tokens: None,
         }
     }
 }

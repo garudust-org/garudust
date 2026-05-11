@@ -302,7 +302,7 @@ impl Agent {
             build_system_prompt(&self.config, mem.as_ref(), profile.as_deref(), platform).await;
         let inf_config = InferenceConfig {
             model: self.config.model.clone(),
-            max_tokens: Some(8192),
+            max_tokens: Some(self.config.max_output_tokens.unwrap_or(8192)),
             temperature: None,
             reasoning_effort: None,
         };
