@@ -89,7 +89,7 @@ tera = "1"
 # CLI / TUI
 clap      = { version = "4", features = ["derive", "env"] }
 ratatui   = { version = "0.30", features = ["unstable-rendered-line-info"] }
-crossterm = "0.28"
+crossterm = "0.29"
 
 # Cron
 tokio-cron-scheduler = "0.15"
