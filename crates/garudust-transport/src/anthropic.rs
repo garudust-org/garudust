@@ -5,8 +5,8 @@ use garudust_core::{
     error::TransportError,
     transport::{ApiMode, ProviderTransport, StreamResult},
     types::{
-        ContentPart, InferenceConfig, Message, Role, StopReason, StreamChunk, TokenUsage, ToolCall,
-        ToolSchema, TransportResponse,
+        ContentPart, InferenceConfig, Message, ReasoningEffort, Role, StopReason, StreamChunk,
+        TokenUsage, ToolCall, ToolSchema, TransportResponse,
     },
 };
 use serde_json::json;
@@ -98,6 +98,15 @@ impl AnthropicTransport {
         }
         if !anthropic_tools.is_empty() {
             body["tools"] = json!(anthropic_tools);
+        }
+        let budget = match config.reasoning_effort {
+            Some(ReasoningEffort::Low) => Some(1_024u32),
+            Some(ReasoningEffort::Medium) => Some(5_000u32),
+            Some(ReasoningEffort::High) => Some(10_000u32),
+            _ => None,
+        };
+        if let Some(b) = budget {
+            body["thinking"] = json!({ "type": "enabled", "budget_tokens": b });
         }
         body
     }

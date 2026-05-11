@@ -5,8 +5,8 @@ use garudust_core::{
     error::TransportError,
     transport::{ApiMode, ProviderTransport, StreamResult},
     types::{
-        ContentPart, InferenceConfig, Message, Role, StopReason, StreamChunk, TokenUsage, ToolCall,
-        ToolSchema, TransportResponse,
+        ContentPart, InferenceConfig, Message, ReasoningEffort, Role, StopReason, StreamChunk,
+        TokenUsage, ToolCall, ToolSchema, TransportResponse,
     },
 };
 use serde_json::{json, Value};
@@ -353,6 +353,15 @@ fn tools_to_converse(tools: &[ToolSchema]) -> Vec<Value> {
         .collect()
 }
 
+fn bedrock_thinking_budget(effort: &Option<ReasoningEffort>) -> Option<u32> {
+    match effort {
+        Some(ReasoningEffort::Low) => Some(1_024),
+        Some(ReasoningEffort::Medium) => Some(5_000),
+        Some(ReasoningEffort::High) => Some(10_000),
+        _ => None,
+    }
+}
+
 fn classify_error(status: u16, body: &str) -> TransportError {
     match status {
         401 | 403 => TransportError::Auth,
@@ -442,6 +451,10 @@ impl ProviderTransport for BedrockTransport {
         if !converse_tools.is_empty() {
             body["toolConfig"] = json!({ "tools": converse_tools });
         }
+        if let Some(b) = bedrock_thinking_budget(&config.reasoning_effort) {
+            body["inferenceConfig"]["thinkingConfig"] =
+                json!({ "type": "enabled", "budgetTokens": b });
+        }
 
         let body_bytes =
             serde_json::to_vec(&body).map_err(|e| TransportError::Other(anyhow::anyhow!("{e}")))?;
@@ -502,6 +515,10 @@ impl ProviderTransport for BedrockTransport {
         }
         if !converse_tools.is_empty() {
             body["toolConfig"] = json!({ "tools": converse_tools });
+        }
+        if let Some(b) = bedrock_thinking_budget(&config.reasoning_effort) {
+            body["inferenceConfig"]["thinkingConfig"] =
+                json!({ "type": "enabled", "budgetTokens": b });
         }
 
         let body_bytes =

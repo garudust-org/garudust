@@ -5,8 +5,8 @@ use garudust_core::{
     error::TransportError,
     transport::{ApiMode, ProviderTransport, StreamResult},
     types::{
-        ContentPart, InferenceConfig, Message, Role, StopReason, StreamChunk, TokenUsage, ToolCall,
-        ToolSchema, TransportResponse,
+        ContentPart, InferenceConfig, Message, ReasoningEffort, Role, StopReason, StreamChunk,
+        TokenUsage, ToolCall, ToolSchema, TransportResponse,
     },
 };
 use serde_json::{json, Value};
@@ -113,6 +113,15 @@ fn tools_to_json(tools: &[ToolSchema]) -> Vec<Value> {
         .collect()
 }
 
+fn oai_reasoning_effort(effort: &Option<ReasoningEffort>) -> Option<&'static str> {
+    match effort {
+        Some(ReasoningEffort::Low) => Some("low"),
+        Some(ReasoningEffort::Medium) => Some("medium"),
+        Some(ReasoningEffort::High) => Some("high"),
+        _ => None,
+    }
+}
+
 fn classify_error(status: u16, body: &str) -> TransportError {
     match status {
         401 | 403 => TransportError::Auth,
@@ -151,6 +160,9 @@ impl ProviderTransport for ChatCompletionsTransport {
         }
         if !oai_tools.is_empty() {
             body["tools"] = json!(oai_tools);
+        }
+        if let Some(effort) = oai_reasoning_effort(&config.reasoning_effort) {
+            body["reasoning_effort"] = json!(effort);
         }
 
         let resp = self
@@ -252,6 +264,9 @@ impl ProviderTransport for ChatCompletionsTransport {
         }
         if !oai_tools.is_empty() {
             body["tools"] = json!(oai_tools);
+        }
+        if let Some(effort) = oai_reasoning_effort(&config.reasoning_effort) {
+            body["reasoning_effort"] = json!(effort);
         }
 
         let resp = self

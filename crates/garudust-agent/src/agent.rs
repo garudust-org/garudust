@@ -304,7 +304,7 @@ impl Agent {
             model: self.config.model.clone(),
             max_tokens: Some(self.config.max_output_tokens.unwrap_or(8192)),
             temperature: None,
-            reasoning_effort: None,
+            reasoning_effort: self.config.reasoning_effort.clone(),
         };
 
         // Pre-turn memory recall: surface entries relevant to this task so the

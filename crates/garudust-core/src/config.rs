@@ -4,6 +4,8 @@ use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 
+use crate::types::ReasoningEffort;
+
 static DOTENV_VARS: OnceLock<HashMap<String, String>> = OnceLock::new();
 
 /// Load ~/.garudust/.env once per process into an in-memory map.
@@ -116,6 +118,10 @@ pub struct AgentConfig {
     /// Lower this for models with small context windows (e.g. 4096 for a 27k-ctx model).
     #[serde(default)]
     pub max_output_tokens: Option<u32>,
+    /// Reasoning effort for supported models (Claude extended thinking, OpenAI o1/o3/o4).
+    /// Set via config.yaml: `reasoning_effort: medium`
+    #[serde(default)]
+    pub reasoning_effort: Option<ReasoningEffort>,
 }
 
 fn default_model() -> String {
@@ -352,6 +358,7 @@ impl Default for AgentConfig {
             shutdown_timeout_secs: default_shutdown_timeout_secs(),
             max_tokens_per_task: None,
             max_output_tokens: None,
+            reasoning_effort: None,
         }
     }
 }
