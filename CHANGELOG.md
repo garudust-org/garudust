@@ -14,16 +14,48 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 ## [0.2.6] — 2026-05-11
 
 ### Added
-- **Serper.dev web search** — `web_search` now uses Serper (Google results) when `SERPER_API_KEY` is set; priority order is Serper → Brave → DuckDuckGo
-- **`get_secret()` helper** — reads secrets from real env or `~/.garudust/.env` for Rust tools that don't go through script.rs env forwarding
-- **`max_output_tokens` config** — `AgentConfig.max_output_tokens` lets users cap per-request output tokens via `config.yaml` (useful for small-context local models)
-- **`serde(default)` on all `AgentConfig` fields** — a minimal `config.yaml` (e.g. only `max_output_tokens: 4096`) now deserialises correctly without silently falling back to defaults
-- **Cross-language skill matching** — universal skill-check note now instructs the model to match skills by meaning regardless of the user's language, improving trigger reliability for local models (e.g. Qwen3) with non-English prompts
+- **Cross-language skill matching** — universal skill-check note now instructs the model to match skills by meaning regardless of the user's language, improving trigger reliability for local models with non-English prompts
 
 ### Fixed
 - **Panic on multibyte output truncation** — `truncate_output` in `terminal.rs` now uses `floor_char_boundary` instead of raw byte slicing; Thai/CJK/emoji in command output no longer causes a panic
-- **UTF-8 corruption in `web_fetch` and `http_request`** — response body truncation at 512 KB now respects char boundaries via `floor_char_boundary` instead of slicing raw bytes
+- **UTF-8 corruption in `web_fetch` and `http_request`** — response body truncation at 512 KB now respects char boundaries
 - **UTF-8 corruption in `read_file`** — file content truncation at 512 KB now respects char boundaries
+- **MSRV compatibility** — replaced `str::floor_char_boundary` (stable 1.91) with an `is_char_boundary` helper to satisfy MSRV 1.87
+
+---
+
+## [0.2.5] — 2026-05-10
+
+### Added
+- **Skill install from hub** — `garudust skill install <name>` downloads skills directly from garudust-hub index
+- **TUI startup banner redesign** — Hermes-style banner shows logo, tools by toolset, and installed skills
+- **TUI tool and skill count** — sidebar displays tool and skill names at startup
+
+### Fixed
+- **Zero-arg tool calls** — transport layer now handles tool calls with no arguments without panicking
+- **TUI scroll** — scroll position preserved correctly after streaming output
+
+---
+
+## [0.2.4] — 2026-05-08
+
+### Changed
+- crates.io keywords and categories improved for better searchability across all published crates
+
+---
+
+## [0.2.3] — 2026-05-08
+
+### Added
+- **Tool Hub** — `garudust tool install/uninstall/update` manages script tools from garudust-hub
+- **`REQUIRES` and `DESCRIPTION` columns** in `garudust tool list` output
+- **Runtime missing warning** — `garudust tool install` warns when a required runtime (e.g. `python3`, `node`) is not found in PATH
+- **Script tool folder layout** — tools now require a `tool.yaml` + optional `scripts/` directory structure
+
+### Fixed
+- `runtime_in_path` uses `map_or` instead of `map().unwrap_or()`
+- Clippy `similar_names` and `case_sensitive_file_extension_comparisons` in `hub.rs`
+- Long iterator chains broken to satisfy `rustfmt`
 
 ---
 
@@ -139,7 +171,10 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - MIT license
 
 [Unreleased]: https://github.com/garudust-org/garudust-agent/compare/v0.2.6...HEAD
-[0.2.6]: https://github.com/garudust-org/garudust-agent/compare/v0.2.2...v0.2.6
+[0.2.6]: https://github.com/garudust-org/garudust-agent/compare/v0.2.5...v0.2.6
+[0.2.5]: https://github.com/garudust-org/garudust-agent/compare/v0.2.4...v0.2.5
+[0.2.4]: https://github.com/garudust-org/garudust-agent/compare/v0.2.3...v0.2.4
+[0.2.3]: https://github.com/garudust-org/garudust-agent/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/garudust-org/garudust-agent/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/garudust-org/garudust-agent/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/garudust-org/garudust-agent/compare/v0.1.1...v0.2.0
