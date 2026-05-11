@@ -363,6 +363,7 @@ async fn serper_search(query: &str, count: usize, api_key: &str) -> Result<ToolR
             let title = r["title"].as_str().unwrap_or("(no title)");
             let url = r["link"].as_str().unwrap_or("");
             let desc = r["snippet"].as_str().unwrap_or("").trim();
+            let desc: String = desc.chars().take(200).collect();
             format!("{}. **{}**\n   {}\n   {}", i + 1, title, url, desc)
         })
         .collect();
