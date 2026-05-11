@@ -37,18 +37,39 @@ fn env_or_dotenv(key: &str, dotenv: &HashMap<String, String>) -> Option<String> 
         .or_else(|| dotenv.get(key).filter(|v| !v.is_empty()).cloned())
 }
 
+/// Read a secret from real env or ~/.garudust/.env (whichever is set first).
+/// Useful for Rust tools that don't go through script.rs env forwarding.
+pub fn get_secret(key: &str) -> Option<String> {
+    std::env::var(key)
+        .ok()
+        .filter(|v| !v.is_empty())
+        .or_else(|| {
+            DOTENV_VARS
+                .get()?
+                .get(key)
+                .filter(|v| !v.is_empty())
+                .cloned()
+        })
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentConfig {
     #[serde(skip)]
     pub home_dir: PathBuf,
+    #[serde(default = "default_model")]
     pub model: String,
+    #[serde(default = "default_max_iterations")]
     pub max_iterations: u32,
+    #[serde(default)]
     pub tool_delay_ms: u64,
+    #[serde(default = "default_provider")]
     pub provider: String,
     pub base_url: Option<String>,
     #[serde(skip)]
     pub api_key: Option<String>,
+    #[serde(default)]
     pub compression: CompressionConfig,
+    #[serde(default)]
     pub network: NetworkConfig,
     #[serde(default)]
     pub mcp_servers: Vec<McpServerConfig>,
@@ -97,6 +118,15 @@ pub struct AgentConfig {
     pub max_output_tokens: Option<u32>,
 }
 
+fn default_model() -> String {
+    "anthropic/claude-sonnet-4-6".into()
+}
+fn default_provider() -> String {
+    "openrouter".into()
+}
+fn default_max_iterations() -> u32 {
+    90
+}
 fn default_nudge_interval() -> u32 {
     5
 }

@@ -117,7 +117,7 @@ impl Tool for WebSearch {
         "web_search"
     }
     fn description(&self) -> &'static str {
-        "Search the web. Uses Brave Search when BRAVE_SEARCH_API_KEY is set, DuckDuckGo otherwise."
+        "Search the web. Uses Serper (Google) when SERPER_API_KEY is set, Brave Search when BRAVE_SEARCH_API_KEY is set, DuckDuckGo otherwise."
     }
     fn toolset(&self) -> &'static str {
         "web"
@@ -151,13 +151,13 @@ impl Tool for WebSearch {
             .ok_or_else(|| ToolError::InvalidArgs("query required".into()))?;
         let count = params["count"].as_u64().unwrap_or(5).clamp(1, 10) as usize;
 
-        match std::env::var("BRAVE_SEARCH_API_KEY")
-            .ok()
-            .filter(|k| !k.is_empty())
-        {
-            Some(api_key) => brave_search(query, count, &api_key).await,
-            None => ddg_search(query, count).await,
+        if let Some(key) = garudust_core::config::get_secret("SERPER_API_KEY") {
+            return serper_search(query, count, &key).await;
         }
+        if let Some(key) = garudust_core::config::get_secret("BRAVE_SEARCH_API_KEY") {
+            return brave_search(query, count, &key).await;
+        }
+        ddg_search(query, count).await
     }
 }
 
@@ -321,6 +321,53 @@ fn http_client() -> Result<&'static reqwest::Client, ToolError> {
         .build()
         .map_err(|e| ToolError::Execution(format!("HTTP client init failed: {e}")))?;
     Ok(HTTP_CLIENT.get_or_init(|| c))
+}
+
+async fn serper_search(query: &str, count: usize, api_key: &str) -> Result<ToolResult, ToolError> {
+    let client = http_client()?;
+    let resp = client
+        .post("https://google.serper.dev/search")
+        .header("X-API-KEY", api_key)
+        .header("Content-Type", "application/json")
+        .json(&serde_json::json!({ "q": query, "num": count }))
+        .send()
+        .await
+        .map_err(|e| ToolError::Execution(e.to_string()))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status().as_u16();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(ToolError::Execution(format!(
+            "Serper API error {status}: {body}"
+        )));
+    }
+
+    let data: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| ToolError::Execution(e.to_string()))?;
+
+    let results = data["organic"]
+        .as_array()
+        .ok_or_else(|| ToolError::Execution("unexpected Serper response format".into()))?;
+
+    if results.is_empty() {
+        return Ok(ToolResult::ok("", "No results found."));
+    }
+
+    let formatted: Vec<String> = results
+        .iter()
+        .take(count)
+        .enumerate()
+        .map(|(i, r)| {
+            let title = r["title"].as_str().unwrap_or("(no title)");
+            let url = r["link"].as_str().unwrap_or("");
+            let desc = r["snippet"].as_str().unwrap_or("").trim();
+            format!("{}. **{}**\n   {}\n   {}", i + 1, title, url, desc)
+        })
+        .collect();
+
+    Ok(ToolResult::ok("", formatted.join("\n\n")))
 }
 
 async fn brave_search(query: &str, count: usize, api_key: &str) -> Result<ToolResult, ToolError> {
