@@ -448,7 +448,7 @@ curl http://localhost:3000/metrics   # รองรับ Prometheus
 | เครื่องมือ | คำอธิบาย |
 |-----------|----------|
 | `web_fetch` | ดึงข้อมูลจาก URL (หน้าสแตติก) |
-| `web_search` | ค้นหาผ่าน Brave Search API (`BRAVE_SEARCH_API_KEY`) |
+| `web_search` | ค้นหาเว็บ — ใช้ Serper (Google) เมื่อตั้ง `SERPER_API_KEY`, ใช้ Brave Search เมื่อตั้ง `BRAVE_SEARCH_API_KEY`, ใช้ DuckDuckGo เป็น fallback |
 | `browser` | ควบคุม Chrome/Chromium ผ่าน CDP — navigate, คลิก, พิมพ์, screenshot, รัน JS |
 | `read_file` | อ่านไฟล์จากระบบไฟล์ |
 | `write_file` | เขียนไฟล์ไปยังระบบไฟล์; credential path ที่ละเอียดอ่อนถูกบล็อคเสมอ |

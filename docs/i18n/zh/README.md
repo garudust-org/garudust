@@ -446,7 +446,7 @@ curl http://localhost:3000/metrics   # Prometheus 兼容
 | 工具 | 描述 |
 |------|------|
 | `web_fetch` | 获取 URL 内容（静态页面） |
-| `web_search` | 通过 Brave Search API 搜索（需 `BRAVE_SEARCH_API_KEY`） |
+| `web_search` | 搜索网页 — 优先使用 Serper（Google，需 `SERPER_API_KEY`），其次 Brave Search（需 `BRAVE_SEARCH_API_KEY`），最后回退到 DuckDuckGo |
 | `browser` | 通过 CDP 控制 Chrome/Chromium — 导航、点击、输入、截图、运行 JS |
 | `read_file` | 从文件系统读取文件 |
 | `write_file` | 向文件系统写入文件；敏感凭证路径始终被拦截 |
