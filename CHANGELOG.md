@@ -11,9 +11,13 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [0.2.6] — 2026-05-11
+## [0.2.7] — 2026-05-11
 
 ### Added
+- **Serper.dev web search** — `web_search` now uses Serper (Google results) when `SERPER_API_KEY` is set; priority order is Serper → Brave → DuckDuckGo
+- **`get_secret()` helper** — reads secrets from real env or `~/.garudust/.env` for Rust tools that don't go through script.rs env forwarding
+- **`max_output_tokens` config** — `AgentConfig.max_output_tokens` lets users cap per-request output tokens via `config.yaml` (useful for small-context local models)
+- **`serde(default)` on all `AgentConfig` fields** — a minimal `config.yaml` (e.g. only `max_output_tokens: 4096`) now deserialises correctly without silently falling back to defaults
 - **Cross-language skill matching** — universal skill-check note now instructs the model to match skills by meaning regardless of the user's language, improving trigger reliability for local models with non-English prompts
 
 ### Fixed
@@ -21,6 +25,14 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - **UTF-8 corruption in `web_fetch` and `http_request`** — response body truncation at 512 KB now respects char boundaries
 - **UTF-8 corruption in `read_file`** — file content truncation at 512 KB now respects char boundaries
 - **MSRV compatibility** — replaced `str::floor_char_boundary` (stable 1.91) with an `is_char_boundary` helper to satisfy MSRV 1.87
+- **Serper snippet truncation** — snippets now truncated by char boundary to prevent UTF-8 corruption on Thai/CJK results
+
+---
+
+## [0.2.6] — 2026-05-10
+
+### Fixed
+- **Script tool env forwarding** — `~/.garudust/.env` variables are now forwarded to script tool subprocesses
 
 ---
 
@@ -170,7 +182,8 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Pre-built binaries for `x86_64-musl` and `aarch64-apple-darwin` via release workflow
 - MIT license
 
-[Unreleased]: https://github.com/garudust-org/garudust-agent/compare/v0.2.6...HEAD
+[Unreleased]: https://github.com/garudust-org/garudust-agent/compare/v0.2.7...HEAD
+[0.2.7]: https://github.com/garudust-org/garudust-agent/compare/v0.2.6...v0.2.7
 [0.2.6]: https://github.com/garudust-org/garudust-agent/compare/v0.2.5...v0.2.6
 [0.2.5]: https://github.com/garudust-org/garudust-agent/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/garudust-org/garudust-agent/compare/v0.2.3...v0.2.4
