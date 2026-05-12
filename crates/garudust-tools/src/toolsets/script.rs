@@ -487,6 +487,7 @@ command: "curl -s wttr.in/{city}?format=3"
             approver: Arc::new(AutoApprove),
             sub_agent: None,
             skill_permissions: Arc::new(tokio::sync::RwLock::new(SkillPermissions::default())),
+            required_tools: Arc::new(tokio::sync::RwLock::new(Vec::new())),
         }
     }
 

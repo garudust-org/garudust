@@ -279,6 +279,7 @@ mod tests {
             skill_permissions: std::sync::Arc::new(tokio::sync::RwLock::new(
                 garudust_core::tool::SkillPermissions::default(),
             )),
+            required_tools: std::sync::Arc::new(tokio::sync::RwLock::new(Vec::new())),
         }
     }
 
