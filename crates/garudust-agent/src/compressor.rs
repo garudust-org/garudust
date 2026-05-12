@@ -44,8 +44,8 @@ impl ContextCompressor {
                 m.content
                     .iter()
                     .map(|p| match p {
-                        ContentPart::Text(t) => t.len() / 4,
-                        ContentPart::ToolResult { content, .. } => content.len() / 4,
+                        ContentPart::Text(t) => t.len() / 3,
+                        ContentPart::ToolResult { content, .. } => content.len() / 3,
                         _ => 50,
                     })
                     .sum::<usize>()
