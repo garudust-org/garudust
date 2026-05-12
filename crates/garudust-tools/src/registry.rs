@@ -54,6 +54,19 @@ impl ToolRegistry {
         self.tools.values().map(|t| t.to_schema()).collect()
     }
 
+    /// Remove all tools belonging to any of the given toolset names.
+    /// Used to disable toolsets with large schemas on small-context models.
+    pub fn remove_toolsets(&mut self, disabled: &[String]) {
+        if disabled.is_empty() {
+            return;
+        }
+        self.tools
+            .retain(|_, t| !disabled.iter().any(|d| d == t.toolset()));
+        let active: std::collections::HashSet<&str> =
+            self.tools.keys().map(String::as_str).collect();
+        self.validators.retain(|name, _| active.contains(name.as_str()));
+    }
+
     pub async fn dispatch(
         &self,
         name: &str,
