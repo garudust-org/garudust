@@ -179,6 +179,15 @@ async fn build_agent(config: Arc<AgentConfig>, db: Arc<SessionDb>) -> (Arc<Agent
         registry.register(tool);
     }
 
+    if !config.disabled_toolsets.is_empty() {
+        registry.remove_toolsets(&config.disabled_toolsets);
+        tracing::info!(disabled = ?config.disabled_toolsets, "toolsets disabled via config");
+    }
+    if !config.disabled_tools.is_empty() {
+        registry.remove_tools(&config.disabled_tools);
+        tracing::info!(disabled = ?config.disabled_tools, "tools disabled via config");
+    }
+
     let agent =
         Arc::new(Agent::new(transport, Arc::new(registry), memory, config).with_session_db(db));
     (agent, mcp_handles)

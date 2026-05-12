@@ -64,7 +64,21 @@ impl ToolRegistry {
             .retain(|_, t| !disabled.iter().any(|d| d == t.toolset()));
         let active: std::collections::HashSet<&str> =
             self.tools.keys().map(String::as_str).collect();
-        self.validators.retain(|name, _| active.contains(name.as_str()));
+        self.validators
+            .retain(|name, _| active.contains(name.as_str()));
+    }
+
+    /// Remove individual tools by exact name.
+    /// Used when only some tools in a toolset need to be disabled.
+    pub fn remove_tools(&mut self, disabled: &[String]) {
+        if disabled.is_empty() {
+            return;
+        }
+        self.tools.retain(|name, _| !disabled.contains(name));
+        let active: std::collections::HashSet<&str> =
+            self.tools.keys().map(String::as_str).collect();
+        self.validators
+            .retain(|name, _| active.contains(name.as_str()));
     }
 
     pub async fn dispatch(

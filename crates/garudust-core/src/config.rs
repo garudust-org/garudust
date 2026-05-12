@@ -128,13 +128,19 @@ pub struct AgentConfig {
     /// (e.g. `context_window: 27168` for Qwen3-14B-AWQ on vLLM).
     #[serde(default)]
     pub context_window: Option<usize>,
-    /// Toolsets to disable. Removes their schemas from every request, reducing
-    /// context usage for small-context models.
-    /// Available toolsets: web, files, terminal, memory, search, skills, delegate,
-    ///   browser, git, image, notes, json, pdf, mcp
-    /// Example: `disabled_toolsets: [browser, git, notes, json, delegate]`
+    /// Toolsets to disable. Removes all tools in the named toolset from every
+    /// request, reducing context usage for small-context models.
+    /// Available toolsets: web, files, terminal, memory, skills, agent,
+    ///   browser, git, notes, json, mcp
+    /// Example: `disabled_toolsets: [browser, git, notes, json, agent]`
     #[serde(default)]
     pub disabled_toolsets: Vec<String>,
+    /// Individual tools to disable by exact name. Useful when only some tools
+    /// in a toolset need to be removed (e.g. disable `image_read` without
+    /// removing the entire `files` toolset).
+    /// Example: `disabled_tools: [image_read, pdf_read, session_search]`
+    #[serde(default)]
+    pub disabled_tools: Vec<String>,
 }
 
 fn default_model() -> String {
@@ -374,6 +380,7 @@ impl Default for AgentConfig {
             reasoning_effort: None,
             context_window: None,
             disabled_toolsets: Vec::new(),
+            disabled_tools: Vec::new(),
         }
     }
 }

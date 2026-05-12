@@ -211,6 +211,10 @@ async fn build_agent(config: Arc<AgentConfig>) -> (Arc<Agent>, McpHandles) {
         registry.remove_toolsets(&config.disabled_toolsets);
         tracing::info!(disabled = ?config.disabled_toolsets, "toolsets disabled via config");
     }
+    if !config.disabled_tools.is_empty() {
+        registry.remove_tools(&config.disabled_tools);
+        tracing::info!(disabled = ?config.disabled_tools, "tools disabled via config");
+    }
 
     let agent = Agent::new(transport, Arc::new(registry), memory, config);
     let agent = match db {
