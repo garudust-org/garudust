@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use chrono::Utc;
 use futures::StreamExt;
@@ -373,6 +373,18 @@ impl Agent {
         let mut total_out = 0u32;
         let mut iters = 0u32;
 
+        // Shared across all iterations so skill_view can accumulate required_tools
+        // and permissions from multiple skills loaded in the same session.
+        let skill_permissions = Arc::new(tokio::sync::RwLock::new(
+            garudust_core::tool::SkillPermissions::default(),
+        ));
+        let required_tools: Arc<tokio::sync::RwLock<Vec<String>>> =
+            Arc::new(tokio::sync::RwLock::new(Vec::new()));
+        // Tool names actually called this session — used for required_tools check.
+        let mut called_tools: HashSet<String> = HashSet::new();
+        // Allow one re-prompt per session to avoid infinite loops.
+        let mut required_tools_retried = false;
+
         loop {
             // Hermes-style nudge: remind the model to save memory every N tool rounds.
             // iters == 0 on the first pass (before increment), so this only fires after
@@ -463,6 +475,30 @@ impl Agent {
             });
 
             if resp.tool_calls.is_empty() || resp.stop_reason == StopReason::EndTurn {
+                // Required-tools enforcement: if any skill declared required_tools that
+                // were not called this session, inject one re-prompt and continue.
+                if !required_tools_retried {
+                    let rt = required_tools.read().await;
+                    let missing: Vec<&String> =
+                        rt.iter().filter(|t| !called_tools.contains(*t)).collect();
+                    if !missing.is_empty() {
+                        let names = missing
+                            .iter()
+                            .map(|t| format!("`{t}`"))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        drop(rt);
+                        required_tools_retried = true;
+                        warn!(missing = %names, "required tools not called — injecting re-prompt");
+                        history.push(Message::user(format!(
+                            "[System: The following required tool(s) were not called: {names}. \
+                             You MUST call them now using the data already prepared. \
+                             Do NOT report completion until you have received their results.]"
+                        )));
+                        continue;
+                    }
+                }
+
                 let raw_output = resp
                     .content
                     .iter()
@@ -523,6 +559,11 @@ impl Agent {
                 return Ok(result);
             }
 
+            // Track all tool names called this session for required_tools enforcement.
+            for tc in &resp.tool_calls {
+                called_tools.insert(tc.name.clone());
+            }
+
             // Parallel tool dispatch via tokio::join_all
             // spawn_child() gives the sub-agent its own fresh budget so delegate_task
             // iterations do not consume the parent's quota.
@@ -538,9 +579,8 @@ impl Agent {
                 config: self.config.clone(),
                 approver: approver.clone(),
                 sub_agent: Some(sub_agent),
-                skill_permissions: Arc::new(tokio::sync::RwLock::new(
-                    garudust_core::tool::SkillPermissions::default(),
-                )),
+                skill_permissions: skill_permissions.clone(),
+                required_tools: required_tools.clone(),
             });
 
             let tool_timeout_secs = self.config.tool_timeout_secs;
@@ -825,6 +865,7 @@ async fn reflect_and_save_skill(
             skill_permissions: Arc::new(tokio::sync::RwLock::new(
                 garudust_core::tool::SkillPermissions::default(),
             )),
+            required_tools: Arc::new(tokio::sync::RwLock::new(Vec::new())),
         };
         match tools
             .dispatch("write_skill", tc.arguments.clone(), &ctx)

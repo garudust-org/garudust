@@ -23,6 +23,9 @@ pub struct Skill {
     /// Optional per-skill tool permissions. Map of tool name → allowed.
     /// Absent tools are not restricted. Union semantics when multiple skills loaded.
     pub permissions: Option<HashMap<String, bool>>,
+    /// Tools that MUST be called before the skill is considered complete.
+    /// The agent will re-prompt if the session ends without calling them.
+    pub required_tools: Vec<String>,
     pub body: String,
     pub path: PathBuf,
 }
@@ -70,12 +73,22 @@ pub fn parse_skill_md(content: &str, path: PathBuf) -> Option<Skill> {
         }
     }
 
+    let required_tools = yaml["required_tools"]
+        .as_sequence()
+        .map(|seq| {
+            seq.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+
     Some(Skill {
         name,
         description,
         version,
         platforms,
         permissions,
+        required_tools,
         body,
         path,
     })
@@ -255,6 +268,14 @@ impl Tool for SkillView {
 
         if let Some(perms) = &skill.permissions {
             ctx.skill_permissions.write().await.merge(perms);
+        }
+        if !skill.required_tools.is_empty() {
+            let mut rt = ctx.required_tools.write().await;
+            for tool in &skill.required_tools {
+                if !rt.contains(tool) {
+                    rt.push(tool.clone());
+                }
+            }
         }
 
         let install_dir = skill.path.parent().unwrap_or(&skill.path);

@@ -9,6 +9,11 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **`required_tools` enforcement** — SKILL.md frontmatter can now declare `required_tools: [tool_name, ...]`; the agent re-prompts once if the session ends without calling them, preventing model hallucination of required tool calls
+- **`context_window` config** — `AgentConfig.context_window` lets users set the actual model context limit so the compressor triggers correctly on small-context models (e.g. `context_window: 27168` for Qwen3-14B-AWQ)
+- **`generate_image` overlay_text** — optional `overlay_text` parameter burns a caption bar directly onto the generated image via Pillow, eliminating the separate `run_command` step in skill workflows
+
 ---
 
 ## [0.2.8] — 2026-05-12

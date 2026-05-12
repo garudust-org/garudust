@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::{HashMap, HashSet}, sync::Arc};
 
 use async_trait::async_trait;
 use tokio::sync::RwLock;
@@ -97,6 +97,9 @@ pub struct ToolContext {
     /// Accumulated permissions from all skills loaded this session via skill_view.
     /// Shared across all tool dispatches within the same agent turn.
     pub skill_permissions: Arc<RwLock<SkillPermissions>>,
+    /// Tools required by skills loaded this session (via required_tools frontmatter).
+    /// skill_view appends to this; the agent checks it at end-turn.
+    pub required_tools: Arc<RwLock<Vec<String>>>,
 }
 
 #[async_trait]
