@@ -386,7 +386,6 @@ impl Agent {
         let mut called_tools: HashSet<String> = HashSet::new();
         // Allow up to 3 re-prompts so the model can retry after tool errors.
         let mut required_tools_retries: u8 = 0;
-        const MAX_REQUIRED_TOOLS_RETRIES: u8 = 3;
 
         loop {
             // Hermes-style nudge: remind the model to save memory every N tool rounds.
@@ -480,7 +479,7 @@ impl Agent {
             if resp.tool_calls.is_empty() || resp.stop_reason == StopReason::EndTurn {
                 // Required-tools enforcement: if any skill declared required_tools that
                 // were not called successfully this session, inject a re-prompt.
-                if required_tools_retries < MAX_REQUIRED_TOOLS_RETRIES {
+                if required_tools_retries < 3 {
                     let rt = required_tools.read().await;
                     let missing: Vec<&String> =
                         rt.iter().filter(|t| !called_tools.contains(*t)).collect();
