@@ -339,8 +339,8 @@ impl Tool for WriteSkill {
         };
 
         let skills_dir = ctx.config.home_dir.join("skills");
-        let skill_dir = skills_dir.join(name);
-        tokio::fs::create_dir_all(&skill_dir)
+        let dest_dir = skills_dir.join(name);
+        tokio::fs::create_dir_all(&dest_dir)
             .await
             .map_err(|e| ToolError::Execution(format!("failed to create skill dir: {e}")))?;
 
@@ -355,7 +355,7 @@ impl Tool for WriteSkill {
             "---\nname: {name}\ndescription: {description}\nversion: {version}\n{permissions_block}---\n\n{body}\n"
         );
 
-        let skill_path = skill_dir.join("SKILL.md");
+        let skill_path = dest_dir.join("SKILL.md");
         tokio::fs::write(&skill_path, &content)
             .await
             .map_err(|e| ToolError::Execution(format!("failed to write skill: {e}")))?;
