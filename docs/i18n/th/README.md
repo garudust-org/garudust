@@ -35,7 +35,7 @@ AI agent runtime แบบ self-improving เขียนด้วย Rust — �
 - **รองรับ agentskills.io standard** — ติดตั้ง skill จาก [agentskills.io](https://agentskills.io) hub หรือ GitHub repo ใดก็ได้ด้วยคำสั่งเดียว รองรับ `allowed-tools`, version pinning และ scripts ครบ
 - **Tool Hub ติดตั้งง่าย** — เรียกดูและติดตั้ง script tool จากชุมชนได้ทันทีด้วย `garudust tool install <name>` ไม่ต้องจัดการ folder เอง
 - **พูดภาษาของคุณ** — ตรวจจับภาษาไทย จีน ญี่ปุ่น อาหรับ เกาหลี และอื่น ๆ โดยอัตโนมัติ ไม่ต้องตั้งค่าเพิ่ม
-- **เปลี่ยน LLM ด้วย env var เดียว** — รองรับ Anthropic, OpenRouter, AWS Bedrock, Ollama, vLLM หรือ endpoint ที่เข้ากันได้กับ OpenAI
+- **เปลี่ยน LLM ด้วย env var เดียว** — รองรับ Anthropic, OpenRouter, AWS Bedrock, Ollama, vLLM, ThaiLLM หรือ endpoint ที่เข้ากันได้กับ OpenAI
 - **ปลอดภัยตั้งแต่ต้น** — Docker sandbox, การบล็อคคำสั่งอันตรายแบบไม่มีข้อยกเว้น, ป้องกันการฝังคำสั่งผ่าน memory และการ redact secret อัตโนมัติจาก output ของ tool
 - **รันได้ทุกที่** — TUI บนแล็ปท็อป, headless server, Docker, Telegram, Discord, Slack, Matrix, LINE, WhatsApp, HTTP
 - **ประกอบต่อได้ง่าย** — แต่ละส่วนแยกเป็น crate อิสระ เพิ่ม tool, platform หรือ transport โดยไม่กระทบโค้ดส่วนอื่น
@@ -170,6 +170,18 @@ security:
     - "--memory=512m"                # จำกัดหน่วยความจำ
 
 nudge_interval: 5                    # เตือนให้บันทึก memory ทุก N iterations (0 = ปิด)
+
+# ปิด toolset ทั้งหมด (ลด context สำหรับโมเดล context เล็ก)
+# ที่มี: web, files, terminal, memory, skills, agent, browser, git, notes, json, mcp
+disabled_toolsets: [browser, git, notes]
+
+# ปิด tool เฉพาะรายตัว โดยไม่ลบทั้ง toolset
+disabled_tools: [image_read, pdf_read, session_search]
+
+# สำหรับโมเดล context เล็ก (เช่น 27K): ระบุขนาด context จริง
+# และจำกัด output เพื่อไม่ให้ input + output เกิน limit
+context_window: 27168
+max_output_tokens: 2000
 
 mcp_servers:
   - name: filesystem
@@ -437,6 +449,7 @@ curl http://localhost:3000/metrics   # รองรับ Prometheus
 | OpenAI Responses | `garudust config set provider codex` | endpoint `/v1/responses` |
 | Ollama | ตั้ง `OLLAMA_BASE_URL` | บนเครื่อง ไม่ต้องใช้ key |
 | vLLM | ตั้ง `VLLM_BASE_URL` | เซิร์ฟเวอร์ OpenAI-compatible บนเครื่อง |
+| ThaiLLM | ตั้ง `THAILLM_API_KEY` | Thai LLM โดย NSTDA (thaillm.or.th) |
 | OpenAI-compatible อื่น ๆ | ตั้ง `GARUDUST_BASE_URL` | Generic transport |
 
 ตั้งค่า key ที่เกี่ยวข้องใน `~/.garudust/.env` แล้วเปลี่ยนโมเดลด้วย `garudust model` หรือตั้งค่า `GARUDUST_MODEL`

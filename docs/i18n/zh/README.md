@@ -35,7 +35,7 @@
 - **兼容 agentskills.io 标准** — 一条命令从 [agentskills.io](https://agentskills.io) hub 或任意 GitHub 仓库安装技能；`allowed-tools`、版本锁定与 `scripts/` 执行开箱即用
 - **Tool Hub 一键安装** — 用 `garudust tool install <name>` 即可浏览并安装社区工具，无需手动管理文件夹
 - **说你的语言** — 自动检测中文、泰语、日语、阿拉伯语、韩语等，无需任何配置
-- **一个环境变量切换 LLM 提供商** — 支持 Anthropic、OpenRouter、AWS Bedrock、Ollama、vLLM 或任何 OpenAI 兼容端点
+- **一个环境变量切换 LLM 提供商** — 支持 Anthropic、OpenRouter、AWS Bedrock、Ollama、vLLM、ThaiLLM 或任何 OpenAI 兼容端点
 - **安全优先设计** — Docker 沙箱、无条件命令拦截、内存投毒防护，以及工具输出的自动密钥脱敏
 - **随处运行** — 笔记本 TUI、无头服务器、Docker、Telegram、Discord、Slack、Matrix、LINE、WhatsApp、HTTP
 - **高度可组合** — 每个模块都是独立 crate，添加工具、平台或传输层无需改动其他代码
@@ -170,6 +170,18 @@ security:
     - "--memory=512m"                # 限制内存用量
 
 nudge_interval: 5                    # 每 N 次迭代提醒保存记忆（0 = 关闭）
+
+# 禁用整个 toolset（为小上下文模型减少 token 占用）
+# 可选值: web, files, terminal, memory, skills, agent, browser, git, notes, json, mcp
+disabled_toolsets: [browser, git, notes]
+
+# 按名称禁用单个 tool，不影响同 toolset 的其他工具
+disabled_tools: [image_read, pdf_read, session_search]
+
+# 小上下文模型（如 27K）：设置实际上下文窗口大小
+# 并限制输出 token，确保 input + output 不超过限制
+context_window: 27168
+max_output_tokens: 2000
 
 mcp_servers:
   - name: filesystem
@@ -435,6 +447,7 @@ curl http://localhost:3000/metrics   # Prometheus 兼容
 | OpenAI Responses | `garudust config set provider codex` | `/v1/responses` 端点 |
 | Ollama | 设置 `OLLAMA_BASE_URL` | 本地运行，无需 key |
 | vLLM | 设置 `VLLM_BASE_URL` | 本地 OpenAI 兼容服务器 |
+| ThaiLLM | 设置 `THAILLM_API_KEY` | 泰国 NSTDA 主权 AI（thaillm.or.th） |
 | 其他 OpenAI 兼容 | 设置 `GARUDUST_BASE_URL` | 通用传输层 |
 
 在 `~/.garudust/.env` 中设置对应的 key，然后通过 `garudust model` 或设置 `GARUDUST_MODEL` 切换模型。

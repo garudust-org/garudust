@@ -35,7 +35,7 @@ A self-improving AI agent runtime written in Rust — delivered as a single ~10 
 - **agentskills.io compatible** — install skills from the [agentskills.io](https://agentskills.io) hub or any GitHub repo with one command; `allowed-tools`, version pinning, and scripts work out of the box
 - **One-command Tool Hub** — browse and install community-built script tools instantly with `garudust tool install <name>`; no manual folder setup, no runtime wrangling
 - **Speaks your language** — detects Thai, Chinese, Japanese, Arabic, Korean, and more automatically; no configuration needed
-- **Swap providers with one env var** — Anthropic, OpenRouter, AWS Bedrock, Ollama, vLLM, or any OpenAI-compatible endpoint
+- **Swap providers with one env var** — Anthropic, OpenRouter, AWS Bedrock, Ollama, vLLM, ThaiLLM, or any OpenAI-compatible endpoint
 - **Secure by design** — Docker sandbox, hardline command blocks, memory-poisoning protection, and automatic secret redaction from tool output
 - **Runs everywhere** — laptop TUI, headless server, Docker, Telegram, Discord, Slack, Matrix, LINE, WhatsApp, HTTP
 - **Composable** — every piece is a separate crate; add a tool, platform, or transport without touching anything else
@@ -170,6 +170,18 @@ security:
     - "--memory=512m"                # cap memory
 
 nudge_interval: 5                    # memory-save reminder every N iterations (0 = off)
+
+# Disable entire toolsets (reduces context usage on small-context models)
+# Available: web, files, terminal, memory, skills, agent, browser, git, notes, json, mcp
+disabled_toolsets: [browser, git, notes]
+
+# Disable individual tools without removing their whole toolset
+disabled_tools: [image_read, pdf_read, session_search]
+
+# For small-context models (e.g. 27K): set the actual context window size
+# and cap output tokens so input + output never exceeds the limit
+context_window: 27168
+max_output_tokens: 2000
 
 mcp_servers:
   - name: filesystem
@@ -435,6 +447,7 @@ Set the relevant tokens in `~/.garudust/.env` and start `garudust-server`. Every
 | OpenAI Responses | `garudust config set provider codex` | `/v1/responses` endpoint |
 | Ollama | Set `OLLAMA_BASE_URL` | Local, no key required |
 | vLLM | Set `VLLM_BASE_URL` | Local OpenAI-compatible server |
+| ThaiLLM | Set `THAILLM_API_KEY` | NSTDA sovereign Thai LLM (thaillm.or.th) |
 | Any OpenAI-compat | Set `GARUDUST_BASE_URL` | Generic transport |
 
 Set the relevant key in `~/.garudust/.env`, then switch models with `garudust model` or by setting `GARUDUST_MODEL`.
