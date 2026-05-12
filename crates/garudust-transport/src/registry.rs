@@ -42,6 +42,10 @@ pub fn build_transport(config: &AgentConfig) -> Arc<dyn ProviderTransport> {
             base_url.unwrap_or_else(|| "http://localhost:8000/v1".into()),
             api_key,
         )),
+        "thaillm" => Arc::new(ChatCompletionsTransport::new(
+            base_url.unwrap_or_else(|| "http://thaillm.or.th/api/v1".into()),
+            api_key,
+        )),
         _ => Arc::new(ChatCompletionsTransport::new(
             base_url.unwrap_or_else(|| "https://openrouter.ai/api/v1".into()),
             api_key,

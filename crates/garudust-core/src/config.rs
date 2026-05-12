@@ -132,6 +132,7 @@ pub struct AgentConfig {
     /// request, reducing context usage for small-context models.
     /// Available toolsets: web, files, terminal, memory, skills, agent,
     ///   browser, git, notes, json, mcp
+    /// Providers: anthropic, openrouter, vllm, ollama, bedrock, codex, thaillm
     /// Example: `disabled_toolsets: [browser, git, notes, json, agent]`
     #[serde(default)]
     pub disabled_toolsets: Vec<String>,
