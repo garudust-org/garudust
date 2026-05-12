@@ -86,6 +86,9 @@ async fn stream_turn(
                 name,
                 args_delta,
             } => {
+                if index >= 128 {
+                    continue;
+                }
                 while tc_acc.len() <= index {
                     tc_acc.push((String::new(), String::new(), String::new()));
                 }

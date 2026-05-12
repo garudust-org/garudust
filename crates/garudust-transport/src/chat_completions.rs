@@ -341,6 +341,9 @@ impl ProviderTransport for ChatCompletionsTransport {
                         for tc in tcs {
                             #[allow(clippy::cast_possible_truncation)]
                             let index = tc["index"].as_u64().unwrap_or(0) as usize;
+                            if index >= 128 {
+                                continue;
+                            }
                             while tc_acc.len() <= index {
                                 tc_acc.push((String::new(), String::new(), String::new()));
                             }
