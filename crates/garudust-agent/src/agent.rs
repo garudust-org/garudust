@@ -721,17 +721,18 @@ async fn reflect_and_save_skill(
         existing
             .iter()
             .map(|s| {
-                let source_tag = registry
-                    .skills
-                    .iter()
-                    .find(|r| r.name == s.name)
-                    .map_or("[local]", |r| {
-                        if r.source.starts_with("hub:") {
-                            "[hub]"
-                        } else {
-                            "[local]"
-                        }
-                    });
+                let source_tag =
+                    registry
+                        .skills
+                        .iter()
+                        .find(|r| r.name == s.name)
+                        .map_or("[local]", |r| {
+                            if r.source.starts_with("hub:") {
+                                "[hub]"
+                            } else {
+                                "[local]"
+                            }
+                        });
                 format!("- {} {}: {}", s.name, source_tag, s.description)
             })
             .collect::<Vec<_>>()
