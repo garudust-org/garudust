@@ -711,14 +711,32 @@ async fn reflect_and_save_skill(
 
     let transcript = build_reflection_transcript(&history);
 
-    // List existing skill names so the model can avoid duplicates.
+    // List existing skills with description and source so the model can avoid duplicates.
     let skills_dir = config.home_dir.join("skills");
     let existing = garudust_tools::toolsets::skills::load_skills_from_dir(&skills_dir).await;
-    let existing_names: Vec<&str> = existing.iter().map(|s| s.name.as_str()).collect();
-    let existing_list = if existing_names.is_empty() {
+    let registry = garudust_tools::hub::read_skill_registry(&skills_dir).await;
+    let existing_list = if existing.is_empty() {
         "None".to_string()
     } else {
-        existing_names.join(", ")
+        existing
+            .iter()
+            .map(|s| {
+                let source_tag = registry
+                    .skills
+                    .iter()
+                    .find(|r| r.name == s.name)
+                    .map(|r| {
+                        if r.source.starts_with("hub:") {
+                            "[hub]"
+                        } else {
+                            "[local]"
+                        }
+                    })
+                    .unwrap_or("[local]");
+                format!("- {} {}: {}", s.name, source_tag, s.description)
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
     };
 
     let system = "You are a skill-extraction assistant. \
@@ -741,7 +759,8 @@ async fn reflect_and_save_skill(
          - The task was trivial or a single lookup\n\
          - The content is too specific to this user's data (e.g. personal filenames, IDs)\n\
          - An existing skill already covers it\n\n\
-         Existing skills (do not duplicate): {existing_list}\n\n\
+         Existing skills (do not duplicate — [hub] = curated, [local] = self-written):\n\
+         {existing_list}\n\n\
          If you decide to save: call write_skill once with a concise name \
          (alphanumeric/hyphens only), a one-line description, and clear step-by-step body.\n\
          If not worth saving: reply with only the word \"no_skill\".\n\n\
