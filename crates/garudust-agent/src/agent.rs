@@ -725,14 +725,13 @@ async fn reflect_and_save_skill(
                     .skills
                     .iter()
                     .find(|r| r.name == s.name)
-                    .map(|r| {
+                    .map_or("[local]", |r| {
                         if r.source.starts_with("hub:") {
                             "[hub]"
                         } else {
                             "[local]"
                         }
-                    })
-                    .unwrap_or("[local]");
+                    });
                 format!("- {} {}: {}", s.name, source_tag, s.description)
             })
             .collect::<Vec<_>>()
