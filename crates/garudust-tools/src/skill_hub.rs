@@ -3,6 +3,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{bail, Context, Result};
 use serde::Deserialize;
 
+use crate::hub::{read_skill_registry, write_skill_registry, SkillEntry};
+
 const RAW_BASE: &str = "https://raw.githubusercontent.com";
 const GITHUB_API: &str = "https://api.github.com";
 
@@ -227,6 +229,21 @@ pub async fn install_skill(source: &str, skill_name: &str, skills_dir: &Path) ->
         download_scripts_github(&owner, &repo, &path, &dest_dir).await?;
     }
 
+    // Extract version from SKILL.md frontmatter for registry
+    let version = crate::toolsets::skills::parse_skill_md(&content, dest_dir.join("SKILL.md"))
+        .and_then(|s| s.version)
+        .unwrap_or_else(|| "1.0.0".to_string());
+
+    // Update registry — mark as local (installed from external URL/GitHub, not garudust-hub)
+    let mut registry = read_skill_registry(skills_dir).await;
+    registry.skills.retain(|s| s.name != name);
+    registry.skills.push(SkillEntry {
+        name: name.clone(),
+        version,
+        source: "local".to_string(),
+    });
+    let _ = write_skill_registry(skills_dir, &registry).await;
+
     Ok(name)
 }
 
@@ -253,12 +270,18 @@ pub async fn list_installed(skills_dir: &Path) -> Vec<InstalledSkill> {
 
 // ── Uninstall ─────────────────────────────────────────────────────────────────
 
-/// Remove a skill folder from `skills_dir`.
+/// Remove a skill folder from `skills_dir` and clean up the registry.
 pub async fn uninstall_skill(skill_name: &str, skills_dir: &Path) -> Result<()> {
     let target_dir = find_skill_dir(skills_dir, skill_name).await?;
     tokio::fs::remove_dir_all(&target_dir)
         .await
-        .with_context(|| format!("remove {}", target_dir.display()))
+        .with_context(|| format!("remove {}", target_dir.display()))?;
+
+    let mut registry = read_skill_registry(skills_dir).await;
+    registry.skills.retain(|s| s.name != skill_name);
+    let _ = write_skill_registry(skills_dir, &registry).await;
+
+    Ok(())
 }
 
 /// Walk `skills_dir` recursively to find the folder whose SKILL.md has `name: <skill_name>`.

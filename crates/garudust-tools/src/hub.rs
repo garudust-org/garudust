@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
+use tracing::warn;
 
 pub const DEFAULT_HUB: &str = "garudust-org/garudust-hub";
 
@@ -201,6 +202,26 @@ pub async fn install_skill_from_hub(repo: &str, skill_name: &str, skills_dir: &P
         }
     }
 
+    // Conflict detection: warn if overriding a locally-written skill
+    let mut registry = read_skill_registry(skills_dir).await;
+    if let Some(existing) = registry.skills.iter().find(|s| s.name == entry.name) {
+        if existing.source == "local" {
+            warn!(
+                skill = %entry.name,
+                "overriding locally-written skill with hub version — local changes will be lost"
+            );
+        }
+    }
+
+    // Update registry
+    registry.skills.retain(|s| s.name != entry.name);
+    registry.skills.push(SkillEntry {
+        name: entry.name.clone(),
+        version: entry.version.clone(),
+        source: format!("hub:{repo}"),
+    });
+    write_skill_registry(skills_dir, &registry).await?;
+
     Ok(())
 }
 
@@ -285,6 +306,42 @@ pub async fn read_registry(tools_dir: &Path) -> InstalledRegistry {
 
 pub async fn write_registry(tools_dir: &Path, registry: &InstalledRegistry) -> Result<()> {
     let path = registry_path(tools_dir);
+    let text = serde_json::to_string_pretty(registry)?;
+    tokio::fs::write(&path, text)
+        .await
+        .with_context(|| format!("write {}", path.display()))
+}
+
+// ── Skill Registry ────────────────────────────────────────────────────────────
+
+fn skill_registry_path(skills_dir: &Path) -> PathBuf {
+    skills_dir.join("registry.json")
+}
+
+#[derive(Serialize, Deserialize, Default)]
+pub struct SkillRegistry {
+    #[serde(default)]
+    pub skills: Vec<SkillEntry>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct SkillEntry {
+    pub name: String,
+    pub version: String,
+    /// `"hub:<owner>/<repo>"` for hub-installed, `"local"` for self-written.
+    pub source: String,
+}
+
+pub async fn read_skill_registry(skills_dir: &Path) -> SkillRegistry {
+    let path = skill_registry_path(skills_dir);
+    let Ok(text) = tokio::fs::read_to_string(&path).await else {
+        return SkillRegistry::default();
+    };
+    serde_json::from_str(&text).unwrap_or_default()
+}
+
+pub async fn write_skill_registry(skills_dir: &Path, registry: &SkillRegistry) -> Result<()> {
+    let path = skill_registry_path(skills_dir);
     let text = serde_json::to_string_pretty(registry)?;
     tokio::fs::write(&path, text)
         .await

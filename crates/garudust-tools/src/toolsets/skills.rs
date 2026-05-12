@@ -338,10 +338,18 @@ impl Tool for WriteSkill {
             _ => String::new(),
         };
 
-        let skill_dir = ctx.config.home_dir.join("skills").join(name);
+        let skills_dir = ctx.config.home_dir.join("skills");
+        let skill_dir = skills_dir.join(name);
         tokio::fs::create_dir_all(&skill_dir)
             .await
             .map_err(|e| ToolError::Execution(format!("failed to create skill dir: {e}")))?;
+
+        // Conflict detection: check if this name belongs to a hub-installed skill
+        let mut registry = crate::hub::read_skill_registry(&skills_dir).await;
+        let hub_override = registry
+            .skills
+            .iter()
+            .any(|s| s.name == name && s.source.starts_with("hub:"));
 
         let content = format!(
             "---\nname: {name}\ndescription: {description}\nversion: {version}\n{permissions_block}---\n\n{body}\n"
@@ -352,10 +360,25 @@ impl Tool for WriteSkill {
             .await
             .map_err(|e| ToolError::Execution(format!("failed to write skill: {e}")))?;
 
-        Ok(ToolResult::ok(
-            "",
-            format!("Skill '{name}' saved to {}", skill_path.display()),
-        ))
+        // Update registry — mark as local
+        registry.skills.retain(|s| s.name != name);
+        registry.skills.push(crate::hub::SkillEntry {
+            name: name.to_string(),
+            version: version.to_string(),
+            source: "local".to_string(),
+        });
+        let _ = crate::hub::write_skill_registry(&skills_dir, &registry).await;
+
+        let mut msg = format!("Skill '{name}' saved to {}", skill_path.display());
+        if hub_override {
+            msg.push_str(
+                "\n\nWarning: this skill was originally installed from the hub. \
+                 The local version now takes precedence. \
+                 Run `garudust skill update` to restore the hub version.",
+            );
+        }
+
+        Ok(ToolResult::ok("", msg))
     }
 }
 
