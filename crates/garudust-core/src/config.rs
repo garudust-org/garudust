@@ -122,6 +122,12 @@ pub struct AgentConfig {
     /// Set via config.yaml: `reasoning_effort: medium`
     #[serde(default)]
     pub reasoning_effort: Option<ReasoningEffort>,
+    /// Maximum context window of the model in tokens.
+    /// Used by the context compressor to decide when to summarise history.
+    /// Defaults to 128 000. Set this to the actual limit for small-context models
+    /// (e.g. `context_window: 27168` for Qwen3-14B-AWQ on vLLM).
+    #[serde(default)]
+    pub context_window: Option<usize>,
 }
 
 fn default_model() -> String {
@@ -359,6 +365,7 @@ impl Default for AgentConfig {
             max_tokens_per_task: None,
             max_output_tokens: None,
             reasoning_effort: None,
+            context_window: None,
         }
     }
 }

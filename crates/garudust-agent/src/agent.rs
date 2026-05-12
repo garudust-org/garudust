@@ -165,9 +165,21 @@ impl Clone for Agent {
             memory: self.memory.clone(),
             budget: self.budget.clone(),
             config: self.config.clone(),
-            compressor: ContextCompressor::new(self.transport.clone(), comp_model),
+            compressor: build_compressor(self.transport.clone(), comp_model, &self.config),
             session_db: self.session_db.clone(),
         }
+    }
+}
+
+fn build_compressor(
+    transport: Arc<dyn ProviderTransport>,
+    model: String,
+    config: &AgentConfig,
+) -> ContextCompressor {
+    let c = ContextCompressor::new(transport, model);
+    match config.context_window {
+        Some(limit) => c.with_context_limit(limit),
+        None => c,
     }
 }
 
@@ -193,7 +205,7 @@ impl Agent {
             .model
             .clone()
             .unwrap_or_else(|| config.model.clone());
-        let compressor = ContextCompressor::new(transport.clone(), comp_model);
+        let compressor = build_compressor(transport.clone(), comp_model, &config);
         Self {
             id: Uuid::new_v4().to_string(),
             transport,
@@ -247,7 +259,7 @@ impl Agent {
             memory: self.memory.clone(),
             budget: Arc::new(IterationBudget::new(self.config.max_iterations)),
             config: self.config.clone(),
-            compressor: ContextCompressor::new(self.transport.clone(), comp_model),
+            compressor: build_compressor(self.transport.clone(), comp_model, &self.config),
             session_db: self.session_db.clone(),
         }
     }
