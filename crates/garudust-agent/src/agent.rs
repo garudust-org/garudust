@@ -45,21 +45,23 @@ use crate::prompt_builder::build_system_prompt;
 
 /// Strip any `<recalled_memory>…</recalled_memory>` blocks that a model may echo
 /// back verbatim in its response (observed with some local/quantised models).
-fn scrub_recalled_memory(text: &str) -> String {
-    const OPEN: &str = "<recalled_memory>";
-    const CLOSE: &str = "</recalled_memory>";
+fn scrub_tag_block(text: &str, open: &str, close: &str) -> String {
     let mut out = text.to_string();
-    while let Some(start) = out.find(OPEN) {
-        if let Some(rel) = out[start..].find(CLOSE) {
-            let end = start + rel + CLOSE.len();
+    while let Some(start) = out.find(open) {
+        if let Some(rel) = out[start..].find(close) {
+            let end = start + rel + close.len();
             out = format!("{}{}", out[..start].trim_end(), out[end..].trim_start());
         } else {
-            // Unclosed tag — strip everything from the tag onwards.
             out.truncate(start);
             break;
         }
     }
     out.trim().to_string()
+}
+
+fn scrub_recalled_memory(text: &str) -> String {
+    let out = scrub_tag_block(text, "<recalled_memory>", "</recalled_memory>");
+    scrub_tag_block(&out, "<untrusted_memory>", "</untrusted_memory>")
 }
 
 async fn stream_turn(
