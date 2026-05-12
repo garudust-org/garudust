@@ -568,8 +568,8 @@ tool ที่ติดตั้งจะถูกบันทึกใน `~/.g
               │  AWS Bedrock         │  │  read_file · write_file          │
               │  Codex               │  │  list_directory · terminal       │
               │  Ollama · vLLM       │  │  memory · user_profile           │
-              └──────────────────────┘  │  session_search · delegate_task  │
-                                        │  skills · + MCP (external)       │
+              │  ThaiLLM             │  │  session_search · delegate_task  │
+              └──────────────────────┘  │  skills · + hub · MCP (external) │
                                         └─────────────┬───────────────────┘
                                                       │
                                           ┌───────────┴───────────┐
@@ -585,7 +585,7 @@ tool ที่ติดตั้งจะถูกบันทึกใน `~/.g
 | Crate / Binary | บทบาท |
 |---|---|
 | `garudust-core` | Trait และ type ที่ใช้ร่วมกัน — ไม่มี I/O |
-| `garudust-transport` | LLM adapter: Anthropic, OpenAI-compat, Bedrock, Codex, Ollama, vLLM |
+| `garudust-transport` | LLM adapter: Anthropic, OpenAI-compat, Bedrock, Codex, Ollama, vLLM, ThaiLLM |
 | `garudust-tools` | Tool registry + toolset ในตัว (web, files, terminal, browser, …) |
 | `garudust-memory` | `FileMemoryStore` (markdown) + `SessionDb` (SQLite + FTS5) |
 | `garudust-agent` | Agent run loop, context compressor, prompt builder |

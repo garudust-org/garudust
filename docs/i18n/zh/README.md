@@ -566,8 +566,8 @@ yaml_to_json      —          1.0.0      node      Convert a YAML file to forma
               │  AWS Bedrock         │  │  read_file · write_file          │
               │  Codex               │  │  list_directory · terminal       │
               │  Ollama · vLLM       │  │  memory · user_profile           │
-              └──────────────────────┘  │  session_search · delegate_task  │
-                                        │  skills · + MCP (external)       │
+              │  ThaiLLM             │  │  session_search · delegate_task  │
+              └──────────────────────┘  │  skills · + hub · MCP (external) │
                                         └─────────────┬───────────────────┘
                                                       │
                                           ┌───────────┴───────────┐
@@ -583,7 +583,7 @@ yaml_to_json      —          1.0.0      node      Convert a YAML file to forma
 | Crate / 二进制 | 职责 |
 |---|---|
 | `garudust-core` | 共享 trait 和类型 — 零 I/O |
-| `garudust-transport` | LLM 适配器：Anthropic、OpenAI-compat、Bedrock、Codex、Ollama、vLLM |
+| `garudust-transport` | LLM 适配器：Anthropic、OpenAI-compat、Bedrock、Codex、Ollama、vLLM、ThaiLLM |
 | `garudust-tools` | 工具注册表 + 内置工具集（web、files、terminal、browser 等） |
 | `garudust-memory` | `FileMemoryStore`（markdown）+ `SessionDb`（SQLite + FTS5） |
 | `garudust-agent` | Agent 运行循环、上下文压缩器、提示构建器 |

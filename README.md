@@ -567,8 +567,8 @@ To contribute a tool, open a PR at [garudust-org/garudust-hub](https://github.co
               │  AWS Bedrock         │  │  read_file · write_file          │
               │  Codex               │  │  list_directory · terminal       │
               │  Ollama · vLLM       │  │  memory · user_profile           │
-              └──────────────────────┘  │  session_search · delegate_task  │
-                                        │  skills · + MCP (external)       │
+              │  ThaiLLM             │  │  session_search · delegate_task  │
+              └──────────────────────┘  │  skills · + hub · MCP (external) │
                                         └─────────────┬───────────────────┘
                                                       │
                                           ┌───────────┴───────────┐
@@ -584,7 +584,7 @@ To contribute a tool, open a PR at [garudust-org/garudust-hub](https://github.co
 | Crate / Binary | Role |
 |---|---|
 | `garudust-core` | Shared traits & types — zero I/O |
-| `garudust-transport` | LLM adapters: Anthropic, OpenAI-compat, Bedrock, Codex, Ollama, vLLM |
+| `garudust-transport` | LLM adapters: Anthropic, OpenAI-compat, Bedrock, Codex, Ollama, vLLM, ThaiLLM |
 | `garudust-tools` | Tool registry + built-in toolsets (web, files, terminal, browser, …) |
 | `garudust-memory` | `FileMemoryStore` (markdown) + `SessionDb` (SQLite + FTS5) |
 | `garudust-agent` | Agent run loop, context compressor, prompt builder |
