@@ -442,6 +442,9 @@ impl AgentConfig {
             if let Some(k) = env_or_dotenv("VLLM_API_KEY", dotenv) {
                 config.api_key = Some(k);
             }
+        } else if let Some(k) = env_or_dotenv("THAILLM_API_KEY", dotenv) {
+            config.api_key = Some(k);
+            config.provider = "thaillm".into();
         }
         if let Some(m) = env_or_dotenv("GARUDUST_MODEL", dotenv) {
             config.model = m;

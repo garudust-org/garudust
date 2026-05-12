@@ -85,7 +85,8 @@ pub async fn run() -> anyhow::Result<()> {
             "openrouter" => "2",
             "anthropic" => "3",
             "vllm" => "4",
-            "custom" => "5",
+            "thaillm" => "5",
+            "custom" => "6",
             _ => "1",
         }
     } else {
@@ -97,13 +98,15 @@ pub async fn run() -> anyhow::Result<()> {
     println!("  2) openrouter  — 200+ hosted models (openrouter.ai)");
     println!("  3) anthropic   — Claude directly");
     println!("  4) vllm        — self-hosted vLLM server");
-    println!("  5) custom      — any OpenAI-compatible endpoint");
+    println!("  5) thaillm     — ThaiLLM (NSTDA, thaillm.or.th)");
+    println!("  6) custom      — any OpenAI-compatible endpoint");
     let choice = prompt("Choose provider", Some(current_num));
     let provider = match choice.trim() {
         "2" | "openrouter" => "openrouter",
         "3" | "anthropic" => "anthropic",
         "4" | "vllm" => "vllm",
-        "5" | "custom" => "custom",
+        "5" | "thaillm" => "thaillm",
+        "6" | "custom" => "custom",
         _ => "ollama",
     };
     println!();
@@ -116,6 +119,7 @@ pub async fn run() -> anyhow::Result<()> {
         "vllm" => &["OLLAMA_BASE_URL"],
         _ => &["OLLAMA_BASE_URL", "VLLM_BASE_URL"],
     };
+
     for var in stale_base_url_vars {
         remove_env_var(&home_dir, var)?;
     }
@@ -146,6 +150,12 @@ pub async fn run() -> anyhow::Result<()> {
                 cur_key.as_deref(),
             )? {
                 env_vars.push(("VLLM_API_KEY", v));
+            }
+        }
+        "thaillm" => {
+            let cur = read_env_file(&home_dir, "THAILLM_API_KEY");
+            if let Some(v) = prompt_secret("THAILLM_API_KEY", "THAILLM_API_KEY", cur.as_deref())? {
+                env_vars.push(("THAILLM_API_KEY", v));
             }
         }
         "ollama" => {
@@ -191,6 +201,7 @@ pub async fn run() -> anyhow::Result<()> {
             "ollama" => "llama3.2",
             "anthropic" => "claude-sonnet-4-6",
             "openrouter" => "anthropic/claude-sonnet-4-6",
+            "thaillm" => "typhoon-s-thaillm-8b-instruct",
             _ => "",
         }
     };
@@ -276,7 +287,7 @@ pub async fn run() -> anyhow::Result<()> {
         .find(|(v, _)| {
             matches!(
                 *v,
-                "ANTHROPIC_API_KEY" | "OPENROUTER_API_KEY" | "VLLM_API_KEY"
+                "ANTHROPIC_API_KEY" | "OPENROUTER_API_KEY" | "VLLM_API_KEY" | "THAILLM_API_KEY"
             )
         })
         .map(|(_, k)| k.clone())
