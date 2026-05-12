@@ -1,4 +1,5 @@
-use std::{collections::HashSet, sync::Arc};
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use chrono::Utc;
 use futures::StreamExt;
@@ -380,10 +381,12 @@ impl Agent {
         ));
         let required_tools: Arc<tokio::sync::RwLock<Vec<String>>> =
             Arc::new(tokio::sync::RwLock::new(Vec::new()));
-        // Tool names actually called this session — used for required_tools check.
+        // Tool names that completed successfully — used for required_tools check.
+        // Only successful calls count; errored calls do not satisfy the requirement.
         let mut called_tools: HashSet<String> = HashSet::new();
-        // Allow one re-prompt per session to avoid infinite loops.
-        let mut required_tools_retried = false;
+        // Allow up to 3 re-prompts so the model can retry after tool errors.
+        let mut required_tools_retries: u8 = 0;
+        const MAX_REQUIRED_TOOLS_RETRIES: u8 = 3;
 
         loop {
             // Hermes-style nudge: remind the model to save memory every N tool rounds.
@@ -476,8 +479,8 @@ impl Agent {
 
             if resp.tool_calls.is_empty() || resp.stop_reason == StopReason::EndTurn {
                 // Required-tools enforcement: if any skill declared required_tools that
-                // were not called this session, inject one re-prompt and continue.
-                if !required_tools_retried {
+                // were not called successfully this session, inject a re-prompt.
+                if required_tools_retries < MAX_REQUIRED_TOOLS_RETRIES {
                     let rt = required_tools.read().await;
                     let missing: Vec<&String> =
                         rt.iter().filter(|t| !called_tools.contains(*t)).collect();
@@ -488,12 +491,12 @@ impl Agent {
                             .collect::<Vec<_>>()
                             .join(", ");
                         drop(rt);
-                        required_tools_retried = true;
-                        warn!(missing = %names, "required tools not called — injecting re-prompt");
+                        required_tools_retries += 1;
+                        warn!(missing = %names, retries = required_tools_retries, "required tools not called or failed — injecting re-prompt");
                         history.push(Message::user(format!(
-                            "[System: The following required tool(s) were not called: {names}. \
-                             You MUST call them now using the data already prepared. \
-                             Do NOT report completion until you have received their results.]"
+                            "[System: The following required tool(s) were not called or returned an error: {names}. \
+                             You MUST call them now with corrected content. \
+                             Do NOT report completion until you have received a successful result.]"
                         )));
                         continue;
                     }
@@ -559,10 +562,12 @@ impl Agent {
                 return Ok(result);
             }
 
-            // Track all tool names called this session for required_tools enforcement.
-            for tc in &resp.tool_calls {
-                called_tools.insert(tc.name.clone());
-            }
+            // Build id → name map used after execution to track successful calls.
+            let id_to_name: HashMap<String, String> = resp
+                .tool_calls
+                .iter()
+                .map(|tc| (tc.id.clone(), tc.name.clone()))
+                .collect();
 
             // Parallel tool dispatch via tokio::join_all
             // spawn_child() gives the sub-agent its own fresh budget so delegate_task
@@ -636,6 +641,25 @@ impl Agent {
                 .collect();
 
             let tool_msgs = futures::future::join_all(tool_futs).await;
+
+            // Track only successful tool calls for required_tools enforcement.
+            for msg in &tool_msgs {
+                for part in &msg.content {
+                    if let ContentPart::ToolResult {
+                        tool_use_id,
+                        is_error,
+                        ..
+                    } = part
+                    {
+                        if !is_error {
+                            if let Some(name) = id_to_name.get(tool_use_id) {
+                                called_tools.insert(name.clone());
+                            }
+                        }
+                    }
+                }
+            }
+
             history.extend(tool_msgs);
         }
     }
