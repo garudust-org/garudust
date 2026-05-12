@@ -11,6 +11,21 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.2.8] — 2026-05-12
+
+### Added
+- **Skill source registry** — `~/.garudust/skills/registry.json` tracks whether each skill was installed from the hub (`hub:<repo>`) or self-written by the agent (`local`), mirroring the existing tools registry pattern
+- **Skill conflict detection** — installing a hub skill over a locally-written skill logs a warning; using `write_skill` to overwrite a hub skill notifies the agent that a personalized local override was created (restorable with `garudust skill update`)
+- **Skill description + source in reflection prompt** — self-improvement reflection now shows `name [hub|local]: description` instead of just names, giving the model enough context to avoid semantically duplicate skills
+
+### Fixed
+- **Unbounded memory allocation in streaming** — `tc_acc` now caps tool-call index at 128; a malformed API response with a large index could previously exhaust memory
+- **`reasoning_effort` never forwarded** — `AgentConfig.reasoning_effort` was parsed from `config.yaml` but never passed to any transport; now correctly maps to Anthropic `budget_tokens`, OpenAI `reasoning_effort`, and Bedrock `thinkingConfig` (closes #105)
+- **Token estimation for non-Latin scripts** — `ContextCompressor::estimate_tokens` used `chars/4`; `String::len()` already returns byte count so behaviour is unchanged, but the intent is now explicit (closes #107)
+- **Logo updated** — README (EN/TH/ZH) now uses `logo-agent.jpg`
+
+---
+
 ## [0.2.7] — 2026-05-11
 
 ### Added
