@@ -134,11 +134,6 @@ pub async fn run() -> anyhow::Result<()> {
             let cur_url = existing
                 .base_url
                 .as_deref()
-                .or_else(|| {
-                    read_env_file(&home_dir, "VLLM_BASE_URL")
-                        .as_deref()
-                        .map(|_| "")
-                })
                 .unwrap_or("http://localhost:8000/v1");
             let url = prompt("base_url (vLLM server)", Some(cur_url));
             let url = if url.is_empty() {
@@ -280,13 +275,19 @@ pub async fn run() -> anyhow::Result<()> {
         AgentConfig::set_env_var(&home_dir, var, val)?;
     }
 
-    let mut new_config = AgentConfig {
-        home_dir: home_dir.clone(),
-        provider: provider.to_string(),
-        model,
-        base_url: custom_base_url,
-        ..AgentConfig::default()
+    // Preserve existing YAML settings (compression, context_window, disabled_toolsets, etc.)
+    // and only overwrite the fields that setup controls.
+    let yaml_path = home_dir.join("config.yaml");
+    let mut new_config: AgentConfig = if yaml_path.exists() {
+        let src = std::fs::read_to_string(&yaml_path).unwrap_or_default();
+        serde_yaml::from_str(&src).unwrap_or_default()
+    } else {
+        AgentConfig::default()
     };
+    new_config.home_dir = home_dir.clone();
+    new_config.provider = provider.to_string();
+    new_config.model = model;
+    new_config.base_url = custom_base_url;
     new_config.save_yaml()?;
 
     println!("Configuration saved to {}", home_dir.display());

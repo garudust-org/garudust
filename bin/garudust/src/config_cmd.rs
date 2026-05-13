@@ -17,7 +17,6 @@ const SECRET_KEYS: &[&str] = &[
 ];
 
 const ENV_KEYS: &[&str] = &[
-    "GARUDUST_BASE_URL",
     "GARUDUST_APPROVAL_MODE",
     "GARUDUST_RATE_LIMIT",
     "MATRIX_HOMESERVER",
@@ -30,9 +29,6 @@ const YAML_KEYS: &[&str] = &[
     "base_url",
     "max_iterations",
     "tool_delay_ms",
-    "GARUDUST_MODEL",
-    "VLLM_BASE_URL",
-    "OLLAMA_BASE_URL",
 ];
 
 pub fn show(config: &AgentConfig) {
@@ -146,30 +142,14 @@ fn update_yaml(key: &str, value: &str, home_dir: &Path) -> anyhow::Result<()> {
     config.home_dir = home_dir.to_path_buf();
 
     match key {
-        "model" | "GARUDUST_MODEL" => config.model = value.into(),
+        "model" => config.model = value.into(),
         "provider" => config.provider = value.into(),
-        "base_url" | "GARUDUST_BASE_URL" => {
+        "base_url" => {
             config.base_url = if value.is_empty() {
                 None
             } else {
                 Some(value.into())
             }
-        }
-        "VLLM_BASE_URL" => {
-            config.provider = "vllm".into();
-            config.base_url = if value.is_empty() {
-                None
-            } else {
-                Some(value.into())
-            };
-        }
-        "OLLAMA_BASE_URL" => {
-            config.provider = "ollama".into();
-            config.base_url = if value.is_empty() {
-                None
-            } else {
-                Some(value.into())
-            };
         }
         "max_iterations" => config.max_iterations = value.parse()?,
         "tool_delay_ms" => config.tool_delay_ms = value.parse()?,

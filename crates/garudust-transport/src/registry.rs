@@ -15,7 +15,10 @@ pub fn build_transport(config: &AgentConfig) -> Arc<dyn ProviderTransport> {
     let api_key = config.api_key.clone().unwrap_or_default();
 
     let base: Arc<dyn ProviderTransport> = match config.provider.as_str() {
-        "anthropic" => Arc::new(AnthropicTransport::new(api_key)),
+        "anthropic" => match base_url {
+            Some(url) => Arc::new(ChatCompletionsTransport::new(url, api_key)),
+            None => Arc::new(AnthropicTransport::new(api_key)),
+        },
         "codex" => {
             let mut t = CodexTransport::new(api_key);
             if let Some(url) = base_url {
