@@ -123,12 +123,12 @@ fn oai_reasoning_effort(effort: Option<&ReasoningEffort>) -> Option<&'static str
 }
 
 /// Choose a safe max-tokens value. When the caller specifies a limit, use it.
-/// When unspecified but the context window is known, cap at one quarter of it
+/// When unspecified but the context window is known, cap at one eighth of it
 /// so there is always headroom for input tokens. Falls back to 4096.
 fn safe_max_tokens(config: &InferenceConfig) -> u32 {
     config
         .max_tokens
-        .unwrap_or_else(|| config.context_limit.map_or(4096, |c| (c / 4).max(2048)))
+        .unwrap_or_else(|| config.context_limit.map_or(4096, |c| (c / 8).max(512)))
 }
 
 /// Return true when the 400 body describes a context-length overflow.
@@ -244,9 +244,10 @@ impl ProviderTransport for ChatCompletionsTransport {
         if status == 400 {
             if let Some(ctx) = config.context_limit {
                 if is_context_overflow(&text) {
-                    for divisor in [8u32, 16, 32] {
+                    for divisor in [16u32, 32, 64] {
                         let safe_max = (ctx / divisor).max(256);
                         body[self.tokens_param] = json!(safe_max);
+                        tracing::warn!(divisor, safe_max, "context overflow, retrying with reduced max_tokens");
                         let r = self
                             .authorized(self.client.post(self.endpoint()))
                             .json(&body)
@@ -339,8 +340,9 @@ impl ProviderTransport for ChatCompletionsTransport {
                     if let Some(ctx) = config.context_limit {
                         if is_context_overflow(&text) {
                             let mut found = None;
-                            for divisor in [8u32, 16, 32] {
+                            for divisor in [16u32, 32, 64] {
                                 let safe_max = (ctx / divisor).max(256);
+                                tracing::warn!(divisor, safe_max, "stream context overflow, retrying with reduced max_tokens");
                                 body[self.tokens_param] = json!(safe_max);
                                 let r2 = self
                                     .authorized(self.client.post(self.endpoint()))
