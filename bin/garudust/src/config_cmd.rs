@@ -39,10 +39,20 @@ pub fn show(config: &AgentConfig) {
     println!("model           : {}", config.model);
     println!("max_iterations  : {}", config.max_iterations);
     println!("tool_delay_ms   : {}", config.tool_delay_ms);
-    println!(
-        "base_url        : {}",
-        config.base_url.as_deref().unwrap_or("(default)")
-    );
+    let effective_url =
+        config
+            .base_url
+            .as_deref()
+            .unwrap_or_else(|| match config.provider.as_str() {
+                "anthropic" => "https://api.anthropic.com/v1/messages (native)",
+                "openrouter" => "https://openrouter.ai/api/v1",
+                "ollama" => "http://localhost:11434/v1",
+                "vllm" => "http://localhost:8000/v1",
+                "thaillm" => "http://thaillm.or.th/api/v1",
+                "bedrock" => "AWS SDK (no base_url)",
+                _ => "(default)",
+            });
+    println!("base_url        : {effective_url}");
     println!("approval_mode   : {}", config.security.approval_mode);
     let key_display = match &config.api_key {
         Some(k) if k.len() > 10 => format!("{}…{}", &k[..6], &k[k.len() - 4..]),
