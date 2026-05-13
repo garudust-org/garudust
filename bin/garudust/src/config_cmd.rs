@@ -1,7 +1,7 @@
 use std::io::{self, Write};
 use std::path::Path;
 
-use garudust_core::config::AgentConfig;
+use garudust_core::config::{AgentConfig, WebhookPlatformConfig};
 
 const SECRET_KEYS: &[&str] = &[
     "OPENROUTER_API_KEY",
@@ -30,6 +30,16 @@ const YAML_KEYS: &[&str] = &[
     "max_iterations",
     "tool_delay_ms",
 ];
+
+fn print_platform(label: &str, cfg: Option<&WebhookPlatformConfig>) {
+    match cfg {
+        Some(c) => println!(
+            "{label}: enabled={}, port={}, path={}",
+            c.enabled, c.port, c.webhook_path
+        ),
+        None => println!("{label}: not configured"),
+    }
+}
 
 pub fn show(config: &AgentConfig) {
     println!("Garudust Config");
@@ -63,6 +73,13 @@ pub fn show(config: &AgentConfig) {
         "compression     : enabled={}, threshold={}",
         config.compression.enabled, config.compression.threshold_fraction
     );
+    println!();
+
+    println!("Webhook Platforms (config.yaml → platforms.*)");
+    println!("{}", "─".repeat(48));
+    print_platform("webhook ", config.platforms.webhook.as_ref());
+    print_platform("line    ", config.platforms.line.as_ref());
+    print_platform("whatsapp", config.platforms.whatsapp.as_ref());
     println!();
 
     let yaml_path = config.home_dir.join("config.yaml");

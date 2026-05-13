@@ -322,13 +322,20 @@ async fn api_push(client: &reqwest::Client, token: &str, to: &str, text: &str) -
 
 pub struct LineAdapter {
     port: u16,
+    webhook_path: String,
     inner: Arc<Inner>,
 }
 
 impl LineAdapter {
-    pub fn new(channel_token: String, channel_secret: String, port: u16) -> Self {
+    pub fn new(
+        channel_token: String,
+        channel_secret: String,
+        port: u16,
+        webhook_path: String,
+    ) -> Self {
         Self {
             port,
+            webhook_path,
             inner: Arc::new(Inner {
                 channel_token,
                 channel_secret,
@@ -424,15 +431,16 @@ impl PlatformAdapter for LineAdapter {
         });
 
         let app = Router::new()
-            .route("/line", post(handle_webhook))
+            .route(&self.webhook_path, post(handle_webhook))
             .with_state(state);
 
         let port = self.port;
+        let path = self.webhook_path.clone();
         let listener = TcpListener::bind(format!("0.0.0.0:{port}"))
             .await
             .map_err(|e| PlatformError::Connection(e.to_string()))?;
 
-        tracing::info!("LINE webhook listening on 0.0.0.0:{port}/line");
+        tracing::info!("LINE webhook listening on 0.0.0.0:{port}{path}");
 
         tokio::spawn(async move {
             if let Err(e) = axum::serve(listener, app).await {

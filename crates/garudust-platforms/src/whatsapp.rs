@@ -221,6 +221,7 @@ async fn handle_webhook(
 
 pub struct WhatsAppAdapter {
     port: u16,
+    webhook_path: String,
     inner: Arc<Inner>,
 }
 
@@ -232,12 +233,14 @@ impl WhatsAppAdapter {
     /// * `app_secret`      — App secret for HMAC signature verification (pass empty string to skip)
     /// * `verify_token`    — Token used during webhook verification
     /// * `port`            — Local port to listen on for incoming webhooks
+    /// * `webhook_path`    — HTTP path the adapter listens on (e.g. `/webhooks/whatsapp`)
     pub fn new(
         access_token: String,
         phone_number_id: String,
         app_secret: String,
         verify_token: String,
         port: u16,
+        webhook_path: String,
     ) -> Self {
         if app_secret.is_empty() {
             tracing::warn!(
@@ -248,6 +251,7 @@ impl WhatsAppAdapter {
         }
         Self {
             port,
+            webhook_path,
             inner: Arc::new(Inner {
                 access_token,
                 phone_number_id,
@@ -305,16 +309,17 @@ impl PlatformAdapter for WhatsAppAdapter {
         });
 
         let router = Router::new()
-            .route("/whatsapp", get(handle_verify))
-            .route("/whatsapp", post(handle_webhook))
+            .route(&self.webhook_path, get(handle_verify))
+            .route(&self.webhook_path, post(handle_webhook))
             .with_state(state);
 
         let port = self.port;
+        let path = self.webhook_path.clone();
         let listener = TcpListener::bind(format!("0.0.0.0:{port}"))
             .await
             .map_err(|e| PlatformError::Connection(e.to_string()))?;
 
-        tracing::info!("WhatsApp adapter listening on 0.0.0.0:{port}");
+        tracing::info!("WhatsApp adapter listening on 0.0.0.0:{port}{path}");
         tokio::spawn(async move {
             if let Err(e) = axum::serve(listener, router).await {
                 tracing::error!("WhatsApp server error: {e}");

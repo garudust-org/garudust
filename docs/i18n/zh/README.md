@@ -119,10 +119,12 @@ echo "OPENROUTER_API_KEY=sk-or-..." > .env
 docker compose up
 
 # 生产环境：沙箱 + LINE 机器人 + 每日定时任务
+# 1. 将密钥写入 ~/.garudust/.env: LINE_CHANNEL_TOKEN, LINE_CHANNEL_SECRET
+# 2. 在 ~/.garudust/config.yaml 启用 LINE 适配器:
+#      platforms:
+#        line: { enabled: true, port: 3002, webhook_path: /line }
 GARUDUST_TERMINAL_SANDBOX=docker \
 GARUDUST_API_KEY=my-secret-token \
-LINE_CHANNEL_TOKEN=<channel-access-token> \
-LINE_CHANNEL_SECRET=<32-char-hex-secret> \
 GARUDUST_CRON_JOBS="0 9 * * *=向 LINE 发送晨报" \
 GARUDUST_MEMORY_CRON="0 3 * * *" \
 garudust-server --port 3000 --approval-mode smart
@@ -209,18 +211,26 @@ garudust-server --telegram-token $TELEGRAM_TOKEN --anthropic-key $ANTHROPIC_API_
 
 #### LINE Messaging API
 
+基于 Webhook 的适配器（LINE、WhatsApp、通用 webhook）在 `~/.garudust/config.yaml` 的 `platforms.*` 中配置；密钥仍保留在 `~/.garudust/.env`。
+
 ```bash
 # ~/.garudust/.env
 OPENROUTER_API_KEY=sk-or-...
 LINE_CHANNEL_TOKEN=<channel-access-token>
 LINE_CHANNEL_SECRET=<32位十六进制密钥>
+```
 
-# 启动（Webhook 接收地址：https://your-host:3002/line）
-garudust-server \
-  --api-key $OPENROUTER_API_KEY \
-  --line-channel-token $LINE_CHANNEL_TOKEN \
-  --line-channel-secret $LINE_CHANNEL_SECRET \
-  --line-port 3002
+```yaml
+# ~/.garudust/config.yaml
+platforms:
+  line:
+    enabled: true
+    port: 3002
+    webhook_path: /line   # Webhook 接收地址：https://your-host:3002/line
+```
+
+```bash
+garudust-server --port 3000
 ```
 
 #### WhatsApp Business
@@ -232,20 +242,24 @@ WHATSAPP_ACCESS_TOKEN=EAAxxxxxxx
 WHATSAPP_PHONE_NUMBER_ID=123456789012345
 WHATSAPP_VERIFY_TOKEN=my_verify_token
 WHATSAPP_APP_SECRET=<32位十六进制密钥>   # 可选 — 留空则跳过 HMAC 验证
+```
 
-# 启动（Webhook 接收地址：https://your-host:3003/whatsapp）
-garudust-server \
-  --anthropic-key $ANTHROPIC_API_KEY \
-  --whatsapp-access-token $WHATSAPP_ACCESS_TOKEN \
-  --whatsapp-phone-number-id $WHATSAPP_PHONE_NUMBER_ID \
-  --whatsapp-verify-token $WHATSAPP_VERIFY_TOKEN \
-  --whatsapp-app-secret $WHATSAPP_APP_SECRET \
-  --whatsapp-port 3003
+```yaml
+# ~/.garudust/config.yaml
+platforms:
+  whatsapp:
+    enabled: true
+    port: 3003
+    webhook_path: /whatsapp
+```
+
+```bash
+garudust-server --port 3000
 ```
 
 #### 多平台同时运行（Telegram + LINE + WhatsApp + HTTP Webhook）
 
-所有适配器运行在同一进程中 — 设置所需令牌，其余平台自动跳过。
+所有适配器运行在同一进程中 — 密钥放在 `.env`，启用/端口/路径放在 `config.yaml`。`enabled: false` 或缺失令牌的平台会被静默跳过。
 
 ```bash
 # ~/.garudust/.env
@@ -256,21 +270,30 @@ LINE_CHANNEL_SECRET=<secret>
 WHATSAPP_ACCESS_TOKEN=EAAxxx
 WHATSAPP_PHONE_NUMBER_ID=123456789012345
 WHATSAPP_VERIFY_TOKEN=my_verify_token
-
-garudust-server \
-  --anthropic-key      $ANTHROPIC_API_KEY \
-  --telegram-token     $TELEGRAM_TOKEN \
-  --line-channel-token $LINE_CHANNEL_TOKEN \
-  --line-channel-secret $LINE_CHANNEL_SECRET \
-  --whatsapp-access-token    $WHATSAPP_ACCESS_TOKEN \
-  --whatsapp-phone-number-id $WHATSAPP_PHONE_NUMBER_ID \
-  --whatsapp-verify-token    $WHATSAPP_VERIFY_TOKEN \
-  --webhook-port 3001 \
-  --line-port    3002 \
-  --whatsapp-port 3003
 ```
 
-> **提示：** 使用 `garudust setup`（模式 2 — Full）通过交互向导自动写入 `~/.garudust/.env`。
+```yaml
+# ~/.garudust/config.yaml — 启用基于 webhook 的适配器
+platforms:
+  webhook:
+    enabled: true
+    port: 3001
+    webhook_path: /webhook
+  line:
+    enabled: true
+    port: 3002
+    webhook_path: /line
+  whatsapp:
+    enabled: true
+    port: 3003
+    webhook_path: /whatsapp
+```
+
+```bash
+garudust-server --port 3000
+```
+
+> **提示：** 使用 `garudust setup`（模式 2 — Full）通过交互向导自动写入 `~/.garudust/.env` 和对应的 `platforms.*` 配置块到 `~/.garudust/config.yaml`。
 
 ## 安全性
 
@@ -421,9 +444,9 @@ curl http://localhost:3000/metrics   # Prometheus 兼容
 | Discord | `DISCORD_TOKEN` |
 | Slack | `SLACK_BOT_TOKEN`、`SLACK_APP_TOKEN` |
 | Matrix | `MATRIX_HOMESERVER`、`MATRIX_USER`、`MATRIX_PASSWORD` |
-| LINE | `LINE_CHANNEL_TOKEN`、`LINE_CHANNEL_SECRET` |
-| WhatsApp | `WHATSAPP_ACCESS_TOKEN`、`WHATSAPP_PHONE_NUMBER_ID`、`WHATSAPP_VERIFY_TOKEN` |
-| Webhook | 始终开启，监听 `POST /webhook` — 无需令牌 |
+| LINE | `LINE_CHANNEL_TOKEN`、`LINE_CHANNEL_SECRET` + `platforms.line.enabled: true` |
+| WhatsApp | `WHATSAPP_ACCESS_TOKEN`、`WHATSAPP_PHONE_NUMBER_ID`、`WHATSAPP_VERIFY_TOKEN` + `platforms.whatsapp.enabled: true` |
+| Webhook | 默认开启，监听 `POST /webhook`（端口 3001）— 通过 `platforms.webhook` 配置 |
 
 **Telegram** — 通过 [@BotFather](https://t.me/botfather) 创建机器人，复制 token。
 
@@ -433,9 +456,9 @@ curl http://localhost:3000/metrics   # Prometheus 兼容
 
 **Matrix** — 支持任意 homeserver（matrix.org、Synapse、Dendrite 等）。
 
-**LINE** — 在 [developers.line.biz](https://developers.line.biz/console/) 创建 Messaging API channel，复制 **Channel access token** 和 **Channel secret**，设置 `GARUDUST_LINE_PORT`（默认 `3002`），并在 LINE 控制台将 Webhook URL 设为 `https://your-host:3002/line`。
+**LINE** — 在 [developers.line.biz](https://developers.line.biz/console/) 创建 Messaging API channel，将 **Channel access token** 和 **Channel secret** 写入 `~/.garudust/.env`，然后在 `~/.garudust/config.yaml` 中添加 `platforms.line: { enabled: true, port: 3002, webhook_path: /line }`，并在 LINE 控制台将 Webhook URL 设为 `https://your-host:3002/line`。
 
-**WhatsApp** — 在 [developers.facebook.com](https://developers.facebook.com/) 创建 Meta 应用并添加 **WhatsApp** 产品，复制 **Access token** 和 **Phone number ID**。设置 `GARUDUST_WHATSAPP_PORT`（默认 `3003`），并在 Meta 控制台将 Webhook URL 设为 `https://your-host:3003/whatsapp`。如需启用 HMAC 签名验证，还需设置 `WHATSAPP_APP_SECRET`。
+**WhatsApp** — 在 [developers.facebook.com](https://developers.facebook.com/) 创建 Meta 应用并添加 **WhatsApp** 产品，将 **Access token** 和 **Phone number ID** 写入 `~/.garudust/.env`，然后在 `~/.garudust/config.yaml` 中添加 `platforms.whatsapp: { enabled: true, port: 3003, webhook_path: /whatsapp }`，并在 Meta 控制台将 Webhook URL 设为 `https://your-host:3003/whatsapp`。如需启用 HMAC 签名验证，还需设置 `WHATSAPP_APP_SECRET`。
 
 ---
 

@@ -8,7 +8,7 @@ use crossterm::{
     style::{Attribute, Print, SetAttribute},
     terminal::{self, ClearType},
 };
-use garudust_core::config::AgentConfig;
+use garudust_core::config::{AgentConfig, WebhookPlatformConfig};
 
 const PLATFORMS: &[(&str, &[(&str, &str)])] = &[
     ("Telegram", &[("Telegram bot token", "TELEGRAM_TOKEN")]),
@@ -227,6 +227,10 @@ pub async fn run() -> anyhow::Result<()> {
     println!();
 
     // ── Optional tools + platform adapters (Full mode) ───────────────────────
+    // Tracks LINE/WhatsApp selections so the post-yaml-load step can flip
+    // `enabled` on the corresponding `platforms.*` block. `None` in Quick mode
+    // means "don't touch the yaml's platforms section at all".
+    let mut webhook_platform_selections: Option<Vec<(&'static str, bool)>> = None;
     if full {
         println!("Optional Tools (Enter to keep current / skip):");
         let cur_brave = read_env_file(&home_dir, "BRAVE_SEARCH_API_KEY");
@@ -255,6 +259,14 @@ pub async fn run() -> anyhow::Result<()> {
         let names: Vec<&str> = PLATFORMS.iter().map(|(name, _)| *name).collect();
         let selected = multi_select(&names, &preselected)?;
         println!();
+
+        webhook_platform_selections = Some(
+            PLATFORMS
+                .iter()
+                .zip(selected.iter())
+                .map(|((name, _), sel)| (*name, *sel))
+                .collect(),
+        );
 
         for (i, (_, fields)) in PLATFORMS.iter().enumerate() {
             if !selected[i] {
@@ -288,6 +300,28 @@ pub async fn run() -> anyhow::Result<()> {
     new_config.provider = provider.to_string();
     new_config.model = model;
     new_config.base_url = custom_base_url;
+
+    // Sync webhook-based platform adapters (LINE, WhatsApp) into yaml. Tokens
+    // live in .env; this block controls whether the adapter starts and on which
+    // port/path. Existing port/webhook_path is preserved when present.
+    if let Some(selections) = webhook_platform_selections {
+        for (name, is_selected) in selections {
+            match name {
+                "LINE" => sync_platform(
+                    &mut new_config.platforms.line,
+                    is_selected,
+                    WebhookPlatformConfig::default_line,
+                ),
+                "WhatsApp" => sync_platform(
+                    &mut new_config.platforms.whatsapp,
+                    is_selected,
+                    WebhookPlatformConfig::default_whatsapp,
+                ),
+                _ => {} // Telegram/Discord/Slack/Matrix don't use webhook config
+            }
+        }
+    }
+
     new_config.save_yaml()?;
 
     println!("Configuration saved to {}", home_dir.display());
@@ -313,6 +347,25 @@ pub async fn run() -> anyhow::Result<()> {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+/// Sync a webhook-based platform's yaml block with the wizard's selection.
+/// - Selected + block exists → flip `enabled = true`, keep port/path.
+/// - Selected + no block → create one from `make_default`.
+/// - Unselected + block exists → flip `enabled = false`, keep port/path so a
+///   later re-enable preserves the user's customizations.
+/// - Unselected + no block → no-op.
+fn sync_platform(
+    slot: &mut Option<WebhookPlatformConfig>,
+    is_selected: bool,
+    make_default: fn() -> WebhookPlatformConfig,
+) {
+    match (is_selected, slot.as_mut()) {
+        (true, Some(cfg)) => cfg.enabled = true,
+        (true, None) => *slot = Some(make_default()),
+        (false, Some(cfg)) => cfg.enabled = false,
+        (false, None) => {}
+    }
+}
 
 /// Validate a token value against known format rules.
 /// Returns an error hint string when the value looks wrong, or `None` when OK.

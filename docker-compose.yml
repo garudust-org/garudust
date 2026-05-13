@@ -3,8 +3,9 @@ services:
     build: .
     ports:
       - "3000:3000"   # HTTP API
-      - "3001:3001"   # Webhook adapter
-      - "3002:3002"   # LINE adapter
+      - "3001:3001"   # generic webhook (platforms.webhook in config.yaml)
+      - "3002:3002"   # LINE adapter      (platforms.line in config.yaml)
+      - "3003:3003"   # WhatsApp adapter  (platforms.whatsapp in config.yaml)
     environment:
       # LLM provider — set at least one
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
@@ -34,8 +35,14 @@ services:
       MATRIX_HOMESERVER: ${MATRIX_HOMESERVER:-}
       MATRIX_USER: ${MATRIX_USER:-}
       MATRIX_PASSWORD: ${MATRIX_PASSWORD:-}
+      # Webhook-based adapters: tokens here; enable + port + webhook_path
+      # are configured in /root/.garudust/config.yaml under `platforms.*`.
       LINE_CHANNEL_TOKEN: ${LINE_CHANNEL_TOKEN:-}
       LINE_CHANNEL_SECRET: ${LINE_CHANNEL_SECRET:-}
+      WHATSAPP_ACCESS_TOKEN: ${WHATSAPP_ACCESS_TOKEN:-}
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
+      WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-}
+      WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-}
     volumes:
       - garudust-data:/root/.garudust
     restart: unless-stopped

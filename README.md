@@ -119,10 +119,12 @@ echo "OPENROUTER_API_KEY=sk-or-..." > .env
 docker compose up
 
 # Production: sandbox + LINE bot + daily cron
+# 1. Put secrets in ~/.garudust/.env:  LINE_CHANNEL_TOKEN, LINE_CHANNEL_SECRET
+# 2. Enable the LINE adapter in ~/.garudust/config.yaml:
+#      platforms:
+#        line: { enabled: true, port: 3002, webhook_path: /line }
 GARUDUST_TERMINAL_SANDBOX=docker \
 GARUDUST_API_KEY=my-secret-token \
-LINE_CHANNEL_TOKEN=<channel-access-token> \
-LINE_CHANNEL_SECRET=<32-char-hex-secret> \
 GARUDUST_CRON_JOBS="0 9 * * *=Post a morning briefing to LINE" \
 GARUDUST_MEMORY_CRON="0 3 * * *" \
 garudust-server --port 3000 --approval-mode smart
@@ -209,18 +211,26 @@ garudust-server --telegram-token $TELEGRAM_TOKEN --anthropic-key $ANTHROPIC_API_
 
 #### LINE Messaging API
 
+Webhook-based adapters (LINE, WhatsApp, generic webhook) are configured in `~/.garudust/config.yaml` under `platforms.*`; secrets remain in `~/.garudust/.env`.
+
 ```bash
 # ~/.garudust/.env
 OPENROUTER_API_KEY=sk-or-...
 LINE_CHANNEL_TOKEN=<channel-access-token>
 LINE_CHANNEL_SECRET=<32-char-hex-secret>
+```
 
-# start (webhook receives at https://your-host:3002/line)
-garudust-server \
-  --api-key $OPENROUTER_API_KEY \
-  --line-channel-token $LINE_CHANNEL_TOKEN \
-  --line-channel-secret $LINE_CHANNEL_SECRET \
-  --line-port 3002
+```yaml
+# ~/.garudust/config.yaml
+platforms:
+  line:
+    enabled: true
+    port: 3002
+    webhook_path: /line   # webhook receives at https://your-host:3002/line
+```
+
+```bash
+garudust-server --port 3000
 ```
 
 #### WhatsApp Business
@@ -232,20 +242,24 @@ WHATSAPP_ACCESS_TOKEN=EAAxxxxxxx
 WHATSAPP_PHONE_NUMBER_ID=123456789012345
 WHATSAPP_VERIFY_TOKEN=my_verify_token
 WHATSAPP_APP_SECRET=<32-char-hex-secret>   # optional — skips HMAC check if empty
+```
 
-# start (webhook receives at https://your-host:3003/whatsapp)
-garudust-server \
-  --anthropic-key $ANTHROPIC_API_KEY \
-  --whatsapp-access-token $WHATSAPP_ACCESS_TOKEN \
-  --whatsapp-phone-number-id $WHATSAPP_PHONE_NUMBER_ID \
-  --whatsapp-verify-token $WHATSAPP_VERIFY_TOKEN \
-  --whatsapp-app-secret $WHATSAPP_APP_SECRET \
-  --whatsapp-port 3003
+```yaml
+# ~/.garudust/config.yaml
+platforms:
+  whatsapp:
+    enabled: true
+    port: 3003
+    webhook_path: /whatsapp
+```
+
+```bash
+garudust-server --port 3000
 ```
 
 #### Multi-platform (Telegram + LINE + WhatsApp + HTTP webhook)
 
-All adapters run in the same process — set whichever tokens you have and the rest are silently skipped.
+All adapters run in the same process. Secrets in `.env`, enable/port/path in `config.yaml`. Platforms with `enabled: false` (or missing tokens) are silently skipped.
 
 ```bash
 # ~/.garudust/.env
@@ -256,21 +270,30 @@ LINE_CHANNEL_SECRET=<secret>
 WHATSAPP_ACCESS_TOKEN=EAAxxx
 WHATSAPP_PHONE_NUMBER_ID=123456789012345
 WHATSAPP_VERIFY_TOKEN=my_verify_token
-
-garudust-server \
-  --anthropic-key      $ANTHROPIC_API_KEY \
-  --telegram-token     $TELEGRAM_TOKEN \
-  --line-channel-token $LINE_CHANNEL_TOKEN \
-  --line-channel-secret $LINE_CHANNEL_SECRET \
-  --whatsapp-access-token    $WHATSAPP_ACCESS_TOKEN \
-  --whatsapp-phone-number-id $WHATSAPP_PHONE_NUMBER_ID \
-  --whatsapp-verify-token    $WHATSAPP_VERIFY_TOKEN \
-  --webhook-port 3001 \
-  --line-port    3002 \
-  --whatsapp-port 3003
 ```
 
-> **Tip:** Use `garudust setup` (mode 2 — Full) for an interactive wizard that writes `~/.garudust/.env` for you.
+```yaml
+# ~/.garudust/config.yaml — enable webhook-based adapters
+platforms:
+  webhook:
+    enabled: true
+    port: 3001
+    webhook_path: /webhook
+  line:
+    enabled: true
+    port: 3002
+    webhook_path: /line
+  whatsapp:
+    enabled: true
+    port: 3003
+    webhook_path: /whatsapp
+```
+
+```bash
+garudust-server --port 3000
+```
+
+> **Tip:** Use `garudust setup` (mode 2 — Full) for an interactive wizard that writes `~/.garudust/.env` and the matching `platforms.*` blocks in `~/.garudust/config.yaml` for you.
 
 ## Security
 
@@ -421,9 +444,9 @@ Set the relevant tokens in `~/.garudust/.env` and start `garudust-server`. Every
 | Discord | `DISCORD_TOKEN` |
 | Slack | `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN` |
 | Matrix | `MATRIX_HOMESERVER`, `MATRIX_USER`, `MATRIX_PASSWORD` |
-| LINE | `LINE_CHANNEL_TOKEN`, `LINE_CHANNEL_SECRET` |
-| WhatsApp | `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN` |
-| Webhook | always-on at `POST /webhook` — no token needed |
+| LINE | `LINE_CHANNEL_TOKEN`, `LINE_CHANNEL_SECRET` + `platforms.line.enabled: true` |
+| WhatsApp | `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN` + `platforms.whatsapp.enabled: true` |
+| Webhook | on by default at `POST /webhook` (port 3001) — configurable via `platforms.webhook` |
 
 **Telegram** — create a bot via [@BotFather](https://t.me/botfather), copy the token.
 
@@ -433,9 +456,9 @@ Set the relevant tokens in `~/.garudust/.env` and start `garudust-server`. Every
 
 **Matrix** — works with any homeserver (matrix.org, Synapse, Dendrite, etc.).
 
-**LINE** — create a Messaging API channel at [developers.line.biz](https://developers.line.biz/console/), copy the **Channel access token** and **Channel secret**, then set `GARUDUST_LINE_PORT` (default `3002`) and point the webhook URL in LINE console to `https://your-host:3002/line`.
+**LINE** — create a Messaging API channel at [developers.line.biz](https://developers.line.biz/console/), copy the **Channel access token** and **Channel secret** into `~/.garudust/.env`, then add `platforms.line: { enabled: true, port: 3002, webhook_path: /line }` to `~/.garudust/config.yaml` and point the webhook URL in LINE console to `https://your-host:3002/line`.
 
-**WhatsApp** — create a Meta app at [developers.facebook.com](https://developers.facebook.com/), add the **WhatsApp** product, copy the **Access token** and **Phone number ID**. Set `GARUDUST_WHATSAPP_PORT` (default `3003`) and point the webhook URL in Meta console to `https://your-host:3003/whatsapp`. Optionally set `WHATSAPP_APP_SECRET` to enable HMAC signature verification.
+**WhatsApp** — create a Meta app at [developers.facebook.com](https://developers.facebook.com/), add the **WhatsApp** product, copy the **Access token** and **Phone number ID** into `~/.garudust/.env`, then add `platforms.whatsapp: { enabled: true, port: 3003, webhook_path: /whatsapp }` to `~/.garudust/config.yaml` and point the webhook URL in Meta console to `https://your-host:3003/whatsapp`. Optionally set `WHATSAPP_APP_SECRET` to enable HMAC signature verification.
 
 ---
 

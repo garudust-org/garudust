@@ -4,7 +4,7 @@ use anyhow::Result;
 use arc_swap::ArcSwap;
 use clap::Parser;
 use garudust_agent::{Agent, AutoApprover, ConstitutionalApprover, DenyApprover};
-use garudust_core::config::McpServerConfig;
+use garudust_core::config::{get_secret, McpServerConfig, WebhookPlatformConfig};
 use garudust_core::{config::AgentConfig, platform::PlatformAdapter, tool::CommandApprover};
 use garudust_cron::CronScheduler;
 use garudust_gateway::{create_router, AppState, GatewayHandler, Metrics, SessionRegistry};
@@ -32,10 +32,6 @@ type McpHandles = Vec<Box<dyn std::any::Any + Send>>;
 struct Cli {
     #[arg(long, env = "GARUDUST_PORT", default_value = "3000")]
     port: u16,
-
-    /// Port for the webhook adapter (0 = disabled)
-    #[arg(long, env = "GARUDUST_WEBHOOK_PORT", default_value = "3001")]
-    webhook_port: u16,
 
     /// Override model
     #[arg(long, env = "GARUDUST_MODEL")]
@@ -68,34 +64,6 @@ struct Cli {
 
     #[arg(long, env = "MATRIX_PASSWORD")]
     matrix_password: Option<String>,
-
-    #[arg(long, env = "LINE_CHANNEL_TOKEN")]
-    line_channel_token: Option<String>,
-
-    #[arg(long, env = "LINE_CHANNEL_SECRET")]
-    line_channel_secret: Option<String>,
-
-    /// Port for the LINE webhook receiver (0 = disabled)
-    #[arg(long, env = "GARUDUST_LINE_PORT", default_value = "3002")]
-    line_port: u16,
-
-    #[arg(long, env = "WHATSAPP_ACCESS_TOKEN")]
-    whatsapp_access_token: Option<String>,
-
-    #[arg(long, env = "WHATSAPP_PHONE_NUMBER_ID")]
-    whatsapp_phone_number_id: Option<String>,
-
-    /// WhatsApp app secret for HMAC signature verification (leave empty to skip verification)
-    #[arg(long, env = "WHATSAPP_APP_SECRET", default_value = "")]
-    whatsapp_app_secret: String,
-
-    /// Token used during Meta webhook verification handshake
-    #[arg(long, env = "WHATSAPP_VERIFY_TOKEN", default_value = "")]
-    whatsapp_verify_token: String,
-
-    /// Port for the WhatsApp webhook receiver (0 = disabled)
-    #[arg(long, env = "GARUDUST_WHATSAPP_PORT", default_value = "3003")]
-    whatsapp_port: u16,
 
     /// Comma-separated list of cron jobs: "cron_expr=task" pairs
     /// e.g. "0 9 * * *=Good morning report"
@@ -220,6 +188,22 @@ async fn attach_mcp_servers(
         }
     }
     handles
+}
+
+/// Returns the platform config only when present and `enabled = true`. Logs
+/// at info level so operators can see why an expected adapter did not start.
+fn enabled_platform<'a>(
+    cfg: Option<&'a WebhookPlatformConfig>,
+    name: &str,
+) -> Option<&'a WebhookPlatformConfig> {
+    match cfg {
+        Some(c) if c.enabled => Some(c),
+        Some(_) => {
+            tracing::info!("{name} platform present in config but enabled=false — skipping");
+            None
+        }
+        None => None,
+    }
 }
 
 async fn start_platform(
@@ -397,8 +381,9 @@ async fn main() -> Result<()> {
         .await?;
     }
 
-    if cli.webhook_port > 0 {
-        let platform: Arc<dyn PlatformAdapter> = Arc::new(WebhookAdapter::new(cli.webhook_port));
+    if let Some(cfg) = enabled_platform(config.platforms.webhook.as_ref(), "webhook") {
+        let platform: Arc<dyn PlatformAdapter> =
+            Arc::new(WebhookAdapter::new(cfg.port, cfg.webhook_path.clone()));
         start_platform(
             platform,
             agent.load_full(),
@@ -442,12 +427,16 @@ async fn main() -> Result<()> {
         .await?;
     }
 
-    if let (Some(token), Some(secret)) = (&cli.line_channel_token, &cli.line_channel_secret) {
-        if cli.line_port > 0 {
+    if let Some(cfg) = enabled_platform(config.platforms.line.as_ref(), "line") {
+        if let (Some(token), Some(secret)) = (
+            get_secret("LINE_CHANNEL_TOKEN"),
+            get_secret("LINE_CHANNEL_SECRET"),
+        ) {
             let platform: Arc<dyn PlatformAdapter> = Arc::new(LineAdapter::new(
-                token.clone(),
-                secret.clone(),
-                cli.line_port,
+                token,
+                secret,
+                cfg.port,
+                cfg.webhook_path.clone(),
             ));
             start_platform(
                 platform,
@@ -457,19 +446,26 @@ async fn main() -> Result<()> {
                 config.clone(),
             )
             .await?;
+        } else {
+            tracing::error!(
+                "LINE platform enabled in config but LINE_CHANNEL_TOKEN / \
+                 LINE_CHANNEL_SECRET missing in ~/.garudust/.env — adapter not started"
+            );
         }
     }
 
-    if let (Some(token), Some(phone_id)) =
-        (&cli.whatsapp_access_token, &cli.whatsapp_phone_number_id)
-    {
-        if cli.whatsapp_port > 0 {
+    if let Some(cfg) = enabled_platform(config.platforms.whatsapp.as_ref(), "whatsapp") {
+        if let (Some(token), Some(phone_id)) = (
+            get_secret("WHATSAPP_ACCESS_TOKEN"),
+            get_secret("WHATSAPP_PHONE_NUMBER_ID"),
+        ) {
             let platform: Arc<dyn PlatformAdapter> = Arc::new(WhatsAppAdapter::new(
-                token.clone(),
-                phone_id.clone(),
-                cli.whatsapp_app_secret.clone(),
-                cli.whatsapp_verify_token.clone(),
-                cli.whatsapp_port,
+                token,
+                phone_id,
+                get_secret("WHATSAPP_APP_SECRET").unwrap_or_default(),
+                get_secret("WHATSAPP_VERIFY_TOKEN").unwrap_or_default(),
+                cfg.port,
+                cfg.webhook_path.clone(),
             ));
             start_platform(
                 platform,
@@ -479,6 +475,11 @@ async fn main() -> Result<()> {
                 config.clone(),
             )
             .await?;
+        } else {
+            tracing::error!(
+                "WhatsApp platform enabled in config but WHATSAPP_ACCESS_TOKEN / \
+                 WHATSAPP_PHONE_NUMBER_ID missing in ~/.garudust/.env — adapter not started"
+            );
         }
     }
 

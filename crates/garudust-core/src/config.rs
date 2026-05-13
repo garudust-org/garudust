@@ -142,6 +142,11 @@ pub struct AgentConfig {
     /// Example: `disabled_tools: [image_read, pdf_read, session_search]`
     #[serde(default)]
     pub disabled_tools: Vec<String>,
+    /// Per-platform webhook server settings (LINE, WhatsApp, generic webhook).
+    /// Each entry sets enabled flag, listening port, and HTTP path. Tokens and
+    /// secrets continue to be read from `~/.garudust/.env` — never from yaml.
+    #[serde(default)]
+    pub platforms: WebhookPlatformsConfig,
 }
 
 fn default_model() -> String {
@@ -341,6 +346,63 @@ pub struct McpServerConfig {
     pub args: Vec<String>,
 }
 
+/// Per-platform webhook server settings. A `WebhookPlatformConfig` with
+/// `enabled = false` means the adapter is not started even if its secret is
+/// present in the environment.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebhookPlatformConfig {
+    /// Whether to start this adapter at boot.
+    #[serde(default)]
+    pub enabled: bool,
+    /// TCP port to bind on `0.0.0.0`.
+    pub port: u16,
+    /// HTTP path the adapter listens on (e.g. `/webhooks/line`).
+    pub webhook_path: String,
+}
+
+/// Container for all webhook-based platform settings.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct WebhookPlatformsConfig {
+    #[serde(default)]
+    pub line: Option<WebhookPlatformConfig>,
+    #[serde(default)]
+    pub whatsapp: Option<WebhookPlatformConfig>,
+    #[serde(default)]
+    pub webhook: Option<WebhookPlatformConfig>,
+}
+
+impl WebhookPlatformConfig {
+    /// Defaults for the generic webhook adapter. Used when no explicit
+    /// `platforms.webhook` block is present so existing setups keep working.
+    pub fn default_webhook() -> Self {
+        Self {
+            enabled: true,
+            port: 3001,
+            webhook_path: "/webhook".to_string(),
+        }
+    }
+
+    /// Defaults for LINE. Constructed by the setup wizard when the user opts
+    /// in, so `enabled = true`; for manual yaml authors, `enabled` itself
+    /// defaults to `false` via serde, keeping the adapter opt-in.
+    pub fn default_line() -> Self {
+        Self {
+            enabled: true,
+            port: 3002,
+            webhook_path: "/line".to_string(),
+        }
+    }
+
+    /// Defaults for WhatsApp — same semantics as `default_line`.
+    pub fn default_whatsapp() -> Self {
+        Self {
+            enabled: true,
+            port: 3003,
+            webhook_path: "/whatsapp".to_string(),
+        }
+    }
+}
+
 impl Default for AgentConfig {
     fn default() -> Self {
         let cwd = std::env::current_dir().unwrap_or_default();
@@ -382,6 +444,11 @@ impl Default for AgentConfig {
             context_window: None,
             disabled_toolsets: Vec::new(),
             disabled_tools: Vec::new(),
+            platforms: WebhookPlatformsConfig {
+                webhook: Some(WebhookPlatformConfig::default_webhook()),
+                line: None,
+                whatsapp: None,
+            },
         }
     }
 }

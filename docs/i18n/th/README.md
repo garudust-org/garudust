@@ -119,10 +119,12 @@ echo "OPENROUTER_API_KEY=sk-or-..." > .env
 docker compose up
 
 # Production: sandbox + LINE bot + cron รายวัน
+# 1. ใส่ secret ใน ~/.garudust/.env:  LINE_CHANNEL_TOKEN, LINE_CHANNEL_SECRET
+# 2. เปิดใช้ adapter LINE ใน ~/.garudust/config.yaml:
+#      platforms:
+#        line: { enabled: true, port: 3002, webhook_path: /line }
 GARUDUST_TERMINAL_SANDBOX=docker \
 GARUDUST_API_KEY=my-secret-token \
-LINE_CHANNEL_TOKEN=<channel-access-token> \
-LINE_CHANNEL_SECRET=<32-char-hex-secret> \
 GARUDUST_CRON_JOBS="0 9 * * *=โพสต์สรุปเช้าไปยัง LINE" \
 GARUDUST_MEMORY_CRON="0 3 * * *" \
 garudust-server --port 3000 --approval-mode smart
@@ -209,18 +211,26 @@ garudust-server --telegram-token $TELEGRAM_TOKEN --anthropic-key $ANTHROPIC_API_
 
 #### LINE Messaging API
 
+Adapter ที่ใช้ webhook (LINE, WhatsApp, generic webhook) ตั้งค่าใน `~/.garudust/config.yaml` ใต้คีย์ `platforms.*` ส่วน secret ยังอยู่ใน `~/.garudust/.env`
+
 ```bash
 # ~/.garudust/.env
 OPENROUTER_API_KEY=sk-or-...
 LINE_CHANNEL_TOKEN=<channel-access-token>
 LINE_CHANNEL_SECRET=<32-char-hex-secret>
+```
 
-# เริ่มต้น (webhook รับที่ https://your-host:3002/line)
-garudust-server \
-  --api-key $OPENROUTER_API_KEY \
-  --line-channel-token $LINE_CHANNEL_TOKEN \
-  --line-channel-secret $LINE_CHANNEL_SECRET \
-  --line-port 3002
+```yaml
+# ~/.garudust/config.yaml
+platforms:
+  line:
+    enabled: true
+    port: 3002
+    webhook_path: /line   # webhook รับที่ https://your-host:3002/line
+```
+
+```bash
+garudust-server --port 3000
 ```
 
 #### WhatsApp Business
@@ -232,20 +242,24 @@ WHATSAPP_ACCESS_TOKEN=EAAxxxxxxx
 WHATSAPP_PHONE_NUMBER_ID=123456789012345
 WHATSAPP_VERIFY_TOKEN=my_verify_token
 WHATSAPP_APP_SECRET=<32-char-hex-secret>   # ไม่บังคับ — ข้ามการตรวจ HMAC หากเว้นว่าง
+```
 
-# เริ่มต้น (webhook รับที่ https://your-host:3003/whatsapp)
-garudust-server \
-  --anthropic-key $ANTHROPIC_API_KEY \
-  --whatsapp-access-token $WHATSAPP_ACCESS_TOKEN \
-  --whatsapp-phone-number-id $WHATSAPP_PHONE_NUMBER_ID \
-  --whatsapp-verify-token $WHATSAPP_VERIFY_TOKEN \
-  --whatsapp-app-secret $WHATSAPP_APP_SECRET \
-  --whatsapp-port 3003
+```yaml
+# ~/.garudust/config.yaml
+platforms:
+  whatsapp:
+    enabled: true
+    port: 3003
+    webhook_path: /whatsapp
+```
+
+```bash
+garudust-server --port 3000
 ```
 
 #### หลายแพลตฟอร์มพร้อมกัน (Telegram + LINE + WhatsApp + HTTP webhook)
 
-ทุก adapter รันในกระบวนการเดียวกัน — ตั้งค่า token ที่ต้องการ ส่วนที่เหลือจะถูกข้ามโดยอัตโนมัติ
+ทุก adapter รันในกระบวนการเดียวกัน — secret อยู่ใน `.env` ส่วน enable/port/path อยู่ใน `config.yaml` แพลตฟอร์มที่ `enabled: false` หรือไม่มี token จะถูกข้ามเงียบ ๆ
 
 ```bash
 # ~/.garudust/.env
@@ -256,21 +270,30 @@ LINE_CHANNEL_SECRET=<secret>
 WHATSAPP_ACCESS_TOKEN=EAAxxx
 WHATSAPP_PHONE_NUMBER_ID=123456789012345
 WHATSAPP_VERIFY_TOKEN=my_verify_token
-
-garudust-server \
-  --anthropic-key      $ANTHROPIC_API_KEY \
-  --telegram-token     $TELEGRAM_TOKEN \
-  --line-channel-token $LINE_CHANNEL_TOKEN \
-  --line-channel-secret $LINE_CHANNEL_SECRET \
-  --whatsapp-access-token    $WHATSAPP_ACCESS_TOKEN \
-  --whatsapp-phone-number-id $WHATSAPP_PHONE_NUMBER_ID \
-  --whatsapp-verify-token    $WHATSAPP_VERIFY_TOKEN \
-  --webhook-port 3001 \
-  --line-port    3002 \
-  --whatsapp-port 3003
 ```
 
-> **เคล็ดลับ:** ใช้ `garudust setup` (โหมด 2 — Full) เพื่อตั้งค่าแบบโต้ตอบที่จะเขียน `~/.garudust/.env` ให้อัตโนมัติ
+```yaml
+# ~/.garudust/config.yaml — เปิดใช้ adapter ที่ใช้ webhook
+platforms:
+  webhook:
+    enabled: true
+    port: 3001
+    webhook_path: /webhook
+  line:
+    enabled: true
+    port: 3002
+    webhook_path: /line
+  whatsapp:
+    enabled: true
+    port: 3003
+    webhook_path: /whatsapp
+```
+
+```bash
+garudust-server --port 3000
+```
+
+> **เคล็ดลับ:** ใช้ `garudust setup` (โหมด 2 — Full) เพื่อตั้งค่าแบบโต้ตอบที่จะเขียน `~/.garudust/.env` และบล็อก `platforms.*` ใน `~/.garudust/config.yaml` ให้อัตโนมัติ
 
 ---
 
@@ -423,9 +446,9 @@ curl http://localhost:3000/metrics   # รองรับ Prometheus
 | Discord | `DISCORD_TOKEN` |
 | Slack | `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN` |
 | Matrix | `MATRIX_HOMESERVER`, `MATRIX_USER`, `MATRIX_PASSWORD` |
-| LINE | `LINE_CHANNEL_TOKEN`, `LINE_CHANNEL_SECRET` |
-| WhatsApp | `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN` |
-| Webhook | เปิดอยู่ที่ `POST /webhook` เสมอ — ไม่ต้องใช้ token |
+| LINE | `LINE_CHANNEL_TOKEN`, `LINE_CHANNEL_SECRET` + `platforms.line.enabled: true` |
+| WhatsApp | `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN` + `platforms.whatsapp.enabled: true` |
+| Webhook | เปิดโดยค่าเริ่มต้นที่ `POST /webhook` (พอร์ต 3001) — ปรับได้ผ่าน `platforms.webhook` |
 
 **Telegram** — สร้างบอทผ่าน [@BotFather](https://t.me/botfather) แล้วคัดลอก token
 
@@ -435,9 +458,9 @@ curl http://localhost:3000/metrics   # รองรับ Prometheus
 
 **Matrix** — รองรับ homeserver ทุกประเภท (matrix.org, Synapse, Dendrite ฯลฯ)
 
-**LINE** — สร้าง Messaging API channel ที่ [developers.line.biz](https://developers.line.biz/console/) คัดลอก **Channel access token** และ **Channel secret** จากนั้นตั้งค่า `GARUDUST_LINE_PORT` (ค่าเริ่มต้น `3002`) และกำหนด Webhook URL ใน LINE console เป็น `https://your-host:3002/line`
+**LINE** — สร้าง Messaging API channel ที่ [developers.line.biz](https://developers.line.biz/console/) คัดลอก **Channel access token** และ **Channel secret** ใส่ลงใน `~/.garudust/.env` จากนั้นเพิ่ม `platforms.line: { enabled: true, port: 3002, webhook_path: /line }` ใน `~/.garudust/config.yaml` และตั้ง Webhook URL ใน LINE console เป็น `https://your-host:3002/line`
 
-**WhatsApp** — สร้าง Meta app ที่ [developers.facebook.com](https://developers.facebook.com/) เพิ่มผลิตภัณฑ์ **WhatsApp** คัดลอก **Access token** และ **Phone number ID** ตั้งค่า `GARUDUST_WHATSAPP_PORT` (ค่าเริ่มต้น `3003`) และกำหนด Webhook URL ใน Meta console เป็น `https://your-host:3003/whatsapp` หากต้องการตรวจสอบ HMAC signature ให้ตั้งค่า `WHATSAPP_APP_SECRET` ด้วย
+**WhatsApp** — สร้าง Meta app ที่ [developers.facebook.com](https://developers.facebook.com/) เพิ่มผลิตภัณฑ์ **WhatsApp** คัดลอก **Access token** และ **Phone number ID** ใส่ลงใน `~/.garudust/.env` จากนั้นเพิ่ม `platforms.whatsapp: { enabled: true, port: 3003, webhook_path: /whatsapp }` ใน `~/.garudust/config.yaml` และตั้ง Webhook URL ใน Meta console เป็น `https://your-host:3003/whatsapp` หากต้องการตรวจสอบ HMAC signature ให้ตั้งค่า `WHATSAPP_APP_SECRET` ด้วย
 
 ---
 

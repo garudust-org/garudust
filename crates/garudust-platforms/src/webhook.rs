@@ -62,11 +62,12 @@ async fn handle_webhook(
 
 pub struct WebhookAdapter {
     port: u16,
+    webhook_path: String,
 }
 
 impl WebhookAdapter {
-    pub fn new(port: u16) -> Self {
-        Self { port }
+    pub fn new(port: u16, webhook_path: String) -> Self {
+        Self { port, webhook_path }
     }
 }
 
@@ -78,15 +79,16 @@ impl PlatformAdapter for WebhookAdapter {
 
     async fn start(&self, handler: Arc<dyn MessageHandler>) -> Result<(), PlatformError> {
         let port = self.port;
+        let path = self.webhook_path.clone();
         let router = Router::new()
-            .route("/webhook", post(handle_webhook))
+            .route(&self.webhook_path, post(handle_webhook))
             .with_state(handler);
 
         let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}"))
             .await
             .map_err(|e| PlatformError::Connection(e.to_string()))?;
 
-        tracing::info!("webhook adapter listening on 0.0.0.0:{port}");
+        tracing::info!("webhook adapter listening on 0.0.0.0:{port}{path}");
         tokio::spawn(async move {
             if let Err(e) = axum::serve(listener, router).await {
                 tracing::error!("webhook server error: {e}");
