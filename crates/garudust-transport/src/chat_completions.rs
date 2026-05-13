@@ -129,8 +129,7 @@ fn safe_max_tokens(config: &InferenceConfig) -> u32 {
     config.max_tokens.unwrap_or_else(|| {
         config
             .context_limit
-            .map(|c| (c / 4).max(2048))
-            .unwrap_or(4096)
+            .map_or(4096, |c| (c / 4).max(2048))
     })
 }
 
@@ -139,7 +138,7 @@ fn is_context_overflow(body: &str) -> bool {
     body.contains("maximum context length") || body.contains("input_tokens")
 }
 
-fn parse_chat_response(choice: &Value, data: &Value) -> Result<TransportResponse, TransportError> {
+fn parse_chat_response(choice: &Value, data: &Value) -> TransportResponse {
     let stop_reason = match choice["finish_reason"].as_str() {
         Some("stop") | None => StopReason::EndTurn,
         Some("tool_calls") => StopReason::ToolUse,
@@ -180,12 +179,12 @@ fn parse_chat_response(choice: &Value, data: &Value) -> Result<TransportResponse
             .unwrap_or(0) as u32,
         cache_write_tokens: 0,
     };
-    Ok(TransportResponse {
+    TransportResponse {
         content,
         tool_calls,
         usage,
         stop_reason,
-    })
+    }
 }
 
 fn classify_error(status: u16, body: &str) -> TransportError {
@@ -272,7 +271,7 @@ impl ProviderTransport for ChatCompletionsTransport {
                         .ok_or_else(|| {
                             TransportError::Other(anyhow::anyhow!("no choices in response"))
                         })?;
-                    return parse_chat_response(choice, &data);
+                    return Ok(parse_chat_response(choice, &data));
                 }
             }
             return Err(classify_error(status, &text));
@@ -290,7 +289,7 @@ impl ProviderTransport for ChatCompletionsTransport {
             .and_then(|a| a.first())
             .ok_or_else(|| TransportError::Other(anyhow::anyhow!("no choices in response")))?;
 
-        parse_chat_response(choice, &data)
+        Ok(parse_chat_response(choice, &data))
     }
 
     async fn chat_stream(
