@@ -154,13 +154,15 @@ garudust config set VLLM_BASE_URL http://localhost:8000/v1
 
 ## การตั้งค่า
 
-การตั้งค่าถาวรทั้งหมดอยู่ใน `~/.garudust/config.yaml` ส่วน secret และ token อยู่ใน `~/.garudust/.env` — รัน `garudust setup` เพื่อตั้งค่าแบบโต้ตอบ ทั้งสองไฟล์โหลดอย่างปลอดภัยตอน startup และไม่ถูกส่งต่อไปยัง subprocess
+การตั้งค่าที่ไม่ใช่ secret อยู่ใน `~/.garudust/config.yaml` ส่วน API key และ token อยู่ใน `~/.garudust/.env` — รัน `garudust setup` เพื่อตั้งค่าแบบโต้ตอบ ทั้งสองไฟล์โหลดอย่างปลอดภัยตอน startup และไม่ถูกส่งต่อไปยัง subprocess
 
 ### `~/.garudust/config.yaml`
 
 ```yaml
+# โมเดลและ provider — ไม่ใช่ secret จึงอยู่ที่นี่ (ไม่ใช่ใน .env)
 model: anthropic/claude-sonnet-4-6   # model identifier
-provider: anthropic                  # ตรวจจับอัตโนมัติจาก API key หากไม่ระบุ
+provider: anthropic                  # anthropic | openrouter | vllm | ollama | thaillm
+base_url: https://your-vllm-host/v1  # จำเป็นสำหรับ vllm / ollama / OpenAI-compatible อื่น ๆ
 
 security:
   terminal_sandbox: docker           # none (ค่าเริ่มต้น) | docker
@@ -179,9 +181,8 @@ disabled_toolsets: [browser, git, notes]
 disabled_tools: [image_read, pdf_read, session_search]
 
 # สำหรับโมเดล context เล็ก (เช่น 27K): ระบุขนาด context จริง
-# และจำกัด output เพื่อไม่ให้ input + output เกิน limit
+# agent จะจำกัด output token อัตโนมัติและ retry เมื่อ overflow
 context_window: 27168
-max_output_tokens: 2000
 
 mcp_servers:
   - name: filesystem
@@ -441,18 +442,18 @@ curl http://localhost:3000/metrics   # รองรับ Prometheus
 
 ## ผู้ให้บริการ LLM
 
-| ผู้ให้บริการ | วิธีเลือก | หมายเหตุ |
-|-------------|-----------|----------|
-| Anthropic | ตั้ง `ANTHROPIC_API_KEY` | Direct Messages API |
-| OpenRouter | ตั้ง `OPENROUTER_API_KEY` *(ค่าเริ่มต้น)* | โมเดลกว่า 200 รายการ |
-| AWS Bedrock | ตั้ง `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` | Converse API, SigV4 |
-| OpenAI Responses | `garudust config set provider codex` | endpoint `/v1/responses` |
-| Ollama | ตั้ง `OLLAMA_BASE_URL` | บนเครื่อง ไม่ต้องใช้ key |
-| vLLM | ตั้ง `VLLM_BASE_URL` | เซิร์ฟเวอร์ OpenAI-compatible บนเครื่อง |
-| ThaiLLM | ตั้ง `THAILLM_API_KEY` | Thai LLM โดย NSTDA (thaillm.or.th) |
-| OpenAI-compatible อื่น ๆ | ตั้ง `GARUDUST_BASE_URL` | Generic transport |
+| ผู้ให้บริการ | `config.yaml` | `.env` (เฉพาะ secret) | หมายเหตุ |
+|-------------|--------------|----------------------|----------|
+| Anthropic | `provider: anthropic` | `ANTHROPIC_API_KEY` | Direct Messages API |
+| OpenRouter | `provider: openrouter` *(ค่าเริ่มต้น)* | `OPENROUTER_API_KEY` | โมเดลกว่า 200 รายการ |
+| AWS Bedrock | `provider: bedrock` | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` | Converse API, SigV4 |
+| OpenAI Responses | `provider: codex` | `OPENAI_API_KEY` | endpoint `/v1/responses` |
+| Ollama | `provider: ollama` + `base_url` | *(ไม่จำเป็น)* | บนเครื่อง ไม่ต้องใช้ key |
+| vLLM | `provider: vllm` + `base_url` | `VLLM_API_KEY` | เซิร์ฟเวอร์ OpenAI-compatible บนเครื่อง |
+| ThaiLLM | `provider: thaillm` | `THAILLM_API_KEY` | Thai LLM โดย NSTDA |
+| OpenAI-compatible อื่น ๆ | `provider: openrouter` + `base_url` | API key ที่เกี่ยวข้อง | Generic transport |
 
-ตั้งค่า key ที่เกี่ยวข้องใน `~/.garudust/.env` แล้วเปลี่ยนโมเดลด้วย `garudust model` หรือตั้งค่า `GARUDUST_MODEL`
+ตั้ง `model`, `provider` และ `base_url` ใน `config.yaml` — ใส่เฉพาะ API key ใน `~/.garudust/.env` เปลี่ยนโมเดลได้ตลอดเวลาด้วย `garudust model`
 
 ---
 

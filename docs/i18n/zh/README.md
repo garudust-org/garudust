@@ -154,13 +154,15 @@ garudust config set VLLM_BASE_URL http://localhost:8000/v1
 
 ## 配置
 
-所有持久化设置保存在 `~/.garudust/config.yaml`。密钥和令牌保存在 `~/.garudust/.env` — 运行 `garudust setup` 进行交互式配置。两个文件均在启动时安全加载，不会转发给子进程。
+非密钥设置保存在 `~/.garudust/config.yaml`。API 密钥和令牌保存在 `~/.garudust/.env` — 运行 `garudust setup` 进行交互式配置。两个文件均在启动时安全加载，不会转发给子进程。
 
 ### `~/.garudust/config.yaml`
 
 ```yaml
+# 模型与提供商 — 非敏感信息，放在此处（不放在 .env）
 model: anthropic/claude-sonnet-4-6   # 模型标识符
-provider: anthropic                  # 若省略则从 API key 自动检测
+provider: anthropic                  # anthropic | openrouter | vllm | ollama | thaillm
+base_url: https://your-vllm-host/v1  # vllm / ollama / 其他 OpenAI 兼容端点必填
 
 security:
   terminal_sandbox: docker           # none（默认）| docker
@@ -178,10 +180,9 @@ disabled_toolsets: [browser, git, notes]
 # 按名称禁用单个 tool，不影响同 toolset 的其他工具
 disabled_tools: [image_read, pdf_read, session_search]
 
-# 小上下文模型（如 27K）：设置实际上下文窗口大小
-# 并限制输出 token，确保 input + output 不超过限制
+# 小上下文模型（如 27K）：设置 context_window，
+# agent 将自动限制输出 token 并在溢出时重试
 context_window: 27168
-max_output_tokens: 2000
 
 mcp_servers:
   - name: filesystem
@@ -439,18 +440,18 @@ curl http://localhost:3000/metrics   # Prometheus 兼容
 
 ## LLM 提供商
 
-| 提供商 | 选择方式 | 备注 |
-|--------|---------|------|
-| Anthropic | 设置 `ANTHROPIC_API_KEY` | 直接使用 Messages API |
-| OpenRouter | 设置 `OPENROUTER_API_KEY` *（默认）* | 200+ 模型 |
-| AWS Bedrock | 设置 `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` | Converse API，SigV4 |
-| OpenAI Responses | `garudust config set provider codex` | `/v1/responses` 端点 |
-| Ollama | 设置 `OLLAMA_BASE_URL` | 本地运行，无需 key |
-| vLLM | 设置 `VLLM_BASE_URL` | 本地 OpenAI 兼容服务器 |
-| ThaiLLM | 设置 `THAILLM_API_KEY` | 泰国 NSTDA 主权 AI（thaillm.or.th） |
-| 其他 OpenAI 兼容 | 设置 `GARUDUST_BASE_URL` | 通用传输层 |
+| 提供商 | `config.yaml` | `.env`（仅密钥）| 备注 |
+|--------|--------------|----------------|------|
+| Anthropic | `provider: anthropic` | `ANTHROPIC_API_KEY` | 直接使用 Messages API |
+| OpenRouter | `provider: openrouter` *（默认）* | `OPENROUTER_API_KEY` | 200+ 模型 |
+| AWS Bedrock | `provider: bedrock` | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` | Converse API，SigV4 |
+| OpenAI Responses | `provider: codex` | `OPENAI_API_KEY` | `/v1/responses` 端点 |
+| Ollama | `provider: ollama` + `base_url` | *（无需）* | 本地运行，无需 key |
+| vLLM | `provider: vllm` + `base_url` | `VLLM_API_KEY` | 本地 OpenAI 兼容服务器 |
+| ThaiLLM | `provider: thaillm` | `THAILLM_API_KEY` | 泰国 NSTDA 主权 AI |
+| 其他 OpenAI 兼容 | `provider: openrouter` + `base_url` | 对应 API key | 通用传输层 |
 
-在 `~/.garudust/.env` 中设置对应的 key，然后通过 `garudust model` 或设置 `GARUDUST_MODEL` 切换模型。
+在 `config.yaml` 中设置 `model`、`provider` 和 `base_url`，仅将 API 密钥放入 `~/.garudust/.env`。随时使用 `garudust model` 切换模型。
 
 ---
 

@@ -154,13 +154,15 @@ garudust config set VLLM_BASE_URL http://localhost:8000/v1
 
 ## Configuration
 
-All persistent settings live in `~/.garudust/config.yaml`. Secrets and tokens live in `~/.garudust/.env` — run `garudust setup` to configure them interactively. Both files are loaded securely at startup and never forwarded to subprocesses.
+Non-secret settings live in `~/.garudust/config.yaml`. API keys and tokens live in `~/.garudust/.env` — run `garudust setup` to configure them interactively. Both files are loaded securely at startup and never forwarded to subprocesses.
 
 ### `~/.garudust/config.yaml`
 
 ```yaml
+# Model and provider — not secrets, so they live here (not in .env)
 model: anthropic/claude-sonnet-4-6   # model identifier
-provider: anthropic                  # auto-detected from API key if omitted
+provider: anthropic                  # anthropic | openrouter | vllm | ollama | thaillm
+base_url: https://your-vllm-host/v1  # required for vllm / ollama / any OpenAI-compat
 
 security:
   terminal_sandbox: docker           # none (default) | docker
@@ -178,10 +180,9 @@ disabled_toolsets: [browser, git, notes]
 # Disable individual tools without removing their whole toolset
 disabled_tools: [image_read, pdf_read, session_search]
 
-# For small-context models (e.g. 27K): set the actual context window size
-# and cap output tokens so input + output never exceeds the limit
+# For small-context models (e.g. 27K): set context_window so the agent
+# automatically caps output tokens and retries on overflow
 context_window: 27168
-max_output_tokens: 2000
 
 mcp_servers:
   - name: filesystem
@@ -439,18 +440,18 @@ Set the relevant tokens in `~/.garudust/.env` and start `garudust-server`. Every
 
 ## LLM Providers
 
-| Provider | How to select | Notes |
-|----------|--------------|-------|
-| Anthropic | Set `ANTHROPIC_API_KEY` | Direct Messages API |
-| OpenRouter | Set `OPENROUTER_API_KEY` *(default)* | 200+ models |
-| AWS Bedrock | Set `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` | Converse API, SigV4 |
-| OpenAI Responses | `garudust config set provider codex` | `/v1/responses` endpoint |
-| Ollama | Set `OLLAMA_BASE_URL` | Local, no key required |
-| vLLM | Set `VLLM_BASE_URL` | Local OpenAI-compatible server |
-| ThaiLLM | Set `THAILLM_API_KEY` | NSTDA sovereign Thai LLM (thaillm.or.th) |
-| Any OpenAI-compat | Set `GARUDUST_BASE_URL` | Generic transport |
+| Provider | `config.yaml` | `.env` (secrets only) | Notes |
+|----------|--------------|----------------------|-------|
+| Anthropic | `provider: anthropic` | `ANTHROPIC_API_KEY` | Direct Messages API |
+| OpenRouter | `provider: openrouter` *(default)* | `OPENROUTER_API_KEY` | 200+ models |
+| AWS Bedrock | `provider: bedrock` | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` | Converse API, SigV4 |
+| OpenAI Responses | `provider: codex` | `OPENAI_API_KEY` | `/v1/responses` endpoint |
+| Ollama | `provider: ollama` + `base_url` | *(none required)* | Local, no key needed |
+| vLLM | `provider: vllm` + `base_url` | `VLLM_API_KEY` | Local OpenAI-compatible server |
+| ThaiLLM | `provider: thaillm` | `THAILLM_API_KEY` | NSTDA sovereign Thai LLM |
+| Any OpenAI-compat | `provider: openrouter` + `base_url` | relevant API key | Generic transport |
 
-Set the relevant key in `~/.garudust/.env`, then switch models with `garudust model` or by setting `GARUDUST_MODEL`.
+Set `model`, `provider`, and `base_url` in `config.yaml`. Put only API keys in `~/.garudust/.env`. Switch models at any time with `garudust model`.
 
 ---
 
