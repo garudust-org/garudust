@@ -246,32 +246,41 @@ impl ProviderTransport for ChatCompletionsTransport {
         if status == 400 {
             if let Some(ctx) = config.context_limit {
                 if is_context_overflow(&text) {
-                    let safe_max = (ctx / 8).max(256);
-                    body[self.tokens_param] = json!(safe_max);
-                    let resp2 = self
-                        .authorized(self.client.post(self.endpoint()))
-                        .json(&body)
-                        .send()
-                        .await
-                        .map_err(|e| TransportError::Network(e.to_string()))?;
-                    let status = resp2.status().as_u16();
-                    let text = resp2
-                        .text()
-                        .await
-                        .map_err(|e| TransportError::Network(e.to_string()))?;
-                    if status != 200 {
-                        return Err(classify_error(status, &text));
+                    for divisor in [8u32, 16, 32] {
+                        let safe_max = (ctx / divisor).max(256);
+                        body[self.tokens_param] = json!(safe_max);
+                        let r = self
+                            .authorized(self.client.post(self.endpoint()))
+                            .json(&body)
+                            .send()
+                            .await
+                            .map_err(|e| TransportError::Network(e.to_string()))?;
+                        let s = r.status().as_u16();
+                        let t = r
+                            .text()
+                            .await
+                            .map_err(|e| TransportError::Network(e.to_string()))?;
+                        if s == 200 {
+                            let data: Value =
+                                serde_json::from_str(&t).map_err(|e| {
+                                    TransportError::Other(anyhow::anyhow!(
+                                        "parse error: {e}\nbody: {t}"
+                                    ))
+                                })?;
+                            let choice = data["choices"]
+                                .as_array()
+                                .and_then(|a| a.first())
+                                .ok_or_else(|| {
+                                    TransportError::Other(anyhow::anyhow!(
+                                        "no choices in response"
+                                    ))
+                                })?;
+                            return Ok(parse_chat_response(choice, &data));
+                        }
+                        if !is_context_overflow(&t) {
+                            return Err(classify_error(s, &t));
+                        }
                     }
-                    let data: Value = serde_json::from_str(&text).map_err(|e| {
-                        TransportError::Other(anyhow::anyhow!("parse error: {e}\nbody: {text}"))
-                    })?;
-                    let choice = data["choices"]
-                        .as_array()
-                        .and_then(|a| a.first())
-                        .ok_or_else(|| {
-                            TransportError::Other(anyhow::anyhow!("no choices in response"))
-                        })?;
-                    return Ok(parse_chat_response(choice, &data));
                 }
             }
             return Err(classify_error(status, &text));
@@ -318,7 +327,7 @@ impl ProviderTransport for ChatCompletionsTransport {
             body["reasoning_effort"] = json!(effort);
         }
 
-        // Send the request; on context-overflow (400) retry once with a safe token cap.
+        // Send the request; on context-overflow (400) retry with halving output budget.
         let final_resp = {
             let r = self
                 .authorized(self.client.post(self.endpoint()))
@@ -334,20 +343,27 @@ impl ProviderTransport for ChatCompletionsTransport {
                 if s == 400 {
                     if let Some(ctx) = config.context_limit {
                         if is_context_overflow(&text) {
-                            let safe_max = (ctx / 8).max(256);
-                            body[self.tokens_param] = json!(safe_max);
-                            let r2 = self
-                                .authorized(self.client.post(self.endpoint()))
-                                .json(&body)
-                                .send()
-                                .await
-                                .map_err(|e| TransportError::Network(e.to_string()))?;
-                            let s2 = r2.status().as_u16();
-                            if s2 != 200 {
+                            let mut found = None;
+                            for divisor in [8u32, 16, 32] {
+                                let safe_max = (ctx / divisor).max(256);
+                                body[self.tokens_param] = json!(safe_max);
+                                let r2 = self
+                                    .authorized(self.client.post(self.endpoint()))
+                                    .json(&body)
+                                    .send()
+                                    .await
+                                    .map_err(|e| TransportError::Network(e.to_string()))?;
+                                let s2 = r2.status().as_u16();
+                                if s2 == 200 {
+                                    found = Some(r2);
+                                    break;
+                                }
                                 let t2 = r2.text().await.unwrap_or_default();
-                                return Err(classify_error(s2, &t2));
+                                if !is_context_overflow(&t2) {
+                                    return Err(classify_error(s2, &t2));
+                                }
                             }
-                            r2
+                            found.ok_or_else(|| classify_error(s, &text))?
                         } else {
                             return Err(classify_error(s, &text));
                         }

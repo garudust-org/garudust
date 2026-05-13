@@ -92,14 +92,14 @@ impl Tool for WebFetch {
             .await
             .map_err(|e| ToolError::Execution(e.to_string()))?;
 
-        let body = if bytes.len() > RESPONSE_BODY_LIMIT {
+        let body = if bytes.len() > WEB_FETCH_BODY_LIMIT {
             let s = String::from_utf8_lossy(&bytes);
-            let boundary = super::floor_char_boundary(&s, RESPONSE_BODY_LIMIT);
+            let boundary = super::floor_char_boundary(&s, WEB_FETCH_BODY_LIMIT);
             format!(
                 "{}\n[truncated — response was {} bytes, showing first {} KB]",
                 &s[..boundary],
                 bytes.len(),
-                RESPONSE_BODY_LIMIT / 1_024,
+                WEB_FETCH_BODY_LIMIT / 1_024,
             )
         } else {
             String::from_utf8_lossy(&bytes).into_owned()
@@ -165,7 +165,8 @@ impl Tool for WebSearch {
 
 // ─── HttpRequest ─────────────────────────────────────────────────────────────
 
-const RESPONSE_BODY_LIMIT: usize = 512 * 1_024; // 512 KB
+const RESPONSE_BODY_LIMIT: usize = 512 * 1_024; // 512 KB — for http_request (API responses)
+const WEB_FETCH_BODY_LIMIT: usize = 50 * 1_024; //  50 KB — for web_fetch (keeps token count low)
 const ALLOWED_METHODS: &[&str] = &["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"];
 
 #[derive(Deserialize)]
