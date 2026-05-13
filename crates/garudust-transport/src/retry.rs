@@ -141,6 +141,7 @@ mod tests {
         InferenceConfig {
             model: "test".into(),
             max_tokens: None,
+            context_limit: None,
             temperature: None,
             reasoning_effort: None,
         }

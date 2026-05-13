@@ -122,6 +122,18 @@ fn oai_reasoning_effort(effort: Option<&ReasoningEffort>) -> Option<&'static str
     }
 }
 
+/// Choose a safe max-tokens value. When the caller specifies a limit, use it.
+/// When unspecified but the context window is known, cap at one quarter of it
+/// so there is always headroom for input tokens. Falls back to 4096.
+fn safe_max_tokens(config: &InferenceConfig) -> u32 {
+    config.max_tokens.unwrap_or_else(|| {
+        config
+            .context_limit
+            .map(|c| (c / 4).max(2048))
+            .unwrap_or(4096)
+    })
+}
+
 fn classify_error(status: u16, body: &str) -> TransportError {
     match status {
         401 | 403 => TransportError::Auth,
@@ -153,7 +165,7 @@ impl ProviderTransport for ChatCompletionsTransport {
         let mut body = json!({
             "model":    config.model,
             "messages": oai_messages,
-            self.tokens_param: config.max_tokens.unwrap_or(8192),
+            self.tokens_param: safe_max_tokens(config),
         });
         if let Some(t) = config.temperature {
             body["temperature"] = json!(t);
@@ -255,7 +267,7 @@ impl ProviderTransport for ChatCompletionsTransport {
         let mut body = json!({
             "model":    config.model,
             "messages": oai_messages,
-            self.tokens_param: config.max_tokens.unwrap_or(8192),
+            self.tokens_param: safe_max_tokens(config),
             "stream":   true,
             "stream_options": { "include_usage": true },
         });

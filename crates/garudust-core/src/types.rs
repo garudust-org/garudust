@@ -119,6 +119,9 @@ pub struct ToolSchema {
 pub struct InferenceConfig {
     pub model: String,
     pub max_tokens: Option<u32>,
+    /// Total context window of the model in tokens. When set and `max_tokens`
+    /// is None the transport caps output tokens to avoid exceeding the window.
+    pub context_limit: Option<u32>,
     pub temperature: Option<f32>,
     pub reasoning_effort: Option<ReasoningEffort>,
 }

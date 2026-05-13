@@ -135,6 +135,7 @@ impl ContextCompressor {
         let config = InferenceConfig {
             model: self.model.clone(),
             max_tokens: Some(2048),
+            context_limit: None,
             temperature: Some(0.0),
             reasoning_effort: None,
         };
