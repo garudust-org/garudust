@@ -147,7 +147,8 @@ garudust config show                        # แสดง config ที่ใ�
 garudust model                              # แสดงโมเดลปัจจุบันและเปลี่ยนแบบ interactive
 garudust model anthropic/claude-opus-4-7   # เปลี่ยนโมเดลโดยตรง
 garudust config set ANTHROPIC_API_KEY sk-ant-...
-garudust config set VLLM_BASE_URL http://localhost:8000/v1
+garudust config set provider vllm
+garudust config set base_url http://localhost:8000/v1
 ```
 
 ---
@@ -444,14 +445,14 @@ curl http://localhost:3000/metrics   # รองรับ Prometheus
 
 | ผู้ให้บริการ | `config.yaml` | `.env` (เฉพาะ secret) | หมายเหตุ |
 |-------------|--------------|----------------------|----------|
-| Anthropic | `provider: anthropic` | `ANTHROPIC_API_KEY` | Direct Messages API |
+| Anthropic | `provider: anthropic` | `ANTHROPIC_API_KEY` | Native Messages API; เพิ่ม `base_url` เพื่อใช้ proxy |
 | OpenRouter | `provider: openrouter` *(ค่าเริ่มต้น)* | `OPENROUTER_API_KEY` | โมเดลกว่า 200 รายการ |
 | AWS Bedrock | `provider: bedrock` | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` | Converse API, SigV4 |
 | OpenAI Responses | `provider: codex` | `OPENAI_API_KEY` | endpoint `/v1/responses` |
 | Ollama | `provider: ollama` + `base_url` | *(ไม่จำเป็น)* | บนเครื่อง ไม่ต้องใช้ key |
 | vLLM | `provider: vllm` + `base_url` | `VLLM_API_KEY` | เซิร์ฟเวอร์ OpenAI-compatible บนเครื่อง |
 | ThaiLLM | `provider: thaillm` | `THAILLM_API_KEY` | Thai LLM โดย NSTDA |
-| OpenAI-compatible อื่น ๆ | `provider: openrouter` + `base_url` | API key ที่เกี่ยวข้อง | Generic transport |
+| OpenAI-compatible อื่น ๆ | `provider: custom` + `base_url` | API key ที่เกี่ยวข้อง | Generic OpenAI-compatible transport |
 
 ตั้ง `model`, `provider` และ `base_url` ใน `config.yaml` — ใส่เฉพาะ API key ใน `~/.garudust/.env` เปลี่ยนโมเดลได้ตลอดเวลาด้วย `garudust model`
 

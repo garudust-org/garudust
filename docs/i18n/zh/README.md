@@ -147,7 +147,8 @@ garudust config show                        # 显示当前配置
 garudust model                              # 显示当前模型，提示输入新模型
 garudust model anthropic/claude-opus-4-7   # 直接切换模型
 garudust config set ANTHROPIC_API_KEY sk-ant-...
-garudust config set VLLM_BASE_URL http://localhost:8000/v1
+garudust config set provider vllm
+garudust config set base_url http://localhost:8000/v1
 ```
 
 ---
@@ -442,14 +443,14 @@ curl http://localhost:3000/metrics   # Prometheus 兼容
 
 | 提供商 | `config.yaml` | `.env`（仅密钥）| 备注 |
 |--------|--------------|----------------|------|
-| Anthropic | `provider: anthropic` | `ANTHROPIC_API_KEY` | 直接使用 Messages API |
+| Anthropic | `provider: anthropic` | `ANTHROPIC_API_KEY` | 原生 Messages API；设置 `base_url` 可使用代理 |
 | OpenRouter | `provider: openrouter` *（默认）* | `OPENROUTER_API_KEY` | 200+ 模型 |
 | AWS Bedrock | `provider: bedrock` | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` | Converse API，SigV4 |
 | OpenAI Responses | `provider: codex` | `OPENAI_API_KEY` | `/v1/responses` 端点 |
 | Ollama | `provider: ollama` + `base_url` | *（无需）* | 本地运行，无需 key |
 | vLLM | `provider: vllm` + `base_url` | `VLLM_API_KEY` | 本地 OpenAI 兼容服务器 |
 | ThaiLLM | `provider: thaillm` | `THAILLM_API_KEY` | 泰国 NSTDA 主权 AI |
-| 其他 OpenAI 兼容 | `provider: openrouter` + `base_url` | 对应 API key | 通用传输层 |
+| 其他 OpenAI 兼容 | `provider: custom` + `base_url` | 对应 API key | 通用 OpenAI 兼容传输层 |
 
 在 `config.yaml` 中设置 `model`、`provider` 和 `base_url`，仅将 API 密钥放入 `~/.garudust/.env`。随时使用 `garudust model` 切换模型。
 

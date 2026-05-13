@@ -147,7 +147,8 @@ garudust config show                        # print active config
 garudust model                              # show current model, prompt for new
 garudust model anthropic/claude-opus-4-7   # switch model directly
 garudust config set ANTHROPIC_API_KEY sk-ant-...
-garudust config set VLLM_BASE_URL http://localhost:8000/v1
+garudust config set provider vllm
+garudust config set base_url http://localhost:8000/v1
 ```
 
 ---
@@ -442,14 +443,14 @@ Set the relevant tokens in `~/.garudust/.env` and start `garudust-server`. Every
 
 | Provider | `config.yaml` | `.env` (secrets only) | Notes |
 |----------|--------------|----------------------|-------|
-| Anthropic | `provider: anthropic` | `ANTHROPIC_API_KEY` | Direct Messages API |
+| Anthropic | `provider: anthropic` | `ANTHROPIC_API_KEY` | Native Messages API; add `base_url` to use a proxy |
 | OpenRouter | `provider: openrouter` *(default)* | `OPENROUTER_API_KEY` | 200+ models |
 | AWS Bedrock | `provider: bedrock` | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` | Converse API, SigV4 |
 | OpenAI Responses | `provider: codex` | `OPENAI_API_KEY` | `/v1/responses` endpoint |
 | Ollama | `provider: ollama` + `base_url` | *(none required)* | Local, no key needed |
 | vLLM | `provider: vllm` + `base_url` | `VLLM_API_KEY` | Local OpenAI-compatible server |
 | ThaiLLM | `provider: thaillm` | `THAILLM_API_KEY` | NSTDA sovereign Thai LLM |
-| Any OpenAI-compat | `provider: openrouter` + `base_url` | relevant API key | Generic transport |
+| Any OpenAI-compat | `provider: custom` + `base_url` | relevant API key | Generic OpenAI-compatible transport |
 
 Set `model`, `provider`, and `base_url` in `config.yaml`. Put only API keys in `~/.garudust/.env`. Switch models at any time with `garudust model`.
 
