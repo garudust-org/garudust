@@ -427,7 +427,8 @@ impl AgentConfig {
             config.security.allowed_write_paths = vec![cwd];
         }
 
-        // Apply env/dotenv overrides (real env takes priority over dotenv)
+        // Apply env/dotenv overrides (real env takes priority over dotenv and config.yaml).
+        // Provider-specific keys override whatever was set in config.yaml.
         if let Some(k) = env_or_dotenv("ANTHROPIC_API_KEY", dotenv) {
             config.api_key = Some(k);
             config.provider = "anthropic".into();
@@ -439,12 +440,19 @@ impl AgentConfig {
         } else if let Some(url) = env_or_dotenv("VLLM_BASE_URL", dotenv) {
             config.provider = "vllm".into();
             config.base_url = Some(url);
-            if let Some(k) = env_or_dotenv("VLLM_API_KEY", dotenv) {
-                config.api_key = Some(k);
-            }
         } else if let Some(k) = env_or_dotenv("THAILLM_API_KEY", dotenv) {
             config.api_key = Some(k);
             config.provider = "thaillm".into();
+        }
+        // Load api_key for the resolved provider when not already set above.
+        // This handles the case where provider/base_url come from config.yaml.
+        if config.api_key.is_none() {
+            config.api_key = match config.provider.as_str() {
+                "vllm" => env_or_dotenv("VLLM_API_KEY", dotenv),
+                "anthropic" => env_or_dotenv("ANTHROPIC_API_KEY", dotenv),
+                "thaillm" => env_or_dotenv("THAILLM_API_KEY", dotenv),
+                _ => env_or_dotenv("OPENROUTER_API_KEY", dotenv),
+            };
         }
         if let Some(m) = env_or_dotenv("GARUDUST_MODEL", dotenv) {
             config.model = m;
