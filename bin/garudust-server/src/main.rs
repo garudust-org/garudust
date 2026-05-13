@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use anyhow::Result;
 use arc_swap::ArcSwap;
@@ -150,6 +150,9 @@ fn build_config(cli: &Cli) -> Arc<AgentConfig> {
     Arc::new(config)
 }
 
+static WARN_SANDBOX_NONE: OnceLock<()> = OnceLock::new();
+static WARN_DOCKER_MISSING: OnceLock<()> = OnceLock::new();
+
 async fn build_agent(config: Arc<AgentConfig>, db: Arc<SessionDb>) -> (Arc<Agent>, McpHandles) {
     let memory = Arc::new(FileMemoryStore::new(&config.home_dir));
     let transport = build_transport(&config);
@@ -157,17 +160,21 @@ async fn build_agent(config: Arc<AgentConfig>, db: Arc<SessionDb>) -> (Arc<Agent
     if config.security.terminal_sandbox == garudust_core::config::TerminalSandbox::Docker
         && !docker_available()
     {
-        tracing::warn!(
-            "terminal_sandbox is set to 'docker' but Docker is not installed or not in PATH. \
-             Terminal commands will fail. Set `terminal_sandbox: none` or install Docker."
-        );
+        WARN_DOCKER_MISSING.get_or_init(|| {
+            tracing::warn!(
+                "terminal_sandbox is set to 'docker' but Docker is not installed or not in PATH. \
+                 Terminal commands will fail. Set `terminal_sandbox: none` or install Docker."
+            );
+        });
     }
 
     if config.security.terminal_sandbox == garudust_core::config::TerminalSandbox::None {
-        tracing::warn!(
-            "terminal_sandbox is 'none' — terminal commands run directly on the host. \
-             Set GARUDUST_TERMINAL_SANDBOX=docker to isolate execution in a container."
-        );
+        WARN_SANDBOX_NONE.get_or_init(|| {
+            tracing::warn!(
+                "terminal_sandbox is 'none' — terminal commands run directly on the host. \
+                 Set GARUDUST_TERMINAL_SANDBOX=docker to isolate execution in a container."
+            );
+        });
     }
 
     let mut registry = ToolRegistry::new();
