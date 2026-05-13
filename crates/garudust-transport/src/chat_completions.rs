@@ -134,6 +134,60 @@ fn safe_max_tokens(config: &InferenceConfig) -> u32 {
     })
 }
 
+/// Return true when the 400 body describes a context-length overflow.
+fn is_context_overflow(body: &str) -> bool {
+    body.contains("maximum context length") || body.contains("input_tokens")
+}
+
+fn parse_chat_response(choice: &Value, data: &Value) -> Result<TransportResponse, TransportError> {
+    let stop_reason = match choice["finish_reason"].as_str() {
+        Some("stop") | None => StopReason::EndTurn,
+        Some("tool_calls") => StopReason::ToolUse,
+        Some("length") => StopReason::MaxTokens,
+        Some(other) => StopReason::Other(other.into()),
+    };
+    let msg = &choice["message"];
+    let mut content = Vec::new();
+    if let Some(t) = msg["content"].as_str() {
+        if !t.is_empty() {
+            content.push(ContentPart::Text(t.into()));
+        }
+    }
+    let tool_calls: Vec<ToolCall> = msg["tool_calls"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|tc| {
+                    let id = tc["id"].as_str()?;
+                    let name = tc["function"]["name"].as_str()?;
+                    let args_str = tc["function"]["arguments"].as_str().unwrap_or("{}");
+                    let arguments = serde_json::from_str(args_str).unwrap_or(Value::Null);
+                    Some(ToolCall {
+                        id: id.into(),
+                        name: name.into(),
+                        arguments,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    #[allow(clippy::cast_possible_truncation)]
+    let usage = TokenUsage {
+        input_tokens: data["usage"]["prompt_tokens"].as_u64().unwrap_or(0) as u32,
+        output_tokens: data["usage"]["completion_tokens"].as_u64().unwrap_or(0) as u32,
+        cache_read_tokens: data["usage"]["prompt_tokens_details"]["cached_tokens"]
+            .as_u64()
+            .unwrap_or(0) as u32,
+        cache_write_tokens: 0,
+    };
+    Ok(TransportResponse {
+        content,
+        tool_calls,
+        usage,
+        stop_reason,
+    })
+}
+
 fn classify_error(status: u16, body: &str) -> TransportError {
     match status {
         401 | 403 => TransportError::Auth,
@@ -190,6 +244,39 @@ impl ProviderTransport for ChatCompletionsTransport {
             .await
             .map_err(|e| TransportError::Network(e.to_string()))?;
 
+        if status == 400 {
+            if let Some(ctx) = config.context_limit {
+                if is_context_overflow(&text) {
+                    let safe_max = (ctx / 8).max(256);
+                    body[self.tokens_param] = json!(safe_max);
+                    let resp2 = self
+                        .authorized(self.client.post(self.endpoint()))
+                        .json(&body)
+                        .send()
+                        .await
+                        .map_err(|e| TransportError::Network(e.to_string()))?;
+                    let status = resp2.status().as_u16();
+                    let text = resp2
+                        .text()
+                        .await
+                        .map_err(|e| TransportError::Network(e.to_string()))?;
+                    if status != 200 {
+                        return Err(classify_error(status, &text));
+                    }
+                    let data: Value = serde_json::from_str(&text).map_err(|e| {
+                        TransportError::Other(anyhow::anyhow!("parse error: {e}\nbody: {text}"))
+                    })?;
+                    let choice = data["choices"]
+                        .as_array()
+                        .and_then(|a| a.first())
+                        .ok_or_else(|| {
+                            TransportError::Other(anyhow::anyhow!("no choices in response"))
+                        })?;
+                    return parse_chat_response(choice, &data);
+                }
+            }
+            return Err(classify_error(status, &text));
+        }
         if status != 200 {
             return Err(classify_error(status, &text));
         }
@@ -203,56 +290,7 @@ impl ProviderTransport for ChatCompletionsTransport {
             .and_then(|a| a.first())
             .ok_or_else(|| TransportError::Other(anyhow::anyhow!("no choices in response")))?;
 
-        let stop_reason = match choice["finish_reason"].as_str() {
-            Some("stop") | None => StopReason::EndTurn,
-            Some("tool_calls") => StopReason::ToolUse,
-            Some("length") => StopReason::MaxTokens,
-            Some(other) => StopReason::Other(other.into()),
-        };
-
-        let msg = &choice["message"];
-        let mut content = Vec::new();
-        if let Some(t) = msg["content"].as_str() {
-            if !t.is_empty() {
-                content.push(ContentPart::Text(t.into()));
-            }
-        }
-
-        let tool_calls: Vec<ToolCall> = msg["tool_calls"]
-            .as_array()
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|tc| {
-                        let id = tc["id"].as_str()?;
-                        let name = tc["function"]["name"].as_str()?;
-                        let args_str = tc["function"]["arguments"].as_str().unwrap_or("{}");
-                        let arguments = serde_json::from_str(args_str).unwrap_or(Value::Null);
-                        Some(ToolCall {
-                            id: id.into(),
-                            name: name.into(),
-                            arguments,
-                        })
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        #[allow(clippy::cast_possible_truncation)]
-        let usage = TokenUsage {
-            input_tokens: data["usage"]["prompt_tokens"].as_u64().unwrap_or(0) as u32,
-            output_tokens: data["usage"]["completion_tokens"].as_u64().unwrap_or(0) as u32,
-            cache_read_tokens: data["usage"]["prompt_tokens_details"]["cached_tokens"]
-                .as_u64()
-                .unwrap_or(0) as u32,
-            cache_write_tokens: 0,
-        };
-
-        Ok(TransportResponse {
-            content,
-            tool_calls,
-            usage,
-            stop_reason,
-        })
+        parse_chat_response(choice, &data)
     }
 
     async fn chat_stream(
@@ -281,20 +319,49 @@ impl ProviderTransport for ChatCompletionsTransport {
             body["reasoning_effort"] = json!(effort);
         }
 
-        let resp = self
-            .authorized(self.client.post(self.endpoint()))
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| TransportError::Network(e.to_string()))?;
+        // Send the request; on context-overflow (400) retry once with a safe token cap.
+        let final_resp = {
+            let r = self
+                .authorized(self.client.post(self.endpoint()))
+                .json(&body)
+                .send()
+                .await
+                .map_err(|e| TransportError::Network(e.to_string()))?;
+            let s = r.status().as_u16();
+            if s == 200 {
+                r
+            } else {
+                let text = r.text().await.unwrap_or_default();
+                if s == 400 {
+                    if let Some(ctx) = config.context_limit {
+                        if is_context_overflow(&text) {
+                            let safe_max = (ctx / 8).max(256);
+                            body[self.tokens_param] = json!(safe_max);
+                            let r2 = self
+                                .authorized(self.client.post(self.endpoint()))
+                                .json(&body)
+                                .send()
+                                .await
+                                .map_err(|e| TransportError::Network(e.to_string()))?;
+                            let s2 = r2.status().as_u16();
+                            if s2 != 200 {
+                                let t2 = r2.text().await.unwrap_or_default();
+                                return Err(classify_error(s2, &t2));
+                            }
+                            r2
+                        } else {
+                            return Err(classify_error(s, &text));
+                        }
+                    } else {
+                        return Err(classify_error(s, &text));
+                    }
+                } else {
+                    return Err(classify_error(s, &text));
+                }
+            }
+        };
 
-        let status = resp.status().as_u16();
-        if status != 200 {
-            let text = resp.text().await.unwrap_or_default();
-            return Err(classify_error(status, &text));
-        }
-
-        let mut byte_stream = resp.bytes_stream();
+        let mut byte_stream = final_resp.bytes_stream();
 
         let stream = try_stream! {
             let mut buf = String::new();
