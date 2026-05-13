@@ -552,33 +552,41 @@ tool ที่ติดตั้งจะถูกบันทึกใน `~/.g
   │  TUI / one-shot    │    │  HTTP /chat · /stream · /ws                 │
   │  setup · config    ├──┐ │  Telegram · Discord · Slack · Matrix · LINE · WhatsApp │
   │  doctor · model    │  │ │  Webhook · Cron                             │
-  └────────────────────┘  │ └──────────────────────────┬──────────────────┘
-                          │                            │
-                          └─────────────┬──────────────┘
-                                        ▼
-                               ┌─────────────────┐
-                               │      Agent       │
-                               │   run_loop()     │
-                               └────────┬─────────┘
-                            ┌───────────┴───────────┐
-                            ▼                       ▼
-              ┌──────────────────────┐  ┌─────────────────────────────────┐
-              │      Transport       │  │        ToolRegistry              │
-              │  Anthropic           │  │  web_fetch · web_search          │
-              │  OpenRouter          │  │  http_request · browser          │
-              │  AWS Bedrock         │  │  read_file · write_file          │
-              │  Codex               │  │  list_directory · terminal       │
-              │  Ollama · vLLM       │  │  memory · user_profile           │
-              │  ThaiLLM             │  │  session_search · delegate_task  │
-              └──────────────────────┘  │  skills · + hub · MCP (external) │
-                                        └─────────────┬───────────────────┘
-                                                      │
-                                          ┌───────────┴───────────┐
-                                          ▼                       ▼
-                                ┌──────────────────┐  ┌──────────────────────┐
-                                │ FileMemoryStore   │  │      SessionDb       │
-                                │ memory/ · skills/ │  │   SQLite + FTS5      │
-                                └──────────────────┘  └──────────────────────┘
+  │  tool · skill      │  │ └──────────────────────────┬──────────────────┘
+  └──────────┬─────────┘  │                            │
+     install │            └─────────────┬──────────────┘
+             │                          ▼
+             │                 ┌─────────────────┐
+             │                 │      Agent       │
+             │                 │   run_loop()     │
+             │                 └────────┬─────────┘
+             │              ┌───────────┴───────────┐
+             │              ▼                       ▼
+             │┌──────────────────────┐  ┌─────────────────────────────────┐
+             ││      Transport       │  │        ToolRegistry              │
+             ││  Anthropic           │  │  web_fetch · web_search          │
+             ││  OpenRouter          │  │  http_request · browser          │
+             ││  AWS Bedrock         │  │  read_file · write_file          │
+             ││  Codex               │  │  list_directory · terminal       │
+             ││  Ollama · vLLM       │  │  memory · user_profile           │
+             ││  ThaiLLM             │  │  session_search · delegate_task  │
+             │└──────────────────────┘  │  script tools · skills           │
+             │                          │  MCP (external)                  │
+             │                          └─────────────┬───────────────────┘
+             │                                        │
+             │                            ┌───────────┴───────────┐
+             │                            ▼                       ▼
+             │                  ┌──────────────────┐  ┌──────────────────────┐
+             └─────────────────▶│ FileMemoryStore   │  │      SessionDb       │
+                                │ tools/ · skills/  │  │   SQLite + FTS5      │
+                                │ memory/           │  └──────────────────────┘
+                                └────────┬──────────┘
+                                         ▲
+                               ┌─────────┴──────────┐
+                               │   garudust-hub      │
+                               │  community tools    │
+                               │  & skills packages  │
+                               └────────────────────┘
 ```
 
 ### โครงสร้าง Crate
