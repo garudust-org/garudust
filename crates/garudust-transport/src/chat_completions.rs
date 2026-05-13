@@ -247,7 +247,11 @@ impl ProviderTransport for ChatCompletionsTransport {
                     for divisor in [16u32, 32, 64] {
                         let safe_max = (ctx / divisor).max(256);
                         body[self.tokens_param] = json!(safe_max);
-                        tracing::warn!(divisor, safe_max, "context overflow, retrying with reduced max_tokens");
+                        tracing::warn!(
+                            divisor,
+                            safe_max,
+                            "context overflow, retrying with reduced max_tokens"
+                        );
                         let r = self
                             .authorized(self.client.post(self.endpoint()))
                             .json(&body)
@@ -342,7 +346,11 @@ impl ProviderTransport for ChatCompletionsTransport {
                             let mut found = None;
                             for divisor in [16u32, 32, 64] {
                                 let safe_max = (ctx / divisor).max(256);
-                                tracing::warn!(divisor, safe_max, "stream context overflow, retrying with reduced max_tokens");
+                                tracing::warn!(
+                                    divisor,
+                                    safe_max,
+                                    "stream context overflow, retrying with reduced max_tokens"
+                                );
                                 body[self.tokens_param] = json!(safe_max);
                                 let r2 = self
                                     .authorized(self.client.post(self.endpoint()))
