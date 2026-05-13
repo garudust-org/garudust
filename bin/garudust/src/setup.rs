@@ -112,15 +112,9 @@ pub async fn run() -> anyhow::Result<()> {
     println!();
 
     // ── Credentials / endpoint ────────────────────────────────────────────────
-    // Remove base-URL env vars for providers not selected — they take priority
-    // over config.yaml in AgentConfig::load() and would override the new choice.
-    let stale_base_url_vars: &[&str] = match provider {
-        "ollama" => &["VLLM_BASE_URL"],
-        "vllm" => &["OLLAMA_BASE_URL"],
-        _ => &["OLLAMA_BASE_URL", "VLLM_BASE_URL"],
-    };
-
-    for var in stale_base_url_vars {
+    // Remove legacy base-URL env vars — provider/base_url now live in config.yaml.
+    // Also clear stale entries for providers not selected so they can't override.
+    for var in &["VLLM_BASE_URL", "OLLAMA_BASE_URL", "GARUDUST_MODEL"] {
         remove_env_var(&home_dir, var)?;
     }
 
@@ -137,11 +131,22 @@ pub async fn run() -> anyhow::Result<()> {
             }
         }
         "vllm" => {
-            let cur_url = read_env_file(&home_dir, "VLLM_BASE_URL")
-                .unwrap_or_else(|| "http://localhost:8000/v1".into());
-            let url = prompt("VLLM_BASE_URL", Some(&cur_url));
-            let url = if url.is_empty() { cur_url } else { url };
-            env_vars.push(("VLLM_BASE_URL", url));
+            let cur_url = existing
+                .base_url
+                .as_deref()
+                .or_else(|| {
+                    read_env_file(&home_dir, "VLLM_BASE_URL")
+                        .as_deref()
+                        .map(|_| "")
+                })
+                .unwrap_or("http://localhost:8000/v1");
+            let url = prompt("base_url (vLLM server)", Some(cur_url));
+            let url = if url.is_empty() {
+                cur_url.to_string()
+            } else {
+                url
+            };
+            custom_base_url = Some(url);
 
             let cur_key = read_env_file(&home_dir, "VLLM_API_KEY");
             if let Some(v) = prompt_secret(
@@ -159,11 +164,17 @@ pub async fn run() -> anyhow::Result<()> {
             }
         }
         "ollama" => {
-            let cur_url = read_env_file(&home_dir, "OLLAMA_BASE_URL")
-                .unwrap_or_else(|| "http://localhost:11434".into());
-            let url = prompt("OLLAMA_BASE_URL", Some(&cur_url));
-            let url = if url.is_empty() { cur_url } else { url };
-            env_vars.push(("OLLAMA_BASE_URL", url));
+            let cur_url = existing
+                .base_url
+                .as_deref()
+                .unwrap_or("http://localhost:11434");
+            let url = prompt("base_url (Ollama server)", Some(cur_url));
+            let url = if url.is_empty() {
+                cur_url.to_string()
+            } else {
+                url
+            };
+            custom_base_url = Some(url);
         }
         "custom" => {
             let cur_url = existing.base_url.as_deref();
