@@ -321,7 +321,10 @@ impl Agent {
         let inf_config = InferenceConfig {
             model: self.config.model.clone(),
             max_tokens: self.config.max_output_tokens,
-            context_limit: self.config.context_window.map(|c| u32::try_from(c).unwrap_or(u32::MAX)),
+            context_limit: self
+                .config
+                .context_window
+                .map(|c| u32::try_from(c).unwrap_or(u32::MAX)),
             temperature: None,
             reasoning_effort: self.config.reasoning_effort.clone(),
         };
@@ -855,7 +858,9 @@ async fn reflect_and_save_skill(
     let inf_config = InferenceConfig {
         model: config.model.clone(),
         max_tokens: Some(2048),
-        context_limit: config.context_window.map(|c| c as u32),
+        context_limit: config
+            .context_window
+            .map(|c| u32::try_from(c).unwrap_or(u32::MAX)),
         temperature: None,
         reasoning_effort: None,
     };
