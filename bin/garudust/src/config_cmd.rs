@@ -82,6 +82,31 @@ pub fn show(config: &AgentConfig) {
     print_platform("whatsapp", config.platforms.whatsapp.as_ref());
     println!();
 
+    println!("Server (config.yaml → server.*)");
+    println!("{}", "─".repeat(48));
+    println!("port            : {}", config.server.port);
+    println!();
+
+    println!("Cron (config.yaml → cron.*)");
+    println!("{}", "─".repeat(48));
+    println!("jobs            : {}", config.cron.jobs.len());
+    for (i, job) in config.cron.jobs.iter().enumerate() {
+        println!("  [{i}] {} — {}", job.schedule, job.task);
+    }
+    println!(
+        "memory_consolidation: {}",
+        config
+            .cron
+            .memory_consolidation
+            .as_deref()
+            .unwrap_or("(disabled)")
+    );
+    println!(
+        "memory_expiry       : {}",
+        config.cron.memory_expiry.as_deref().unwrap_or("(disabled)")
+    );
+    println!();
+
     let yaml_path = config.home_dir.join("config.yaml");
     let env_path = config.home_dir.join(".env");
     println!(

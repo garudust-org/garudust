@@ -194,6 +194,19 @@ mcp_servers:
   - name: postgres
     command: npx
     args: ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/mydb"]
+
+# HTTP 网关设置 —— `--port` / `GARUDUST_PORT` 可以覆盖
+server:
+  port: 3000
+
+# Cron —— 周期性 agent 任务 + memory 维护任务. `--cron-jobs` /
+# `--memory-cron` / `--memory-expiry-cron`（以及对应的环境变量）可覆盖
+cron:
+  jobs:
+    - schedule: "0 9 * * *"
+      task: "撰写晨报并保存到 ~/briefing.md"
+  memory_consolidation: "0 3 * * *"   # null/省略 = 关闭
+  memory_expiry: "0 4 * * *"           # null/省略 = 关闭
 ```
 
 ### 平台配置

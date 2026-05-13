@@ -147,6 +147,15 @@ pub struct AgentConfig {
     /// secrets continue to be read from `~/.garudust/.env` — never from yaml.
     #[serde(default)]
     pub platforms: WebhookPlatformsConfig,
+    /// HTTP gateway server settings (port, …). Overridden by `--port` and
+    /// `GARUDUST_PORT` env var.
+    #[serde(default)]
+    pub server: ServerConfig,
+    /// Cron scheduler — recurring agent tasks plus the memory consolidation /
+    /// expiry sweeps. CLI flags (`--cron-jobs`, `--memory-cron`,
+    /// `--memory-expiry-cron`) and the corresponding env vars take precedence.
+    #[serde(default)]
+    pub cron: CronConfig,
 }
 
 fn default_model() -> String {
@@ -371,6 +380,49 @@ pub struct WebhookPlatformsConfig {
     pub webhook: Option<WebhookPlatformConfig>,
 }
 
+/// HTTP gateway server settings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServerConfig {
+    /// TCP port for the HTTP gateway. Default `3000`.
+    #[serde(default = "default_server_port")]
+    pub port: u16,
+}
+
+fn default_server_port() -> u16 {
+    3000
+}
+
+impl Default for ServerConfig {
+    fn default() -> Self {
+        Self {
+            port: default_server_port(),
+        }
+    }
+}
+
+/// A single scheduled agent task — cron expression plus the prompt to run.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CronJob {
+    /// Standard 5-field cron expression (e.g. `0 9 * * *`).
+    pub schedule: String,
+    /// The task prompt handed to the agent when the cron fires.
+    pub task: String,
+}
+
+/// Cron scheduler configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct CronConfig {
+    /// Recurring agent tasks.
+    #[serde(default)]
+    pub jobs: Vec<CronJob>,
+    /// Cron expression for automatic memory consolidation. `None` = disabled.
+    #[serde(default)]
+    pub memory_consolidation: Option<String>,
+    /// Cron expression for automatic memory expiry sweeps. `None` = disabled.
+    #[serde(default)]
+    pub memory_expiry: Option<String>,
+}
+
 impl WebhookPlatformConfig {
     /// Defaults for the generic webhook adapter. Used when no explicit
     /// `platforms.webhook` block is present so existing setups keep working.
@@ -449,6 +501,8 @@ impl Default for AgentConfig {
                 line: None,
                 whatsapp: None,
             },
+            server: ServerConfig::default(),
+            cron: CronConfig::default(),
         }
     }
 }

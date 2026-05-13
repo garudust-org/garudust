@@ -194,6 +194,19 @@ mcp_servers:
   - name: postgres
     command: npx
     args: ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/mydb"]
+
+# HTTP gateway settings — `--port` / `GARUDUST_PORT` override.
+server:
+  port: 3000
+
+# Cron — recurring agent tasks plus memory housekeeping. `--cron-jobs` /
+# `--memory-cron` / `--memory-expiry-cron` (and matching env vars) override.
+cron:
+  jobs:
+    - schedule: "0 9 * * *"
+      task: "Write a morning briefing and save to ~/briefing.md"
+  memory_consolidation: "0 3 * * *"   # null/omitted = disabled
+  memory_expiry: "0 4 * * *"           # null/omitted = disabled
 ```
 
 ### Platform Setup

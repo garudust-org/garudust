@@ -194,6 +194,19 @@ mcp_servers:
   - name: postgres
     command: npx
     args: ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/mydb"]
+
+# การตั้งค่า HTTP gateway — `--port` / `GARUDUST_PORT` override ได้
+server:
+  port: 3000
+
+# Cron — งานประจำของ agent + งานดูแล memory. `--cron-jobs` /
+# `--memory-cron` / `--memory-expiry-cron` (และ env var ที่สอดคล้องกัน) override ได้
+cron:
+  jobs:
+    - schedule: "0 9 * * *"
+      task: "เขียนสรุปเช้าและบันทึกไว้ที่ ~/briefing.md"
+  memory_consolidation: "0 3 * * *"   # null/ไม่ใส่ = ปิด
+  memory_expiry: "0 4 * * *"           # null/ไม่ใส่ = ปิด
 ```
 
 ### การตั้งค่า Platform

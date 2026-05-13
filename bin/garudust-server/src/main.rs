@@ -30,8 +30,10 @@ type McpHandles = Vec<Box<dyn std::any::Any + Send>>;
     version
 )]
 struct Cli {
-    #[arg(long, env = "GARUDUST_PORT", default_value = "3000")]
-    port: u16,
+    /// HTTP gateway port. Falls back to `server.port` in config.yaml
+    /// (default `3000`) when neither flag nor `GARUDUST_PORT` is set.
+    #[arg(long, env = "GARUDUST_PORT")]
+    port: Option<u16>,
 
     /// Override model
     #[arg(long, env = "GARUDUST_MODEL")]
@@ -330,13 +332,14 @@ async fn main() -> Result<()> {
 
     let cli = Cli::parse();
     let config = build_config(&cli);
+    let port = cli.port.unwrap_or(config.server.port);
 
     tracing::info!(
         "garudust-server {}  |  model: {}  |  provider: {}  |  port: {}",
         env!("CARGO_PKG_VERSION"),
         config.model,
         config.provider,
-        cli.port,
+        port,
     );
     let db = Arc::new(SessionDb::open(&config.home_dir)?);
     let (agent_inner, mcp_handles) = build_agent(config.clone(), db.clone()).await;
@@ -484,19 +487,37 @@ async fn main() -> Result<()> {
     }
 
     // ── Cron scheduler ────────────────────────────────────────────────────────
-    let needs_cron =
-        cli.cron_jobs.is_some() || cli.memory_cron.is_some() || cli.memory_expiry_cron.is_some();
+    // Precedence: CLI flag / env var (already merged by clap) > yaml. For
+    // `cron_jobs`, the CLI form is a comma-separated string and the yaml form
+    // is a structured list — we materialize both into the same Vec<(expr, task)>.
+    let cron_jobs: Vec<(String, String)> = match &cli.cron_jobs {
+        Some(s) => garudust_cron::parse_job_pairs(s),
+        None => config
+            .cron
+            .jobs
+            .iter()
+            .map(|j| (j.schedule.clone(), j.task.clone()))
+            .collect(),
+    };
+    let memory_cron = cli
+        .memory_cron
+        .clone()
+        .or_else(|| config.cron.memory_consolidation.clone());
+    let memory_expiry_cron = cli
+        .memory_expiry_cron
+        .clone()
+        .or_else(|| config.cron.memory_expiry.clone());
+
+    let needs_cron = !cron_jobs.is_empty() || memory_cron.is_some() || memory_expiry_cron.is_some();
     if needs_cron {
         let scheduler = CronScheduler::new(agent.load_full(), approver.clone()).await?;
 
-        if let Some(jobs_str) = &cli.cron_jobs {
-            for (expr, task) in garudust_cron::parse_job_pairs(jobs_str) {
-                scheduler.add_job(&expr, task.clone()).await?;
-                tracing::info!(cron = %expr, task = %task, "cron job registered");
-            }
+        for (expr, task) in &cron_jobs {
+            scheduler.add_job(expr, task.clone()).await?;
+            tracing::info!(cron = %expr, task = %task, "cron job registered");
         }
 
-        if let Some(expr) = &cli.memory_expiry_cron {
+        if let Some(expr) = &memory_expiry_cron {
             let expiry_config = config.memory_expiry.clone();
             let home_dir = config.home_dir.clone();
             scheduler
@@ -518,7 +539,7 @@ async fn main() -> Result<()> {
             tracing::info!(cron = %expr.trim(), "memory expiry cron registered");
         }
 
-        if let Some(expr) = &cli.memory_cron {
+        if let Some(expr) = &memory_cron {
             const CONSOLIDATION_TASK: &str =
                 "Review and consolidate your memory. Use the `memory` tool to read all current \
                  entries. Then rewrite them: remove exact duplicates, merge entries that say the \
@@ -545,7 +566,7 @@ async fn main() -> Result<()> {
         approver,
     };
     let router = create_router(state);
-    let addr = format!("0.0.0.0:{}", cli.port);
+    let addr = format!("0.0.0.0:{port}");
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     tracing::info!("garudust-server listening on {addr}");
 
