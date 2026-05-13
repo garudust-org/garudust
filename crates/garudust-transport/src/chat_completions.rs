@@ -126,11 +126,9 @@ fn oai_reasoning_effort(effort: Option<&ReasoningEffort>) -> Option<&'static str
 /// When unspecified but the context window is known, cap at one quarter of it
 /// so there is always headroom for input tokens. Falls back to 4096.
 fn safe_max_tokens(config: &InferenceConfig) -> u32 {
-    config.max_tokens.unwrap_or_else(|| {
-        config
-            .context_limit
-            .map_or(4096, |c| (c / 4).max(2048))
-    })
+    config
+        .max_tokens
+        .unwrap_or_else(|| config.context_limit.map_or(4096, |c| (c / 4).max(2048)))
 }
 
 /// Return true when the 400 body describes a context-length overflow.
@@ -261,19 +259,16 @@ impl ProviderTransport for ChatCompletionsTransport {
                             .await
                             .map_err(|e| TransportError::Network(e.to_string()))?;
                         if s == 200 {
-                            let data: Value =
-                                serde_json::from_str(&t).map_err(|e| {
-                                    TransportError::Other(anyhow::anyhow!(
-                                        "parse error: {e}\nbody: {t}"
-                                    ))
-                                })?;
+                            let data: Value = serde_json::from_str(&t).map_err(|e| {
+                                TransportError::Other(anyhow::anyhow!(
+                                    "parse error: {e}\nbody: {t}"
+                                ))
+                            })?;
                             let choice = data["choices"]
                                 .as_array()
                                 .and_then(|a| a.first())
                                 .ok_or_else(|| {
-                                    TransportError::Other(anyhow::anyhow!(
-                                        "no choices in response"
-                                    ))
+                                    TransportError::Other(anyhow::anyhow!("no choices in response"))
                                 })?;
                             return Ok(parse_chat_response(choice, &data));
                         }
