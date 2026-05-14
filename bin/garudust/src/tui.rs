@@ -116,11 +116,6 @@ fn next_word(s: &str, cursor: usize) -> usize {
     chars.get(i).map_or(s.len(), |(b, _)| cursor + *b)
 }
 
-/// Number of display columns occupied by `s` (1 per char; good enough for TUI).
-fn display_cols(s: &str) -> usize {
-    s.chars().count()
-}
-
 impl Tui {
     pub fn new(toolsets: BTreeMap<String, Vec<String>>, skill_names: Vec<String>) -> Self {
         Self {
@@ -587,12 +582,5 @@ impl Tui {
             .block(Block::default().borders(Borders::ALL).title(" Input "))
             .style(Style::default().fg(Color::White));
         f.render_widget(input_widget, chunks[2]);
-
-        // Position the terminal cursor so IME/accessibility tools follow correctly.
-        let cursor_col = display_cols(before);
-        f.set_cursor_position((
-            chunks[2].x + 1 + u16::try_from(cursor_col).unwrap_or(u16::MAX),
-            chunks[2].y + 1,
-        ));
     }
 }
