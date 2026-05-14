@@ -29,6 +29,21 @@ const YAML_KEYS: &[&str] = &[
     "base_url",
     "max_iterations",
     "tool_delay_ms",
+    // server
+    "server.port",
+    // cron
+    "cron.memory_consolidation",
+    "cron.memory_expiry",
+    // platforms (empty string clears/disables)
+    "platforms.line.enabled",
+    "platforms.line.port",
+    "platforms.line.webhook_path",
+    "platforms.whatsapp.enabled",
+    "platforms.whatsapp.port",
+    "platforms.whatsapp.webhook_path",
+    "platforms.webhook.enabled",
+    "platforms.webhook.port",
+    "platforms.webhook.webhook_path",
 ];
 
 fn print_platform(label: &str, cfg: Option<&WebhookPlatformConfig>) {
@@ -182,6 +197,18 @@ pub fn set_model(name: Option<&str>, config: &AgentConfig) -> anyhow::Result<()>
     Ok(())
 }
 
+fn platform_or_insert<'a>(
+    slot: &'a mut Option<WebhookPlatformConfig>,
+    default_port: u16,
+    default_path: &str,
+) -> &'a mut WebhookPlatformConfig {
+    slot.get_or_insert_with(|| WebhookPlatformConfig {
+        enabled: false,
+        port: default_port,
+        webhook_path: default_path.into(),
+    })
+}
+
 fn update_yaml(key: &str, value: &str, home_dir: &Path) -> anyhow::Result<()> {
     let yaml_path = home_dir.join("config.yaml");
     let mut config: AgentConfig = if yaml_path.exists() {
@@ -204,9 +231,113 @@ fn update_yaml(key: &str, value: &str, home_dir: &Path) -> anyhow::Result<()> {
         }
         "max_iterations" => config.max_iterations = value.parse()?,
         "tool_delay_ms" => config.tool_delay_ms = value.parse()?,
+        "server.port" => config.server.port = value.parse()?,
+        "cron.memory_consolidation" => {
+            config.cron.memory_consolidation = if value.is_empty() {
+                None
+            } else {
+                Some(value.into())
+            };
+        }
+        "cron.memory_expiry" => {
+            config.cron.memory_expiry = if value.is_empty() {
+                None
+            } else {
+                Some(value.into())
+            };
+        }
+        "platforms.line.enabled" => {
+            platform_or_insert(&mut config.platforms.line, 3002, "/line").enabled =
+                value.parse()?;
+        }
+        "platforms.line.port" => {
+            platform_or_insert(&mut config.platforms.line, 3002, "/line").port = value.parse()?;
+        }
+        "platforms.line.webhook_path" => {
+            platform_or_insert(&mut config.platforms.line, 3002, "/line").webhook_path =
+                value.into();
+        }
+        "platforms.whatsapp.enabled" => {
+            platform_or_insert(&mut config.platforms.whatsapp, 3003, "/whatsapp").enabled =
+                value.parse()?;
+        }
+        "platforms.whatsapp.port" => {
+            platform_or_insert(&mut config.platforms.whatsapp, 3003, "/whatsapp").port =
+                value.parse()?;
+        }
+        "platforms.whatsapp.webhook_path" => {
+            platform_or_insert(&mut config.platforms.whatsapp, 3003, "/whatsapp").webhook_path =
+                value.into();
+        }
+        "platforms.webhook.enabled" => {
+            platform_or_insert(&mut config.platforms.webhook, 8080, "/webhook").enabled =
+                value.parse()?;
+        }
+        "platforms.webhook.port" => {
+            platform_or_insert(&mut config.platforms.webhook, 8080, "/webhook").port =
+                value.parse()?;
+        }
+        "platforms.webhook.webhook_path" => {
+            platform_or_insert(&mut config.platforms.webhook, 8080, "/webhook").webhook_path =
+                value.into();
+        }
         _ => unreachable!(),
     }
 
     config.save_yaml()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use garudust_core::config::AgentConfig;
+
+    fn parse(yaml: &str) -> AgentConfig {
+        serde_yaml::from_str(yaml).expect("valid yaml")
+    }
+
+    #[test]
+    fn platforms_line_roundtrip() {
+        let cfg = parse(
+            "platforms:\n  line:\n    enabled: true\n    port: 3002\n    webhook_path: /line\n",
+        );
+        let line = cfg.platforms.line.unwrap();
+        assert!(line.enabled);
+        assert_eq!(line.port, 3002);
+        assert_eq!(line.webhook_path, "/line");
+    }
+
+    #[test]
+    fn platforms_absent_is_none() {
+        let cfg = parse("model: test\n");
+        assert!(cfg.platforms.line.is_none());
+        assert!(cfg.platforms.whatsapp.is_none());
+    }
+
+    #[test]
+    fn cron_consolidation_roundtrip() {
+        let cfg = parse("cron:\n  memory_consolidation: \"0 3 * * *\"\n");
+        assert_eq!(cfg.cron.memory_consolidation.as_deref(), Some("0 3 * * *"));
+    }
+
+    #[test]
+    fn cron_jobs_roundtrip() {
+        let cfg =
+            parse("cron:\n  jobs:\n    - schedule: \"0 9 * * *\"\n      task: morning report\n");
+        assert_eq!(cfg.cron.jobs.len(), 1);
+        assert_eq!(cfg.cron.jobs[0].schedule, "0 9 * * *");
+        assert_eq!(cfg.cron.jobs[0].task, "morning report");
+    }
+
+    #[test]
+    fn server_port_roundtrip() {
+        let cfg = parse("server:\n  port: 4000\n");
+        assert_eq!(cfg.server.port, 4000);
+    }
+
+    #[test]
+    fn server_port_default() {
+        let cfg = parse("model: test\n");
+        assert_eq!(cfg.server.port, 3000);
+    }
 }
