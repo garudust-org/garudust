@@ -84,11 +84,22 @@ impl MessageHandler for GatewayHandler {
             .touch(&msg.session_key, &msg.channel.platform, &msg.user_id)
             .await;
 
+        // Strip @bot_username prefix left by group-chat @mentions so that
+        // slash commands and the agent task see clean text.
+        if !pcfg.bot_username.is_empty() {
+            let mention = format!("@{}", pcfg.bot_username);
+            let lower = msg.text.to_lowercase();
+            if let Some(rest) = lower.strip_prefix(&mention.to_lowercase()) {
+                msg.text = msg.text[mention.len()..].trim().to_string();
+                let _ = rest; // suppress unused warning
+            }
+        }
+
         // Slash commands — handled before spawning so they reply synchronously.
         let trimmed = msg.text.trim();
         if trimmed == "/new" || trimmed == "/clear" {
             self.agent.clear_session(&msg.session_key);
-            let reply = OutboundMessage::text("เริ่มการสนทนาใหม่แล้ว 🆕");
+            let reply = OutboundMessage::text("เริ่มการสนทนาใหม่แล้ว");
             let _ = self.platform.send_message(&msg.channel, reply).await;
             return Ok(());
         }
