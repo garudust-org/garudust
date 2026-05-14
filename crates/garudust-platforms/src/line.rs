@@ -204,14 +204,16 @@ async fn handle_webhook(
         // request per user even under concurrent webhook events. In group/room
         // sources the 1-on-1 profile endpoint 404s for non-friends, so we
         // pick the scoped member endpoint based on `source.kind`.
+        //
+        // We share `state.inner` (an `Arc<Inner>`) into the spawned task rather
+        // than cloning `name_cache` / `fetching` directly — DashMap::clone() is
+        // a deep clone, so writes to a cloned map would not be visible to the
+        // adapter's `do_send` reads from `self.inner.name_cache`.
         if !state.inner.name_cache.contains_key(&user_id)
             && state.inner.fetching.insert(user_id.clone())
         {
-            let token = state.inner.channel_token.clone();
+            let inner = state.inner.clone();
             let uid = user_id.clone();
-            let cache = state.inner.name_cache.clone();
-            let in_flight = state.inner.fetching.clone();
-            let client = state.inner.client.clone();
             let source_kind = ev.source.kind.clone();
             let scope_chat = chat_id.clone();
             tokio::spawn(async move {
@@ -220,10 +222,12 @@ async fn handle_webhook(
                     "room" => ProfileScope::Room(&scope_chat),
                     _ => ProfileScope::Personal,
                 };
-                if let Some(name) = fetch_display_name(&client, &token, &uid, scope).await {
-                    cache.insert(uid.clone(), name);
+                if let Some(name) =
+                    fetch_display_name(&inner.client, &inner.channel_token, &uid, scope).await
+                {
+                    inner.name_cache.insert(uid.clone(), name);
                 }
-                in_flight.remove(&uid);
+                inner.fetching.remove(&uid);
             });
         }
 
