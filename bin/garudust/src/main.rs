@@ -386,7 +386,9 @@ async fn main() -> Result<()> {
             while let Some(ev) = rx_event.recv().await {
                 match ev {
                     TuiEvent::Quit => break,
-                    TuiEvent::NewSession => {} // agent is stateless per-call; UI already cleared
+                    TuiEvent::NewSession => {
+                        shared_agent.read().await.clear_session("cli:tui");
+                    }
                     TuiEvent::ChangeModel(model) => {
                         let mut new_cfg = (*shared_config).clone();
                         new_cfg.model = model;
@@ -408,7 +410,13 @@ async fn main() -> Result<()> {
                         });
 
                         match current_agent
-                            .run_streaming(&task, approver2.clone(), "cli", chunk_tx, None)
+                            .run_streaming(
+                                &task,
+                                approver2.clone(),
+                                "cli",
+                                chunk_tx,
+                                Some("cli:tui"),
+                            )
                             .await
                         {
                             Ok(r) => {
