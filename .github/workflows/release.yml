@@ -149,29 +149,49 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
-          crates=(
-            garudust-core
-            garudust-memory
-            garudust-transport
-            garudust-tools
-            garudust-agent
-            garudust-gateway
-            garudust-cron
-            garudust-platforms
-          )
-          for crate in "${crates[@]}"; do
+          publish_or_skip() {
+            local crate="$1"
             echo "Publishing $crate..."
-            cargo publish -p "$crate" --no-verify
-            sleep 20
-          done
+            local out
+            if out=$(cargo publish -p "$crate" --no-verify 2>&1); then
+              echo "$out"
+              sleep 20
+            elif echo "$out" | grep -q "already exists"; then
+              echo "  → $crate already published, skipping."
+            else
+              echo "$out"
+              exit 1
+            fi
+          }
+          publish_or_skip garudust-core
+          publish_or_skip garudust-memory
+          publish_or_skip garudust-transport
+          publish_or_skip garudust-tools
+          publish_or_skip garudust-agent
+          publish_or_skip garudust-gateway
+          publish_or_skip garudust-cron
+          publish_or_skip garudust-platforms
 
       - name: Publish binaries
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
-          cargo publish -p garudust --no-verify
-          sleep 20
-          cargo publish -p garudust-server --no-verify
+          publish_or_skip() {
+            local crate="$1"
+            echo "Publishing $crate..."
+            local out
+            if out=$(cargo publish -p "$crate" --no-verify 2>&1); then
+              echo "$out"
+              sleep 20
+            elif echo "$out" | grep -q "already exists"; then
+              echo "  → $crate already published, skipping."
+            else
+              echo "$out"
+              exit 1
+            fi
+          }
+          publish_or_skip garudust
+          publish_or_skip garudust-server
 
   release:
     name: Publish GitHub Release
