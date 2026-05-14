@@ -148,9 +148,13 @@ garudust doctor                             # check API key, connectivity, DB
 garudust config show                        # print active config
 garudust model                              # show current model, prompt for new
 garudust model anthropic/claude-opus-4-7   # switch model directly
-garudust config set ANTHROPIC_API_KEY sk-ant-...
-garudust config set provider vllm
+garudust config set ANTHROPIC_API_KEY sk-ant-...   # API keys → .env
+garudust config set provider vllm                  # model / provider / base_url → config.yaml
 garudust config set base_url http://localhost:8000/v1
+garudust config set server.port 3001               # nested keys use dot notation
+garudust config set cron.memory_consolidation "0 3 * * *"
+garudust config set platforms.line.enabled true
+garudust config set platforms.line.port 3002
 ```
 
 ---
@@ -164,8 +168,8 @@ Non-secret settings live in `~/.garudust/config.yaml`. API keys and tokens live 
 ```yaml
 # Model and provider — not secrets, so they live here (not in .env)
 model: anthropic/claude-sonnet-4-6   # model identifier
-provider: anthropic                  # anthropic | openrouter | vllm | ollama | thaillm
-base_url: https://your-vllm-host/v1  # required for vllm / ollama / any OpenAI-compat
+provider: anthropic                  # anthropic | openrouter | vllm | ollama | thaillm | custom
+base_url: https://your-vllm-host/v1  # required for vllm/ollama; enables proxy mode for anthropic
 
 security:
   terminal_sandbox: docker           # none (default) | docker
@@ -207,6 +211,18 @@ cron:
       task: "Write a morning briefing and save to ~/briefing.md"
   memory_consolidation: "0 3 * * *"   # null/omitted = disabled
   memory_expiry: "0 4 * * *"           # null/omitted = disabled
+
+# Webhook-based platform adapters — secrets stay in .env, settings here.
+# garudust setup (Full mode) writes this block automatically.
+platforms:
+  line:
+    enabled: true
+    port: 3002
+    webhook_path: /line      # LINE Developers Console webhook URL: https://your-host:3002/line
+  whatsapp:
+    enabled: false
+    port: 3003
+    webhook_path: /whatsapp
 ```
 
 ### Platform Setup

@@ -148,9 +148,13 @@ garudust doctor                             # ตรวจสอบ API key, ก
 garudust config show                        # แสดง config ที่ใช้งานอยู่
 garudust model                              # แสดงโมเดลปัจจุบันและเปลี่ยนแบบ interactive
 garudust model anthropic/claude-opus-4-7   # เปลี่ยนโมเดลโดยตรง
-garudust config set ANTHROPIC_API_KEY sk-ant-...
-garudust config set provider vllm
+garudust config set ANTHROPIC_API_KEY sk-ant-...          # API keys → .env
+garudust config set provider vllm                         # model / provider / base_url → config.yaml
 garudust config set base_url http://localhost:8000/v1
+garudust config set server.port 3001                      # nested keys ใช้ dot notation
+garudust config set cron.memory_consolidation "0 3 * * *"
+garudust config set platforms.line.enabled true
+garudust config set platforms.line.port 3002
 ```
 
 ---
@@ -164,8 +168,8 @@ garudust config set base_url http://localhost:8000/v1
 ```yaml
 # โมเดลและ provider — ไม่ใช่ secret จึงอยู่ที่นี่ (ไม่ใช่ใน .env)
 model: anthropic/claude-sonnet-4-6   # model identifier
-provider: anthropic                  # anthropic | openrouter | vllm | ollama | thaillm
-base_url: https://your-vllm-host/v1  # จำเป็นสำหรับ vllm / ollama / OpenAI-compatible อื่น ๆ
+provider: anthropic                  # anthropic | openrouter | vllm | ollama | thaillm | custom
+base_url: https://your-vllm-host/v1  # จำเป็นสำหรับ vllm/ollama; เปิด proxy mode สำหรับ anthropic
 
 security:
   terminal_sandbox: docker           # none (ค่าเริ่มต้น) | docker
@@ -207,6 +211,18 @@ cron:
       task: "เขียนสรุปเช้าและบันทึกไว้ที่ ~/briefing.md"
   memory_consolidation: "0 3 * * *"   # null/ไม่ใส่ = ปิด
   memory_expiry: "0 4 * * *"           # null/ไม่ใส่ = ปิด
+
+# Webhook-based platform adapters — secret อยู่ใน .env, ตั้งค่าที่นี่
+# garudust setup (โหมด Full) สร้าง block นี้ให้อัตโนมัติ
+platforms:
+  line:
+    enabled: true
+    port: 3002
+    webhook_path: /line      # URL webhook ใน LINE Developers Console: https://your-host:3002/line
+  whatsapp:
+    enabled: false
+    port: 3003
+    webhook_path: /whatsapp
 ```
 
 ### การตั้งค่า Platform

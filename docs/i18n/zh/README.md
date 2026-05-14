@@ -148,9 +148,13 @@ garudust doctor                             # 检查 API key、连通性、数�
 garudust config show                        # 显示当前配置
 garudust model                              # 显示当前模型，提示输入新模型
 garudust model anthropic/claude-opus-4-7   # 直接切换模型
-garudust config set ANTHROPIC_API_KEY sk-ant-...
-garudust config set provider vllm
+garudust config set ANTHROPIC_API_KEY sk-ant-...          # API 密钥 → .env
+garudust config set provider vllm                         # model / provider / base_url → config.yaml
 garudust config set base_url http://localhost:8000/v1
+garudust config set server.port 3001                      # 嵌套键使用点号表示法
+garudust config set cron.memory_consolidation "0 3 * * *"
+garudust config set platforms.line.enabled true
+garudust config set platforms.line.port 3002
 ```
 
 ---
@@ -164,8 +168,8 @@ garudust config set base_url http://localhost:8000/v1
 ```yaml
 # 模型与提供商 — 非敏感信息，放在此处（不放在 .env）
 model: anthropic/claude-sonnet-4-6   # 模型标识符
-provider: anthropic                  # anthropic | openrouter | vllm | ollama | thaillm
-base_url: https://your-vllm-host/v1  # vllm / ollama / 其他 OpenAI 兼容端点必填
+provider: anthropic                  # anthropic | openrouter | vllm | ollama | thaillm | custom
+base_url: https://your-vllm-host/v1  # vllm/ollama 必填；为 anthropic 启用代理模式
 
 security:
   terminal_sandbox: docker           # none（默认）| docker
@@ -207,6 +211,18 @@ cron:
       task: "撰写晨报并保存到 ~/briefing.md"
   memory_consolidation: "0 3 * * *"   # null/省略 = 关闭
   memory_expiry: "0 4 * * *"           # null/省略 = 关闭
+
+# Webhook 平台适配器 — 密钥保留在 .env，配置在此处
+# garudust setup（Full 模式）会自动生成此块
+platforms:
+  line:
+    enabled: true
+    port: 3002
+    webhook_path: /line      # LINE Developers Console webhook URL: https://your-host:3002/line
+  whatsapp:
+    enabled: false
+    port: 3003
+    webhook_path: /whatsapp
 ```
 
 ### 平台配置
