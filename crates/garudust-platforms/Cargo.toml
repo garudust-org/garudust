@@ -23,8 +23,8 @@ whatsapp = ["dep:hmac", "dep:sha2", "dep:hex", "dep:axum"]
 all      = ["telegram", "discord", "webhook", "slack", "matrix", "line", "whatsapp"]
 
 [dependencies]
-garudust-core  = { path = "../garudust-core",  version = "0.3.1" }
-garudust-agent = { path = "../garudust-agent", version = "0.3.1" }
+garudust-core  = { path = "../garudust-core",  version = "0.3.2" }
+garudust-agent = { path = "../garudust-agent", version = "0.3.2" }
 async-trait    = { workspace = true }
 serde          = { workspace = true }
 serde_json     = { workspace = true }
