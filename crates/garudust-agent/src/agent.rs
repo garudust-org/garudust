@@ -44,6 +44,43 @@ use uuid::Uuid;
 use crate::compressor::ContextCompressor;
 use crate::prompt_builder::build_system_prompt;
 
+// ── Conversation persistence (Hermes-style sliding window) ───────────────────
+
+fn session_file(home_dir: &std::path::Path, session_key: &str) -> std::path::PathBuf {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut h = DefaultHasher::new();
+    session_key.hash(&mut h);
+    home_dir
+        .join("conversations")
+        .join(format!("{:016x}.json", h.finish()))
+}
+
+fn load_conv_from_disk(
+    home_dir: &std::path::Path,
+    session_key: &str,
+) -> VecDeque<(String, String)> {
+    let path = session_file(home_dir, session_key);
+    let Ok(data) = std::fs::read_to_string(&path) else {
+        return VecDeque::new();
+    };
+    serde_json::from_str(&data).unwrap_or_default()
+}
+
+fn save_conv_to_disk(
+    home_dir: &std::path::Path,
+    session_key: &str,
+    pairs: &VecDeque<(String, String)>,
+) {
+    let path = session_file(home_dir, session_key);
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    if let Ok(data) = serde_json::to_string(pairs) {
+        let _ = std::fs::write(path, data);
+    }
+}
+
 /// Strip any `<recalled_memory>…</recalled_memory>` blocks that a model may echo
 /// back verbatim in its response (observed with some local/quantised models).
 fn scrub_tag_block(text: &str, open: &str, close: &str) -> String {
@@ -278,8 +315,10 @@ impl Agent {
     }
 
     /// Clear the stored conversation history for a platform session (e.g. on /new or /clear).
+    /// Removes both the in-memory cache and the on-disk file.
     pub fn clear_session(&self, session_key: &str) {
         self.conversation_history.remove(session_key);
+        let _ = std::fs::remove_file(session_file(&self.config.home_dir, session_key));
     }
 
     pub async fn run(
@@ -391,11 +430,21 @@ impl Agent {
         } else {
             user_msg
         };
-        // Load prior conversation pairs and inject them so the model has context.
-        let prior_pairs: Vec<(String, String)> = session_key
-            .and_then(|k| self.conversation_history.get(k))
-            .map(|v| v.iter().cloned().collect())
-            .unwrap_or_default();
+        // Load prior conversation pairs — DashMap (warm cache) first, disk fallback on miss.
+        let prior_pairs: Vec<(String, String)> = if let Some(key) = session_key {
+            if let Some(entry) = self.conversation_history.get(key) {
+                entry.iter().cloned().collect()
+            } else {
+                let from_disk = load_conv_from_disk(&self.config.home_dir, key);
+                if !from_disk.is_empty() {
+                    self.conversation_history
+                        .insert(key.to_string(), from_disk.clone());
+                }
+                from_disk.into_iter().collect()
+            }
+        } else {
+            Vec::new()
+        };
 
         let mut history: Vec<Message> = vec![Message::system(&system_prompt)];
         for (prior_user, prior_assistant) in &prior_pairs {
@@ -556,6 +605,7 @@ impl Agent {
                 let raw_output = scrub_recalled_memory(&raw_output);
 
                 // Save this exchange to conversation history (raw_output, no footer).
+                // Persist to disk so history survives server restarts (Hermes-style).
                 if let Some(key) = session_key {
                     let mut entry = self
                         .conversation_history
@@ -565,6 +615,7 @@ impl Agent {
                     if entry.len() > MAX_HISTORY_PAIRS {
                         entry.pop_front();
                     }
+                    save_conv_to_disk(&self.config.home_dir, key, &entry);
                 }
 
                 let output = if self.config.show_usage_footer {
