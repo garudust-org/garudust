@@ -2,16 +2,13 @@ use std::collections::BTreeMap;
 use std::io;
 
 use crossterm::{
-    event::{
-        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers, MouseButton,
-        MouseEventKind,
-    },
+    event::{self, Event, KeyCode, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::{
     backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, Borders, Paragraph, Wrap},
@@ -45,8 +42,6 @@ pub struct Tui {
     input: String,
     /// Byte offset of the cursor in `input`.
     cursor: usize,
-    /// Input box area from the last render — used for mouse click mapping.
-    input_area: Rect,
     messages: Vec<(Role, String)>,
     status: String,
     scroll: u16,
@@ -125,22 +120,11 @@ fn display_cols(s: &str) -> usize {
     s.chars().count()
 }
 
-/// Find the byte offset in `s` closest to `target_col` display columns.
-fn col_to_byte_offset(s: &str, target_col: usize) -> usize {
-    for (col, (byte_idx, _ch)) in s.char_indices().enumerate() {
-        if col >= target_col {
-            return byte_idx;
-        }
-    }
-    s.len()
-}
-
 impl Tui {
     pub fn new(toolsets: BTreeMap<String, Vec<String>>, skill_names: Vec<String>) -> Self {
         Self {
             input: String::new(),
             cursor: 0,
-            input_area: Rect::default(),
             messages: Vec::new(),
             status: "Ready — press Enter to send, Ctrl+C to quit".into(),
             scroll: 0,
@@ -204,19 +188,6 @@ impl Tui {
         self.cursor = 0;
     }
 
-    // ── Mouse ─────────────────────────────────────────────────────────────────
-
-    /// Map a mouse column click inside the input box to a cursor byte offset.
-    fn click_to_cursor(&mut self, col: u16) {
-        let inner_x = self.input_area.x + 1; // inside border
-        if col < inner_x {
-            self.cursor = 0;
-            return;
-        }
-        let target_col = (col - inner_x) as usize;
-        self.cursor = col_to_byte_offset(&self.input, target_col);
-    }
-
     // ── Main loop ─────────────────────────────────────────────────────────────
 
     pub async fn run(
@@ -227,7 +198,7 @@ impl Tui {
     ) -> io::Result<()> {
         enable_raw_mode()?;
         let mut stdout = io::stdout();
-        execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+        execute!(stdout, EnterAlternateScreen)?;
         let backend = CrosstermBackend::new(stdout);
         let mut term = Terminal::new(backend)?;
 
@@ -341,43 +312,13 @@ impl Tui {
                         _ => {}
                     },
 
-                    Event::Mouse(mouse) => {
-                        match mouse.kind {
-                            // Left click in the input area — position cursor
-                            MouseEventKind::Down(MouseButton::Left) => {
-                                let ia = tui.input_area;
-                                let inner_top = ia.y + 1;
-                                let inner_bot = ia.y + ia.height - 1;
-                                if mouse.row >= inner_top
-                                    && mouse.row < inner_bot
-                                    && mouse.column >= ia.x
-                                    && mouse.column < ia.x + ia.width
-                                {
-                                    tui.click_to_cursor(mouse.column);
-                                }
-                            }
-                            // Scroll wheel — scroll chat pane
-                            MouseEventKind::ScrollUp => {
-                                tui.scroll = tui.scroll.saturating_sub(3);
-                            }
-                            MouseEventKind::ScrollDown => {
-                                tui.scroll = tui.scroll.saturating_add(3);
-                            }
-                            _ => {}
-                        }
-                    }
-
                     _ => {}
                 }
             }
         }
 
         disable_raw_mode()?;
-        execute!(
-            term.backend_mut(),
-            LeaveAlternateScreen,
-            DisableMouseCapture,
-        )?;
+        execute!(term.backend_mut(), LeaveAlternateScreen)?;
         Ok(())
     }
 
@@ -540,9 +481,6 @@ impl Tui {
                 Constraint::Length(3),
             ])
             .split(f.area());
-
-        // Save input area so mouse click handler can map columns to cursor.
-        self.input_area = chunks[2];
 
         // ── Chat pane ──
         let banner = self.build_banner_lines(chunks[0].width);
