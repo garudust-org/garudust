@@ -659,24 +659,16 @@ yaml_to_json      —          1.0.0      node      Convert a YAML file to forma
 
 ## 贡献
 
-Garudust 设计为易于扩展 — 添加工具、传输层或平台适配器通常只需修改一个 crate，代码不超过 100 行。
+欢迎所有贡献 — 无论大小。
 
-### 新手入门议题
+添加工具、传输层或平台适配器通常只需修改一个 crate，代码不超过 100 行。推荐的起点：
 
 - **新工具** — 在 `garudust-tools` 中将任意 CLI 或 API 封装为 `Tool` 实现
 - **新平台** — 实现 `PlatformAdapter`（如 Signal、WeChat）
 - **改进 TUI** — 多行输入、语法高亮、鼠标支持
-- **测试** — 集成测试、属性测试、快照测试
+- **测试** — 单元测试、集成测试、快照测试
 
-```bash
-git clone https://github.com/garudust-org/garudust-agent
-cd garudust-agent
-cargo build
-cargo test --workspace
-cargo clippy --workspace --all-targets -- -W clippy::all -W clippy::pedantic
-```
-
-请阅读 [CONTRIBUTING.md](../../../CONTRIBUTING.md) 了解代码规范、提交约定和完整 CI 检查清单。
+请阅读 [CONTRIBUTING.md](../../../CONTRIBUTING.md) 了解添加工具、平台适配器和 LLM 传输层的逐步指南。
 
 有问题或发现 Bug？加入 [Discord 社区](https://discord.com/channels/1501414298449088745/1501414298893942877) 交流，或提交 [GitHub issue](https://github.com/garudust-org/garudust-agent/issues)。
 

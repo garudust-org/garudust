@@ -661,24 +661,16 @@ tool ที่ติดตั้งจะถูกบันทึกใน `~/.g
 
 ## การมีส่วนร่วม
 
-Garudust ออกแบบมาให้ขยายได้ง่าย — การเพิ่มเครื่องมือ ทรานสปอร์ต หรือ platform adapter มักแตะโค้ดแค่ crate เดียวและใช้โค้ดไม่ถึง 100 บรรทัด
+ยินดีรับทุกการมีส่วนร่วม — ไม่ว่าจะเล็กหรือใหญ่
 
-### Issues สำหรับผู้เริ่มต้น
+การเพิ่มเครื่องมือ ทรานสปอร์ต หรือ platform adapter มักแตะโค้ดแค่ crate เดียวและใช้โค้ดไม่ถึง 100 บรรทัด จุดเริ่มต้นที่ดี:
 
 - **เครื่องมือใหม่** — ห่อ CLI หรือ API ใด ๆ เป็น `Tool` impl ใน `garudust-tools`
 - **แพลตฟอร์มใหม่** — implement `PlatformAdapter` (เช่น Signal, WeChat)
 - **ปรับปรุง TUI** — multi-line input, syntax highlighting, รองรับเมาส์
-- **เทส** — integration tests, property tests, snapshot tests
+- **เทส** — unit tests, integration tests, snapshot tests
 
-```bash
-git clone https://github.com/garudust-org/garudust-agent
-cd garudust-agent
-cargo build
-cargo test --workspace
-cargo clippy --workspace --all-targets -- -W clippy::all -W clippy::pedantic
-```
-
-อ่าน [CONTRIBUTING.md](../../../CONTRIBUTING.md) สำหรับแนวทางโค้ด, commit convention และ CI checklist ครบถ้วน
+ดู [CONTRIBUTING.md](../../../CONTRIBUTING.md) สำหรับคู่มือเพิ่มเครื่องมือ, platform adapter และ LLM transport แบบทีละขั้นตอน
 
 มีคำถามหรือพบบัค? เข้าร่วม [ชุมชน Discord](https://discord.com/channels/1501414298449088745/1501414298893942877) หรือเปิด [GitHub issue](https://github.com/garudust-org/garudust-agent/issues)
 

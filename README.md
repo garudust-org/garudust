@@ -660,24 +660,16 @@ To contribute a tool, open a PR at [garudust-org/garudust-hub](https://github.co
 
 ## Contributing
 
-Garudust is designed to be easy to extend — adding a tool, transport, or platform adapter typically touches exactly one crate and takes under 100 lines.
+All contributions are welcome — no contribution is too small.
 
-### Good first issues
+Adding a tool, transport, or platform adapter typically touches exactly one crate and takes under 100 lines. Good places to start:
 
 - **New tool** — wrap any CLI or API as a `Tool` impl in `garudust-tools`
 - **New platform** — implement `PlatformAdapter` (e.g. Signal, WeChat)
 - **Improve TUI** — multi-line input, syntax highlighting, mouse support
-- **Tests** — integration tests, property tests, snapshot tests
+- **Tests** — unit tests, integration tests, snapshot tests
 
-```bash
-git clone https://github.com/garudust-org/garudust-agent
-cd garudust-agent
-cargo build
-cargo test --workspace
-cargo clippy --workspace --all-targets -- -W clippy::all -W clippy::pedantic
-```
-
-Read [CONTRIBUTING.md](CONTRIBUTING.md) for code guidelines, commit conventions, and the full CI checklist.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for step-by-step guides on adding a tool, platform adapter, or LLM transport.
 
 Have a question or found a bug? Join the [Discord community](https://discord.com/channels/1501414298449088745/1501414298893942877) or open a [GitHub issue](https://github.com/garudust-org/garudust-agent/issues).
 
