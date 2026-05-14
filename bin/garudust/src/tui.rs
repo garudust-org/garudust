@@ -212,8 +212,8 @@ impl Tui {
             term.draw(|f| tui.render(f))?;
 
             if event::poll(std::time::Duration::from_millis(50))? {
-                match event::read()? {
-                    Event::Key(key) => match (key.code, key.modifiers) {
+                if let Event::Key(key) = event::read()? {
+                    match (key.code, key.modifiers) {
                         (KeyCode::Char('c' | 'q'), KeyModifiers::CONTROL) => {
                             let _ = tx_event.send(TuiEvent::Quit).await;
                             break;
@@ -306,9 +306,7 @@ impl Tui {
                         (KeyCode::Char(c), _) => tui.insert_char(c),
 
                         _ => {}
-                    },
-
-                    _ => {}
+                    }
                 }
             }
         }
