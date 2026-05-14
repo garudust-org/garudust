@@ -457,11 +457,15 @@ impl Agent {
                 let used = total_in + total_out;
                 if used >= cap {
                     warn!(used, cap, "token budget exhausted — stopping task early");
-                    let footer = usage_footer(&self.config.model, iters, total_in, total_out);
-                    let output = format!(
-                        "[Token budget of {cap} exceeded after {used} tokens — \
-                         stopping early.]\n\n{footer}"
+                    let budget_msg = format!(
+                        "[Token budget of {cap} exceeded after {used} tokens — stopping early.]"
                     );
+                    let output = if self.config.show_usage_footer {
+                        let footer = usage_footer(&self.config.model, iters, total_in, total_out);
+                        format!("{budget_msg}\n\n{footer}")
+                    } else {
+                        budget_msg
+                    };
                     let result = AgentResult {
                         output,
                         usage: garudust_core::types::TokenUsage {
@@ -521,8 +525,12 @@ impl Agent {
                     .join("\n");
                 // Scrub any <recalled_memory> block the model may have echoed back.
                 let raw_output = scrub_recalled_memory(&raw_output);
-                let footer = usage_footer(&self.config.model, iters, total_in, total_out);
-                let output = format!("{raw_output}\n\n{footer}");
+                let output = if self.config.show_usage_footer {
+                    let footer = usage_footer(&self.config.model, iters, total_in, total_out);
+                    format!("{raw_output}\n\n{footer}")
+                } else {
+                    raw_output
+                };
 
                 let result = AgentResult {
                     output,

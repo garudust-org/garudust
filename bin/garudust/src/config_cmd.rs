@@ -29,6 +29,7 @@ const YAML_KEYS: &[&str] = &[
     "base_url",
     "max_iterations",
     "tool_delay_ms",
+    "show_usage_footer",
     // server
     "server.port",
     // cron
@@ -88,6 +89,7 @@ pub fn show(config: &AgentConfig) {
         "compression     : enabled={}, threshold={}",
         config.compression.enabled, config.compression.threshold_fraction
     );
+    println!("show_usage_footer: {}", config.show_usage_footer);
     println!();
 
     println!("Webhook Platforms (config.yaml → platforms.*)");
@@ -231,6 +233,7 @@ fn update_yaml(key: &str, value: &str, home_dir: &Path) -> anyhow::Result<()> {
         }
         "max_iterations" => config.max_iterations = value.parse()?,
         "tool_delay_ms" => config.tool_delay_ms = value.parse()?,
+        "show_usage_footer" => config.show_usage_footer = value.parse()?,
         "server.port" => config.server.port = value.parse()?,
         "cron.memory_consolidation" => {
             config.cron.memory_consolidation = if value.is_empty() {
@@ -339,5 +342,17 @@ mod tests {
     fn server_port_default() {
         let cfg = parse("model: test\n");
         assert_eq!(cfg.server.port, 3000);
+    }
+
+    #[test]
+    fn show_usage_footer_default_false() {
+        let cfg = parse("model: test\n");
+        assert!(!cfg.show_usage_footer);
+    }
+
+    #[test]
+    fn show_usage_footer_roundtrip() {
+        let cfg = parse("show_usage_footer: true\n");
+        assert!(cfg.show_usage_footer);
     }
 }

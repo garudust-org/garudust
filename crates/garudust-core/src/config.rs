@@ -142,6 +142,11 @@ pub struct AgentConfig {
     /// Example: `disabled_tools: [image_read, pdf_read, session_search]`
     #[serde(default)]
     pub disabled_tools: Vec<String>,
+    /// Append a usage footer (`[N iter | Xin Yout Ztok @ model]`) to every
+    /// agent response. Useful for debugging; usually unwanted on chat platforms
+    /// where end users see the output. Default: false.
+    #[serde(default)]
+    pub show_usage_footer: bool,
     /// Per-platform webhook server settings (LINE, WhatsApp, generic webhook).
     /// Each entry sets enabled flag, listening port, and HTTP path. Tokens and
     /// secrets continue to be read from `~/.garudust/.env` — never from yaml.
@@ -496,6 +501,7 @@ impl Default for AgentConfig {
             context_window: None,
             disabled_toolsets: Vec::new(),
             disabled_tools: Vec::new(),
+            show_usage_footer: false,
             platforms: WebhookPlatformsConfig {
                 webhook: Some(WebhookPlatformConfig::default_webhook()),
                 line: None,
