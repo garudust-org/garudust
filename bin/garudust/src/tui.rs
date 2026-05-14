@@ -231,7 +231,7 @@ impl Tui {
                                         .split_once(' ')
                                         .map_or((rest, None), |(c, a)| (c, Some(a.trim())));
                                     match cmd {
-                                        "new" => {
+                                        "new" | "clear" => {
                                             tui.messages.clear();
                                             tui.messages.push((
                                                 Role::Assistant,
@@ -257,9 +257,9 @@ impl Tui {
                                         "help" => {
                                             tui.messages.push((
                                                 Role::Assistant,
-                                                "/new       — clear history and start fresh\n\
-                                                 /model <n> — switch to a different model\n\
-                                                 /help      — show this help"
+                                                "/new|/clear — start fresh (clears history)\n\
+                                                 /model <n>  — switch to a different model\n\
+                                                 /help       — show this help"
                                                     .into(),
                                             ));
                                         }
