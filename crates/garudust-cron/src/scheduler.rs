@@ -31,7 +31,7 @@ impl CronScheduler {
             let task = task.clone();
             Box::pin(async move {
                 tracing::info!(task = %task, "cron job starting");
-                match agent.run(&task, approver, "cron").await {
+                match agent.run(&task, approver, "cron", None).await {
                     Ok(result) => tracing::info!(
                         task = %task,
                         iterations = result.iterations,

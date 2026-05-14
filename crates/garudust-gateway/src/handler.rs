@@ -84,15 +84,28 @@ impl MessageHandler for GatewayHandler {
             .touch(&msg.session_key, &msg.channel.platform, &msg.user_id)
             .await;
 
+        // Slash commands — handled before spawning so they reply synchronously.
+        let trimmed = msg.text.trim();
+        if trimmed == "/new" || trimmed == "/clear" {
+            self.agent.clear_session(&msg.session_key);
+            let reply = OutboundMessage::text("เริ่มการสนทนาใหม่แล้ว 🆕");
+            let _ = self.platform.send_message(&msg.channel, reply).await;
+            return Ok(());
+        }
+
         let channel = msg.channel.clone();
         let agent = self.agent.clone();
         let platform = self.platform.clone();
         let approver = self.approver.clone();
         let task = msg.text.clone();
         let platform_name = msg.channel.platform.clone();
+        let session_key = msg.session_key.clone();
 
         tokio::spawn(async move {
-            match agent.run(&task, approver, &platform_name).await {
+            match agent
+                .run(&task, approver, &platform_name, Some(&session_key))
+                .await
+            {
                 Ok(result) => {
                     let reply = OutboundMessage::markdown(result.output);
                     if let Err(e) = platform.send_message(&channel, reply).await {

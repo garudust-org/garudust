@@ -82,6 +82,8 @@ async fn metrics(State(state): State<AppState>) -> Response {
 #[derive(Deserialize)]
 struct ChatRequest {
     message: String,
+    /// Optional session key for conversation continuity across HTTP calls.
+    session_key: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -102,7 +104,7 @@ async fn chat(
     let result = state
         .agent
         .load_full()
-        .run(&req.message, approver, "http")
+        .run(&req.message, approver, "http", req.session_key.as_deref())
         .await;
     state.metrics.dec_active();
     result
@@ -135,7 +137,13 @@ async fn chat_stream(
         let _ = state
             .agent
             .load_full()
-            .run_streaming(&req.message, approver, "http-sse", chunk_tx)
+            .run_streaming(
+                &req.message,
+                approver,
+                "http-sse",
+                chunk_tx,
+                req.session_key.as_deref(),
+            )
             .await;
     });
 
@@ -154,10 +162,14 @@ async fn handle_ws(mut socket: WebSocket, state: AppState) {
         return;
     };
 
-    let message = serde_json::from_str::<serde_json::Value>(&task)
-        .ok()
+    let parsed = serde_json::from_str::<serde_json::Value>(&task).ok();
+    let message = parsed
+        .as_ref()
         .and_then(|v| v["message"].as_str().map(String::from))
         .unwrap_or_else(|| task.to_string());
+    let ws_session_key = parsed
+        .as_ref()
+        .and_then(|v| v["session_key"].as_str().map(String::from));
 
     state.metrics.inc_request();
     let (chunk_tx, mut chunk_rx) = mpsc::unbounded_channel::<String>();
@@ -168,7 +180,13 @@ async fn handle_ws(mut socket: WebSocket, state: AppState) {
         let _ = state2
             .agent
             .load_full()
-            .run_streaming(&message, approver2, "ws", chunk_tx)
+            .run_streaming(
+                &message,
+                approver2,
+                "ws",
+                chunk_tx,
+                ws_session_key.as_deref(),
+            )
             .await;
     });
 

@@ -344,7 +344,7 @@ async fn main() -> Result<()> {
         // Keep handles alive for the duration of the run; drop at block exit.
         let _handles = mcp_handles;
         let approver = Arc::new(AutoApprover);
-        let result = agent.run(task, approver, "cli").await?;
+        let result = agent.run(task, approver, "cli", None).await?;
         println!("{}", result.output);
         eprintln!(
             "[{} iter | {}in {}out tokens]",
@@ -408,7 +408,7 @@ async fn main() -> Result<()> {
                         });
 
                         match current_agent
-                            .run_streaming(&task, approver2.clone(), "cli", chunk_tx)
+                            .run_streaming(&task, approver2.clone(), "cli", chunk_tx, None)
                             .await
                         {
                             Ok(r) => {

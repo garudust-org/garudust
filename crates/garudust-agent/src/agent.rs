@@ -1,7 +1,8 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
 use chrono::Utc;
+use dashmap::DashMap;
 use futures::StreamExt;
 use garudust_core::{
     budget::IterationBudget,
@@ -139,6 +140,9 @@ async fn stream_turn(
     })
 }
 
+/// Max conversation exchange pairs kept per session (user + assistant = 1 pair).
+const MAX_HISTORY_PAIRS: usize = 20;
+
 pub struct Agent {
     id: String,
     transport: Arc<dyn ProviderTransport>,
@@ -148,6 +152,9 @@ pub struct Agent {
     config: Arc<AgentConfig>,
     compressor: ContextCompressor,
     session_db: Option<Arc<SessionDb>>,
+    /// Per-session conversation history: session_key → (user_input, assistant_output) pairs.
+    /// Shared across Clone (same logical agent); fresh for spawn_child() (sub-agent).
+    conversation_history: Arc<DashMap<String, VecDeque<(String, String)>>>,
 }
 
 impl Clone for Agent {
@@ -170,6 +177,7 @@ impl Clone for Agent {
             config: self.config.clone(),
             compressor: build_compressor(self.transport.clone(), comp_model, &self.config),
             session_db: self.session_db.clone(),
+            conversation_history: self.conversation_history.clone(),
         }
     }
 }
@@ -190,7 +198,7 @@ fn build_compressor(
 impl SubAgentRunner for Agent {
     async fn run_task(&self, task: &str, session_id: &str) -> Result<String, AgentError> {
         let approver = Arc::new(crate::approver::AutoApprover);
-        let result = self.run(task, approver, session_id).await?;
+        let result = self.run(task, approver, session_id, None).await?;
         Ok(result.output)
     }
 }
@@ -218,6 +226,7 @@ impl Agent {
             config,
             compressor,
             session_db: None,
+            conversation_history: Arc::new(DashMap::new()),
         }
     }
 
@@ -264,7 +273,13 @@ impl Agent {
             config: self.config.clone(),
             compressor: build_compressor(self.transport.clone(), comp_model, &self.config),
             session_db: self.session_db.clone(),
+            conversation_history: Arc::new(DashMap::new()),
         }
+    }
+
+    /// Clear the stored conversation history for a platform session (e.g. on /new or /clear).
+    pub fn clear_session(&self, session_key: &str) {
+        self.conversation_history.remove(session_key);
     }
 
     pub async fn run(
@@ -272,8 +287,10 @@ impl Agent {
         task: &str,
         approver: Arc<dyn garudust_core::tool::CommandApprover>,
         platform: &str,
+        session_key: Option<&str>,
     ) -> Result<AgentResult, AgentError> {
-        self.run_inner(task, approver, platform, None).await
+        self.run_inner(task, approver, platform, None, session_key)
+            .await
     }
 
     pub async fn run_streaming(
@@ -282,8 +299,9 @@ impl Agent {
         approver: Arc<dyn garudust_core::tool::CommandApprover>,
         platform: &str,
         chunk_tx: mpsc::UnboundedSender<String>,
+        session_key: Option<&str>,
     ) -> Result<AgentResult, AgentError> {
-        self.run_inner(task, approver, platform, Some(chunk_tx))
+        self.run_inner(task, approver, platform, Some(chunk_tx), session_key)
             .await
     }
 
@@ -293,6 +311,7 @@ impl Agent {
         approver: Arc<dyn garudust_core::tool::CommandApprover>,
         platform: &str,
         chunk_tx: Option<mpsc::UnboundedSender<String>>,
+        session_key: Option<&str>,
     ) -> Result<AgentResult, AgentError> {
         let session_id = Uuid::new_v4().to_string();
         #[allow(clippy::cast_precision_loss)]
@@ -372,8 +391,18 @@ impl Agent {
         } else {
             user_msg
         };
-        let mut history: Vec<Message> =
-            vec![Message::system(&system_prompt), Message::user(&user_msg)];
+        // Load prior conversation pairs and inject them so the model has context.
+        let prior_pairs: Vec<(String, String)> = session_key
+            .and_then(|k| self.conversation_history.get(k))
+            .map(|v| v.iter().cloned().collect())
+            .unwrap_or_default();
+
+        let mut history: Vec<Message> = vec![Message::system(&system_prompt)];
+        for (prior_user, prior_assistant) in &prior_pairs {
+            history.push(Message::user(prior_user));
+            history.push(Message::assistant(prior_assistant));
+        }
+        history.push(Message::user(&user_msg));
 
         let schemas = self.tools.all_schemas();
         let mut total_in = 0u32;
@@ -525,6 +554,19 @@ impl Agent {
                     .join("\n");
                 // Scrub any <recalled_memory> block the model may have echoed back.
                 let raw_output = scrub_recalled_memory(&raw_output);
+
+                // Save this exchange to conversation history (raw_output, no footer).
+                if let Some(key) = session_key {
+                    let mut entry = self
+                        .conversation_history
+                        .entry(key.to_string())
+                        .or_default();
+                    entry.push_back((task.to_string(), raw_output.clone()));
+                    if entry.len() > MAX_HISTORY_PAIRS {
+                        entry.pop_front();
+                    }
+                }
+
                 let output = if self.config.show_usage_footer {
                     let footer = usage_footer(&self.config.model, iters, total_in, total_out);
                     format!("{raw_output}\n\n{footer}")

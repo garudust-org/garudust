@@ -1823,6 +1823,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
+ "dashmap 6.1.0",
  "futures",
  "garudust-core",
  "garudust-memory",
