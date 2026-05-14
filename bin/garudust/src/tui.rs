@@ -2,13 +2,16 @@ use std::collections::BTreeMap;
 use std::io;
 
 use crossterm::{
-    event::{self, Event, KeyCode, KeyModifiers},
+    event::{
+        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers, MouseButton,
+        MouseEventKind,
+    },
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::{
     backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, Borders, Paragraph, Wrap},
@@ -40,6 +43,10 @@ pub enum TuiEvent {
 
 pub struct Tui {
     input: String,
+    /// Byte offset of the cursor in `input`.
+    cursor: usize,
+    /// Input box area from the last render — used for mouse click mapping.
+    input_area: Rect,
     messages: Vec<(Role, String)>,
     status: String,
     scroll: u16,
@@ -56,10 +63,84 @@ enum Role {
     Error,
 }
 
+// ── Cursor helpers ────────────────────────────────────────────────────────────
+
+/// Move byte offset one Unicode scalar value to the left.
+fn prev_char_boundary(s: &str, cursor: usize) -> usize {
+    let mut c = cursor;
+    if c == 0 {
+        return 0;
+    }
+    c -= 1;
+    while c > 0 && !s.is_char_boundary(c) {
+        c -= 1;
+    }
+    c
+}
+
+/// Move byte offset one Unicode scalar value to the right.
+fn next_char_boundary(s: &str, cursor: usize) -> usize {
+    if cursor >= s.len() {
+        return s.len();
+    }
+    let mut c = cursor + 1;
+    while c < s.len() && !s.is_char_boundary(c) {
+        c += 1;
+    }
+    c
+}
+
+/// Jump left past a word boundary (Ctrl+Left).
+fn prev_word(s: &str, cursor: usize) -> usize {
+    let chars: Vec<(usize, char)> = s[..cursor].char_indices().collect();
+    let mut i = chars.len();
+    // skip trailing spaces
+    while i > 0 && chars[i - 1].1 == ' ' {
+        i -= 1;
+    }
+    // skip word chars
+    while i > 0 && chars[i - 1].1 != ' ' {
+        i -= 1;
+    }
+    chars.get(i).map(|(b, _)| *b).unwrap_or(0)
+}
+
+/// Jump right past a word boundary (Ctrl+Right).
+fn next_word(s: &str, cursor: usize) -> usize {
+    let chars: Vec<(usize, char)> = s[cursor..].char_indices().collect();
+    let mut i = 0;
+    // skip trailing spaces
+    while i < chars.len() && chars[i].1 == ' ' {
+        i += 1;
+    }
+    // skip word chars
+    while i < chars.len() && chars[i].1 != ' ' {
+        i += 1;
+    }
+    chars.get(i).map(|(b, _)| cursor + *b).unwrap_or(s.len())
+}
+
+/// Number of display columns occupied by `s` (1 per char; good enough for TUI).
+fn display_cols(s: &str) -> usize {
+    s.chars().count()
+}
+
+/// Find the byte offset in `s` closest to `target_col` display columns.
+fn col_to_byte_offset(s: &str, target_col: usize) -> usize {
+    for (col, (byte_idx, _ch)) in s.char_indices().enumerate() {
+        if col >= target_col {
+            return byte_idx;
+        }
+    }
+    s.len()
+}
+
 impl Tui {
     pub fn new(toolsets: BTreeMap<String, Vec<String>>, skill_names: Vec<String>) -> Self {
         Self {
             input: String::new(),
+            cursor: 0,
+            input_area: Rect::default(),
             messages: Vec::new(),
             status: "Ready — press Enter to send, Ctrl+C to quit".into(),
             scroll: 0,
@@ -70,6 +151,74 @@ impl Tui {
         }
     }
 
+    // ── Input editing ─────────────────────────────────────────────────────────
+
+    fn insert_char(&mut self, c: char) {
+        self.input.insert(self.cursor, c);
+        self.cursor += c.len_utf8();
+    }
+
+    fn delete_before_cursor(&mut self) {
+        if self.cursor == 0 {
+            return;
+        }
+        let prev = prev_char_boundary(&self.input, self.cursor);
+        self.input.drain(prev..self.cursor);
+        self.cursor = prev;
+    }
+
+    fn delete_after_cursor(&mut self) {
+        if self.cursor >= self.input.len() {
+            return;
+        }
+        let next = next_char_boundary(&self.input, self.cursor);
+        self.input.drain(self.cursor..next);
+    }
+
+    fn move_left(&mut self) {
+        self.cursor = prev_char_boundary(&self.input, self.cursor);
+    }
+
+    fn move_right(&mut self) {
+        self.cursor = next_char_boundary(&self.input, self.cursor);
+    }
+
+    fn move_word_left(&mut self) {
+        self.cursor = prev_word(&self.input, self.cursor);
+    }
+
+    fn move_word_right(&mut self) {
+        self.cursor = next_word(&self.input, self.cursor);
+    }
+
+    fn move_home(&mut self) {
+        self.cursor = 0;
+    }
+
+    fn move_end(&mut self) {
+        self.cursor = self.input.len();
+    }
+
+    fn clear_input(&mut self) {
+        self.input.clear();
+        self.cursor = 0;
+    }
+
+    // ── Mouse ─────────────────────────────────────────────────────────────────
+
+    /// Map a mouse column click inside the input box to a cursor byte offset.
+    fn click_to_cursor(&mut self, col: u16) {
+        let inner_x = self.input_area.x + 1; // inside border
+        if col < inner_x {
+            self.cursor = 0;
+            return;
+        }
+        let target_col = (col - inner_x) as usize;
+        self.cursor = col_to_byte_offset(&self.input, target_col);
+    }
+
+    // ── Main loop ─────────────────────────────────────────────────────────────
+
     pub async fn run(
         tx_event: mpsc::Sender<TuiEvent>,
         mut rx_agent: mpsc::Receiver<AgentEvent>,
@@ -78,7 +227,7 @@ impl Tui {
     ) -> io::Result<()> {
         enable_raw_mode()?;
         let mut stdout = io::stdout();
-        execute!(stdout, EnterAlternateScreen)?;
+        execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
         let backend = CrosstermBackend::new(stdout);
         let mut term = Terminal::new(backend)?;
 
@@ -96,16 +245,16 @@ impl Tui {
             term.draw(|f| tui.render(f))?;
 
             if event::poll(std::time::Duration::from_millis(50))? {
-                if let Event::Key(key) = event::read()? {
-                    match (key.code, key.modifiers) {
+                match event::read()? {
+                    Event::Key(key) => match (key.code, key.modifiers) {
                         (KeyCode::Char('c' | 'q'), KeyModifiers::CONTROL) => {
                             let _ = tx_event.send(TuiEvent::Quit).await;
                             break;
                         }
                         (KeyCode::Enter, _) => {
                             let text = tui.input.trim().to_string();
+                            tui.clear_input();
                             if !text.is_empty() {
-                                tui.input.clear();
                                 if let Some(rest) = text.strip_prefix('/') {
                                     let (cmd, args) = rest
                                         .split_once(' ')
@@ -159,20 +308,76 @@ impl Tui {
                                 }
                             }
                         }
-                        (KeyCode::Backspace, _) => {
-                            tui.input.pop();
+
+                        // ── Cursor movement ───────────────────────────────────
+                        (KeyCode::Left, KeyModifiers::CONTROL) => tui.move_word_left(),
+                        (KeyCode::Right, KeyModifiers::CONTROL) => tui.move_word_right(),
+                        (KeyCode::Left, _) => tui.move_left(),
+                        (KeyCode::Right, _) => tui.move_right(),
+                        (KeyCode::Home, _) | (KeyCode::Char('a'), KeyModifiers::CONTROL) => {
+                            tui.move_home();
                         }
-                        (KeyCode::Up, _) => tui.scroll = tui.scroll.saturating_sub(1),
-                        (KeyCode::Down, _) => tui.scroll = tui.scroll.saturating_add(1),
-                        (KeyCode::Char(c), _) => tui.input.push(c),
+                        (KeyCode::End, _) | (KeyCode::Char('e'), KeyModifiers::CONTROL) => {
+                            tui.move_end();
+                        }
+
+                        // ── Deletion ──────────────────────────────────────────
+                        (KeyCode::Backspace, _) => tui.delete_before_cursor(),
+                        (KeyCode::Delete, _) => tui.delete_after_cursor(),
+                        // Ctrl+U — kill line (clear all input)
+                        (KeyCode::Char('u'), KeyModifiers::CONTROL) => tui.clear_input(),
+
+                        // ── Scroll ────────────────────────────────────────────
+                        (KeyCode::Up, _) | (KeyCode::PageUp, _) => {
+                            tui.scroll = tui.scroll.saturating_sub(1);
+                        }
+                        (KeyCode::Down, _) | (KeyCode::PageDown, _) => {
+                            tui.scroll = tui.scroll.saturating_add(1);
+                        }
+
+                        // ── Character input ───────────────────────────────────
+                        (KeyCode::Char(c), _) => tui.insert_char(c),
+
                         _ => {}
+                    },
+
+                    Event::Mouse(mouse) => {
+                        match mouse.kind {
+                            // Left click in the input area — position cursor
+                            MouseEventKind::Down(MouseButton::Left) => {
+                                let ia = tui.input_area;
+                                let inner_top = ia.y + 1;
+                                let inner_bot = ia.y + ia.height - 1;
+                                if mouse.row >= inner_top
+                                    && mouse.row < inner_bot
+                                    && mouse.column >= ia.x
+                                    && mouse.column < ia.x + ia.width
+                                {
+                                    tui.click_to_cursor(mouse.column);
+                                }
+                            }
+                            // Scroll wheel — scroll chat pane
+                            MouseEventKind::ScrollUp => {
+                                tui.scroll = tui.scroll.saturating_sub(3);
+                            }
+                            MouseEventKind::ScrollDown => {
+                                tui.scroll = tui.scroll.saturating_add(3);
+                            }
+                            _ => {}
+                        }
                     }
+
+                    _ => {}
                 }
             }
         }
 
         disable_raw_mode()?;
-        execute!(term.backend_mut(), LeaveAlternateScreen,)?;
+        execute!(
+            term.backend_mut(),
+            LeaveAlternateScreen,
+            DisableMouseCapture,
+        )?;
         Ok(())
     }
 
@@ -250,8 +455,6 @@ impl Tui {
         let inner_w = pane_w.saturating_sub(2) as usize;
         let right_w = inner_w.saturating_sub(LOGO_W);
 
-        // ── Build right-column content ───────────────────────────────────────
-        // Each entry is a vec of Spans for one line.
         let mut right: Vec<Vec<Span<'static>>> = Vec::new();
 
         let tool_total: usize = self.toolsets.values().map(Vec::len).sum();
@@ -296,11 +499,9 @@ impl Tui {
             right.push(vec![Span::styled(format!("  {display}"), normal)]);
         }
 
-        // ── Combine logo (left) + right column ──────────────────────────────
         let n_rows = LOGO.len().max(right.len());
         let mut lines: Vec<Line<'static>> = Vec::new();
 
-        // Header
         let v = env!("CARGO_PKG_VERSION");
         lines.push(Line::from(vec![
             Span::styled(format!(" Garudust v{v}"), accent),
@@ -312,7 +513,6 @@ impl Tui {
 
         for i in 0..n_rows {
             let logo_str = LOGO.get(i).copied().unwrap_or("");
-            // Pad logo line to fixed width
             let pad = LOGO_W.saturating_sub(logo_str.chars().count());
             let logo_padded = format!("{logo_str}{:>pad$}", "", pad = pad);
 
@@ -323,7 +523,6 @@ impl Tui {
             lines.push(Line::from(spans));
         }
 
-        // Separator before chat
         lines.push(Line::from(Span::styled(
             "─".repeat(inner_w),
             Style::default().fg(Color::Rgb(60, 60, 60)),
@@ -332,7 +531,7 @@ impl Tui {
         lines
     }
 
-    fn render(&self, f: &mut ratatui::Frame) {
+    fn render(&mut self, f: &mut ratatui::Frame) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -342,7 +541,10 @@ impl Tui {
             ])
             .split(f.area());
 
-        // ── Build banner + chat lines ──
+        // Save input area so mouse click handler can map columns to cursor.
+        self.input_area = chunks[2];
+
+        // ── Chat pane ──
         let banner = self.build_banner_lines(chunks[0].width);
 
         let chat_lines: Vec<Line<'static>> = self
@@ -376,20 +578,13 @@ impl Tui {
             .collect();
 
         let all_lines: Vec<Line<'static>> = banner.into_iter().chain(chat_lines).collect();
-
         let visible = chunks[0].height.saturating_sub(2);
 
-        // Build Paragraph first so we can query its wrapped line count.
-        // With Wrap enabled, ratatui's scroll is in visual rows (after wrapping),
-        // not logical lines.  line_count() gives the correct total visual rows.
         let messages = Paragraph::new(Text::from(all_lines))
             .block(Block::default().borders(Borders::ALL).title(" Garudust "))
             .wrap(Wrap { trim: false });
 
         let text_w = chunks[0].width.saturating_sub(2);
-        // line_count(text_w) returns wrapped_rows + top_border + bottom_border (= +2 for Borders::ALL).
-        // visible already excludes the 2 border rows (chunks[0].height - 2).
-        // So the scrollable content rows = total_visual - 2; max_scroll = content_rows - visible.
         let total_visual = u16::try_from(messages.line_count(text_w)).unwrap_or(u16::MAX);
         let max_scroll = total_visual.saturating_sub(visible + 2);
         let scroll = if self.scroll == u16::MAX {
@@ -398,8 +593,7 @@ impl Tui {
             self.scroll.min(max_scroll)
         };
 
-        let messages = messages.scroll((scroll, 0));
-        f.render_widget(messages, chunks[0]);
+        f.render_widget(messages.scroll((scroll, 0)), chunks[0]);
 
         // ── Status bar ──
         let status_text = if let Some(since) = self.thinking_since {
@@ -412,17 +606,55 @@ impl Tui {
         } else {
             self.status.clone()
         };
-        let status =
-            Paragraph::new(status_text.as_str()).style(Style::default().fg(Color::DarkGray));
-        f.render_widget(status, chunks[1]);
+        f.render_widget(
+            Paragraph::new(status_text.as_str()).style(Style::default().fg(Color::DarkGray)),
+            chunks[1],
+        );
 
-        // ── Input box ──
-        let input = Paragraph::new(self.input.as_str())
+        // ── Input box with cursor ──
+        // Render text before and after cursor with a block cursor style.
+        let before = &self.input[..self.cursor];
+        let at = self.input[self.cursor..]
+            .chars()
+            .next()
+            .map(|c| c.to_string())
+            .unwrap_or_else(|| " ".to_string());
+        let after_start = self.cursor
+            + at.len().saturating_sub(
+                // at is always 1 char from the string; if we appended a space, skip 0 bytes
+                if self.cursor < self.input.len() {
+                    at.len()
+                } else {
+                    0
+                },
+            );
+        let after = if self.cursor < self.input.len() {
+            &self.input[after_start..]
+        } else {
+            ""
+        };
+
+        let cursor_style = Style::default()
+            .fg(Color::Black)
+            .bg(Color::White)
+            .add_modifier(Modifier::BOLD);
+
+        let input_spans = Line::from(vec![
+            Span::raw(before.to_string()),
+            Span::styled(at, cursor_style),
+            Span::raw(after.to_string()),
+        ]);
+
+        let input_widget = Paragraph::new(input_spans)
             .block(Block::default().borders(Borders::ALL).title(" Input "))
             .style(Style::default().fg(Color::White));
-        f.render_widget(input, chunks[2]);
+        f.render_widget(input_widget, chunks[2]);
 
-        let input_len = u16::try_from(self.input.len()).unwrap_or(u16::MAX);
-        f.set_cursor_position((chunks[2].x + input_len + 1, chunks[2].y + 1));
+        // Position the terminal cursor so IME/accessibility tools follow correctly.
+        let cursor_col = display_cols(before);
+        f.set_cursor_position((
+            chunks[2].x + 1 + u16::try_from(cursor_col).unwrap_or(u16::MAX),
+            chunks[2].y + 1,
+        ));
     }
 }
