@@ -102,7 +102,7 @@ fn prev_word(s: &str, cursor: usize) -> usize {
     while i > 0 && chars[i - 1].1 != ' ' {
         i -= 1;
     }
-    chars.get(i).map(|(b, _)| *b).unwrap_or(0)
+    chars.get(i).map_or(0, |(b, _)| *b)
 }
 
 /// Jump right past a word boundary (Ctrl+Right).
@@ -117,7 +117,7 @@ fn next_word(s: &str, cursor: usize) -> usize {
     while i < chars.len() && chars[i].1 != ' ' {
         i += 1;
     }
-    chars.get(i).map(|(b, _)| cursor + *b).unwrap_or(s.len())
+    chars.get(i).map_or(s.len(), |(b, _)| cursor + *b)
 }
 
 /// Number of display columns occupied by `s` (1 per char; good enough for TUI).
@@ -328,10 +328,10 @@ impl Tui {
                         (KeyCode::Char('u'), KeyModifiers::CONTROL) => tui.clear_input(),
 
                         // ── Scroll ────────────────────────────────────────────
-                        (KeyCode::Up, _) | (KeyCode::PageUp, _) => {
+                        (KeyCode::Up | KeyCode::PageUp, _) => {
                             tui.scroll = tui.scroll.saturating_sub(1);
                         }
-                        (KeyCode::Down, _) | (KeyCode::PageDown, _) => {
+                        (KeyCode::Down | KeyCode::PageDown, _) => {
                             tui.scroll = tui.scroll.saturating_add(1);
                         }
 
@@ -617,8 +617,7 @@ impl Tui {
         let at = self.input[self.cursor..]
             .chars()
             .next()
-            .map(|c| c.to_string())
-            .unwrap_or_else(|| " ".to_string());
+            .map_or_else(|| " ".to_string(), |c| c.to_string());
         let after_start = self.cursor
             + at.len().saturating_sub(
                 // at is always 1 char from the string; if we appended a space, skip 0 bytes
