@@ -52,6 +52,7 @@ async fn handle_webhook(
         text: payload.text,
         session_key,
         is_group: false,
+        bot_mentioned: None,
     };
 
     match handler.handle(inbound).await {

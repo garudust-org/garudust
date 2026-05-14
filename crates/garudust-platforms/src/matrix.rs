@@ -90,6 +90,7 @@ impl PlatformAdapter for MatrixAdapter {
                     text: text_content.body,
                     session_key: format!("matrix:{room_id}"),
                     is_group: true,
+                    bot_mentioned: None,
                 };
                 let _ = handler.handle(inbound).await;
             }

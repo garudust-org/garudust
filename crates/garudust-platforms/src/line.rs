@@ -1,5 +1,5 @@
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
@@ -27,6 +27,7 @@ use garudust_core::{
 const LINE_REPLY_URL: &str = "https://api.line.me/v2/bot/message/reply";
 const LINE_PUSH_URL: &str = "https://api.line.me/v2/bot/message/push";
 const LINE_PROFILE_URL: &str = "https://api.line.me/v2/bot/profile";
+const LINE_BOT_INFO_URL: &str = "https://api.line.me/v2/bot/info";
 /// Reply token is valid for 30 s; leave a 5 s safety margin.
 const REPLY_TTL: Duration = Duration::from_secs(25);
 const LINE_TEXT_LIMIT: usize = 5_000;
@@ -67,12 +68,32 @@ struct LineMessage {
     #[serde(rename = "type")]
     kind: String,
     text: Option<String>,
+    /// Structured mention info delivered by LINE when users tag others in groups.
+    mention: Option<Mention>,
+}
+
+#[derive(Deserialize)]
+struct Mention {
+    #[serde(default)]
+    mentionees: Vec<Mentionee>,
+}
+
+#[derive(Deserialize)]
+struct Mentionee {
+    #[serde(rename = "userId")]
+    user_id: Option<String>,
 }
 
 #[derive(Deserialize)]
 struct ProfileResp {
     #[serde(rename = "displayName")]
     display_name: String,
+}
+
+#[derive(Deserialize)]
+struct BotInfoResp {
+    #[serde(rename = "userId")]
+    user_id: String,
 }
 
 // ── Error type for push API results ──────────────────────────────────────────
@@ -101,6 +122,10 @@ struct Inner {
     name_cache: DashMap<String, String>,
     /// user_ids currently being fetched — prevents redundant profile API calls
     fetching: DashSet<String>,
+    /// Bot's own LINE userId, fetched once at start via `/v2/bot/info`.
+    /// Used to detect mentions of the bot from `event.message.mention.mentionees`.
+    /// Empty when the fetch failed — gateway will fall back to text-contains matching.
+    bot_self_user_id: OnceLock<String>,
 }
 
 struct LineState {
@@ -176,7 +201,9 @@ async fn handle_webhook(
             .insert(chat_id.clone(), user_id.clone());
 
         // Deduplicated lazy profile fetch: fetching set ensures only one in-flight
-        // request per user even under concurrent webhook events.
+        // request per user even under concurrent webhook events. In group/room
+        // sources the 1-on-1 profile endpoint 404s for non-friends, so we
+        // pick the scoped member endpoint based on `source.kind`.
         if !state.inner.name_cache.contains_key(&user_id)
             && state.inner.fetching.insert(user_id.clone())
         {
@@ -185,8 +212,15 @@ async fn handle_webhook(
             let cache = state.inner.name_cache.clone();
             let in_flight = state.inner.fetching.clone();
             let client = state.inner.client.clone();
+            let source_kind = ev.source.kind.clone();
+            let scope_chat = chat_id.clone();
             tokio::spawn(async move {
-                if let Some(name) = fetch_display_name(&client, &token, &uid).await {
+                let scope = match source_kind.as_str() {
+                    "group" => ProfileScope::Group(&scope_chat),
+                    "room" => ProfileScope::Room(&scope_chat),
+                    _ => ProfileScope::Personal,
+                };
+                if let Some(name) = fetch_display_name(&client, &token, &uid, scope).await {
                     cache.insert(uid.clone(), name);
                 }
                 in_flight.remove(&uid);
@@ -199,6 +233,21 @@ async fn handle_webhook(
             .get(&user_id)
             .map_or_else(|| user_id.clone(), |n| n.clone());
 
+        // Structured mention detection: cross-reference message.mention.mentionees
+        // against the bot's own userId fetched at start. Only meaningful in
+        // groups; for DMs the gateway ignores `bot_mentioned`.
+        let bot_mentioned = if is_group {
+            state.inner.bot_self_user_id.get().map(|self_id| {
+                msg.mention.as_ref().is_some_and(|m| {
+                    m.mentionees
+                        .iter()
+                        .any(|x| x.user_id.as_deref() == Some(self_id.as_str()))
+                })
+            })
+        } else {
+            None
+        };
+
         let inbound = InboundMessage {
             channel: ChannelId {
                 platform: "line".into(),
@@ -210,6 +259,7 @@ async fn handle_webhook(
             text,
             session_key: format!("line:{chat_id}"),
             is_group,
+            bot_mentioned,
         };
 
         let h = state.handler.clone();
@@ -247,21 +297,64 @@ fn truncate_to_line_limit(text: String) -> String {
     format!("{truncated}{suffix}")
 }
 
+/// Scope for the profile lookup. The 1-on-1 `/v2/bot/profile/{userId}`
+/// endpoint returns 404 for group members who haven't added the bot as a
+/// friend, so for group/room sources we use the scoped member endpoint
+/// which works for any member regardless of friend status.
+enum ProfileScope<'a> {
+    Personal,
+    Group(&'a str),
+    Room(&'a str),
+}
+
 async fn fetch_display_name(
     client: &reqwest::Client,
     token: &str,
     user_id: &str,
+    scope: ProfileScope<'_>,
 ) -> Option<String> {
-    let resp = client
-        .get(format!("{LINE_PROFILE_URL}/{user_id}"))
+    let (url, scope_label) = match scope {
+        ProfileScope::Personal => (format!("{LINE_PROFILE_URL}/{user_id}"), "personal"),
+        ProfileScope::Group(gid) => (
+            format!("https://api.line.me/v2/bot/group/{gid}/member/{user_id}"),
+            "group",
+        ),
+        ProfileScope::Room(rid) => (
+            format!("https://api.line.me/v2/bot/room/{rid}/member/{user_id}"),
+            "room",
+        ),
+    };
+    let resp = match client
+        .get(&url)
         .header("Authorization", format!("Bearer {token}"))
         .send()
         .await
-        .ok()?;
-    resp.json::<ProfileResp>()
-        .await
-        .ok()
-        .map(|p| p.display_name)
+    {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!(scope = scope_label, user_id, error = %e, "LINE: profile fetch network error");
+            return None;
+        }
+    };
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        tracing::warn!(
+            scope = scope_label,
+            user_id,
+            status = status.as_u16(),
+            body = %body,
+            "LINE: profile fetch returned non-success — falling back to userId"
+        );
+        return None;
+    }
+    match resp.json::<ProfileResp>().await {
+        Ok(p) => Some(p.display_name),
+        Err(e) => {
+            tracing::warn!(scope = scope_label, user_id, error = %e, "LINE: profile response failed to parse");
+            None
+        }
+    }
 }
 
 async fn api_reply(
@@ -346,6 +439,7 @@ impl LineAdapter {
                 last_sender: DashMap::new(),
                 name_cache: DashMap::new(),
                 fetching: DashSet::new(),
+                bot_self_user_id: OnceLock::new(),
             }),
         }
     }
@@ -425,6 +519,41 @@ impl PlatformAdapter for LineAdapter {
     }
 
     async fn start(&self, handler: Arc<dyn MessageHandler>) -> Result<(), PlatformError> {
+        // Fetch bot's own userId so we can detect @mentions of the bot from
+        // LINE's structured `mention.mentionees`. Failure is non-fatal — the
+        // gateway will fall back to text-contains matching against
+        // `platform.bot_username`.
+        match self
+            .inner
+            .client
+            .get(LINE_BOT_INFO_URL)
+            .header(
+                "Authorization",
+                format!("Bearer {}", self.inner.channel_token),
+            )
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                if let Ok(info) = resp.json::<BotInfoResp>().await {
+                    let _ = self.inner.bot_self_user_id.set(info.user_id);
+                    tracing::info!("LINE: bot self userId fetched — mention detection active");
+                } else {
+                    tracing::warn!(
+                        "LINE: /bot/info response did not parse — mention detection disabled"
+                    );
+                }
+            }
+            Ok(resp) => tracing::warn!(
+                status = %resp.status(),
+                "LINE: /bot/info returned non-success — mention detection disabled"
+            ),
+            Err(e) => tracing::warn!(
+                error = %e,
+                "LINE: failed to fetch /bot/info — mention detection disabled"
+            ),
+        }
+
         let state = Arc::new(LineState {
             inner: self.inner.clone(),
             handler,

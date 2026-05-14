@@ -55,6 +55,7 @@ impl PlatformAdapter for TelegramAdapter {
                             text: text.to_string(),
                             session_key: format!("telegram:{}", msg.chat.id),
                             is_group,
+                            bot_mentioned: None,
                         };
                         let _ = handler.handle(inbound).await;
                     }

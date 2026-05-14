@@ -202,6 +202,7 @@ async fn handle_webhook(
                     text,
                     session_key: format!("whatsapp:{wa_id}"),
                     is_group: false,
+                    bot_mentioned: None,
                 };
 
                 let handler = state.handler.clone();

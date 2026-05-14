@@ -196,6 +196,11 @@ pub struct InboundMessage {
     /// True when the message comes from a group/channel (not a private DM).
     /// Used by GatewayHandler to apply the require_mention gate.
     pub is_group: bool,
+    /// Pre-detected mention status from the platform adapter using native
+    /// data (LINE's `mention.mentionees`, Telegram entities, etc.).
+    /// `Some(true/false)` = adapter knows; `None` = gateway falls back to
+    /// text-contains matching against `platform.bot_username`.
+    pub bot_mentioned: Option<bool>,
 }
 
 #[derive(Debug, Clone)]

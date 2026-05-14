@@ -49,10 +49,25 @@ impl MessageHandler for GatewayHandler {
             return Ok(());
         }
 
-        // Mention gate: in group chats only respond when @mentioned
-        if pcfg.require_mention && msg.is_group && !pcfg.bot_username.is_empty() {
-            let mention = format!("@{}", pcfg.bot_username);
-            if !msg.text.to_lowercase().contains(&mention.to_lowercase()) {
+        // Mention gate: in group chats only respond when @mentioned.
+        // Prefer the adapter's structured detection (LINE mention.mentionees
+        // etc.); fall back to text-contains matching against `bot_username`
+        // for platforms that don't pre-detect.
+        if pcfg.require_mention && msg.is_group {
+            let mentioned = match msg.bot_mentioned {
+                Some(b) => b,
+                None => {
+                    if pcfg.bot_username.is_empty() {
+                        // No structured signal and no username configured —
+                        // preserve legacy behaviour: do not gate.
+                        true
+                    } else {
+                        let mention = format!("@{}", pcfg.bot_username);
+                        msg.text.to_lowercase().contains(&mention.to_lowercase())
+                    }
+                }
+            };
+            if !mentioned {
                 return Ok(());
             }
         }

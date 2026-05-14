@@ -141,6 +141,7 @@ async fn socket_loop(wss_url: &str, handler: Arc<dyn MessageHandler>) {
                 text,
                 session_key: format!("slack:{channel}"),
                 is_group,
+                bot_mentioned: None,
             };
             let h = handler.clone();
             tokio::spawn(async move {
