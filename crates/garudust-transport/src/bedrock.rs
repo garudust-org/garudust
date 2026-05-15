@@ -355,9 +355,11 @@ fn tools_to_converse(tools: &[ToolSchema]) -> Vec<Value> {
 
 fn bedrock_thinking_budget(effort: Option<&ReasoningEffort>) -> Option<u32> {
     match effort {
+        Some(ReasoningEffort::Minimal) => Some(512),
         Some(ReasoningEffort::Low) => Some(1_024),
         Some(ReasoningEffort::Medium) => Some(5_000),
         Some(ReasoningEffort::High) => Some(10_000),
+        Some(ReasoningEffort::XHigh) => Some(32_000),
         _ => None,
     }
 }

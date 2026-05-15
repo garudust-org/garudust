@@ -129,10 +129,16 @@ pub struct InferenceConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ReasoningEffort {
+    /// Disable reasoning / extended thinking entirely.
     None,
+    /// Very light thinking pass — minimal token budget.
+    Minimal,
     Low,
     Medium,
     High,
+    /// Maximum thinking budget for the most demanding tasks.
+    #[serde(rename = "xhigh")]
+    XHigh,
 }
 
 // ─── Transport response ───────────────────────────────────────────────────────

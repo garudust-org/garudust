@@ -100,9 +100,11 @@ impl AnthropicTransport {
             body["tools"] = json!(anthropic_tools);
         }
         let budget = match config.reasoning_effort {
+            Some(ReasoningEffort::Minimal) => Some(512u32),
             Some(ReasoningEffort::Low) => Some(1_024u32),
             Some(ReasoningEffort::Medium) => Some(5_000u32),
             Some(ReasoningEffort::High) => Some(10_000u32),
+            Some(ReasoningEffort::XHigh) => Some(32_000u32),
             _ => None,
         };
         if let Some(b) = budget {

@@ -115,9 +115,10 @@ fn tools_to_json(tools: &[ToolSchema]) -> Vec<Value> {
 
 fn oai_reasoning_effort(effort: Option<&ReasoningEffort>) -> Option<&'static str> {
     match effort {
-        Some(ReasoningEffort::Low) => Some("low"),
+        // OpenAI only exposes low/medium/high — map nearest equivalents.
+        Some(ReasoningEffort::Minimal | ReasoningEffort::Low) => Some("low"),
         Some(ReasoningEffort::Medium) => Some("medium"),
-        Some(ReasoningEffort::High) => Some("high"),
+        Some(ReasoningEffort::High | ReasoningEffort::XHigh) => Some("high"),
         _ => None,
     }
 }
