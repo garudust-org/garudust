@@ -61,18 +61,12 @@ impl SessionDb {
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction()?;
         for (id, role, content, created_at) in messages {
-            let affected = tx.execute(
+            tx.execute(
                 "INSERT OR IGNORE INTO messages (id, session_id, role, content, created_at)
                  VALUES (?1, ?2, ?3, ?4, ?5)",
                 params![id, session_id, role, content, created_at],
             )?;
-            if affected > 0 {
-                let rowid = tx.last_insert_rowid();
-                tx.execute(
-                    "INSERT INTO messages_fts(rowid, content) VALUES (?1, ?2)",
-                    params![rowid, content],
-                )?;
-            }
+            // FTS5 index is kept in sync by the messages_ai / messages_ad triggers.
         }
         tx.commit()?;
         Ok(())
@@ -184,5 +178,30 @@ mod tests {
 
         let results = db.search("searchterm", 3).unwrap();
         assert_eq!(results.len(), 3);
+    }
+
+    #[test]
+    fn trigram_substring_search() {
+        let db = open_in_memory();
+        db.save_session("s1", "test", "gpt", 0.0, 1.0, 0, 0, 1)
+            .unwrap();
+        db.append_messages(
+            "s1",
+            &[(
+                uuid::Uuid::new_v4().to_string(),
+                "user".into(),
+                "The Pythagorean theorem is fundamental to geometry".into(),
+                0.0,
+            )],
+        )
+        .unwrap();
+
+        // Trigram tokenizer enables substring matches without full-word boundaries.
+        let results = db.search("pythag", 10).unwrap();
+        assert_eq!(
+            results.len(),
+            1,
+            "trigram should match 'pythag' inside 'Pythagorean'"
+        );
     }
 }
