@@ -192,6 +192,12 @@ impl ToolRegistry {
             .get(name)
             .is_some_and(|t| t.bypass_dispatch_timeout())
     }
+
+    /// Returns the parallelism conflict key for a named tool given its params.
+    /// None means the call can run concurrently with any other call.
+    pub fn parallelism_key(&self, name: &str, params: &serde_json::Value) -> Option<String> {
+        self.tools.get(name)?.parallelism_key(params)
+    }
 }
 
 /// Truncate a string to at most `max` bytes at a UTF-8 char boundary for safe logging.

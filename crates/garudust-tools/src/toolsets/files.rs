@@ -125,6 +125,11 @@ impl Tool for WriteFile {
         true
     }
 
+    fn parallelism_key(&self, params: &serde_json::Value) -> Option<String> {
+        // Two writes to the same path must not run concurrently.
+        params["path"].as_str().map(|p| format!("file:{p}"))
+    }
+
     fn schema(&self) -> serde_json::Value {
         json!({
             "type": "object",

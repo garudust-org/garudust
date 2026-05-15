@@ -308,6 +308,11 @@ impl Tool for Terminal {
         true
     }
 
+    fn parallelism_key(&self, _params: &serde_json::Value) -> Option<String> {
+        // Terminal commands share a shell environment — serialize concurrent calls.
+        Some("terminal".to_string())
+    }
+
     fn is_destructive_for(&self, params: &serde_json::Value) -> bool {
         let cmd = params["command"].as_str().unwrap_or("").trim();
         // Reject multi-segment commands (`;`, `|`, `&`, newline) — a suffix like

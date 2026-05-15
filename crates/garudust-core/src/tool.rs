@@ -65,6 +65,14 @@ pub trait Tool: Send + Sync + 'static {
         false
     }
 
+    /// Returns a conflict key for parallelism safety.
+    /// Tool calls that return the same non-None key are serialized (run one at a time).
+    /// Calls returning None can run concurrently with any other call.
+    /// Override on tools that read from or write to a shared resource.
+    fn parallelism_key(&self, _params: &serde_json::Value) -> Option<String> {
+        None
+    }
+
     async fn execute(
         &self,
         params: serde_json::Value,

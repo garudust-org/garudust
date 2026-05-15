@@ -711,16 +711,45 @@ impl Agent {
             });
 
             let tool_timeout_secs = self.config.tool_timeout_secs;
-            let tool_futs: Vec<_> = resp
-                .tool_calls
-                .iter()
-                .map(|tc| {
-                    let tools = self.tools.clone();
-                    let ctx = ctx.clone();
-                    let name = tc.name.clone();
-                    let args = tc.arguments.clone();
-                    let id = tc.id.clone();
-                    async move {
+
+            // Group tool calls by parallelism key.
+            // Calls with None key run fully in parallel.
+            // Calls sharing a key are serialized within that group; groups run in parallel.
+            let mut groups: Vec<Vec<usize>> = Vec::new();
+            let mut key_to_group: HashMap<String, usize> = HashMap::new();
+            for (i, tc) in resp.tool_calls.iter().enumerate() {
+                match self.tools.parallelism_key(&tc.name, &tc.arguments) {
+                    None => groups.push(vec![i]),
+                    Some(key) => {
+                        if let Some(&g) = key_to_group.get(&key) {
+                            if groups[g].len() == 1 {
+                                warn!(conflict_key = %key, "serializing conflicting concurrent tool calls");
+                            }
+                            groups[g].push(i);
+                        } else {
+                            let g = groups.len();
+                            key_to_group.insert(key, g);
+                            groups.push(vec![i]);
+                        }
+                    }
+                }
+            }
+
+            // Each group future runs its calls sequentially; all groups run in parallel.
+            // Returns Vec<(original_index, Message)> so order can be restored after join.
+            let group_futs = groups.into_iter().map(|indices| {
+                let calls: Vec<(usize, String, Value, String)> = indices
+                    .into_iter()
+                    .map(|i| {
+                        let tc = &resp.tool_calls[i];
+                        (i, tc.name.clone(), tc.arguments.clone(), tc.id.clone())
+                    })
+                    .collect();
+                let tools = self.tools.clone();
+                let ctx = ctx.clone();
+                async move {
+                    let mut results: Vec<(usize, Message)> = Vec::new();
+                    for (orig_idx, name, args, id) in calls {
                         debug!(tool = %name, "dispatching");
                         let res = if tool_timeout_secs > 0 && !tools.bypass_dispatch_timeout(&name)
                         {
@@ -750,19 +779,30 @@ impl Agent {
                         } else {
                             tr.content
                         };
-                        Message {
-                            role: Role::Tool,
-                            content: vec![ContentPart::ToolResult {
-                                tool_use_id: id,
-                                content,
-                                is_error: tr.is_error,
-                            }],
-                        }
+                        results.push((
+                            orig_idx,
+                            Message {
+                                role: Role::Tool,
+                                content: vec![ContentPart::ToolResult {
+                                    tool_use_id: id,
+                                    content,
+                                    is_error: tr.is_error,
+                                }],
+                            },
+                        ));
                     }
-                })
-                .collect();
+                    results
+                }
+            });
 
-            let tool_msgs = futures::future::join_all(tool_futs).await;
+            // Flatten group results and restore original tool-call order.
+            let mut all_pairs: Vec<(usize, Message)> = futures::future::join_all(group_futs)
+                .await
+                .into_iter()
+                .flatten()
+                .collect();
+            all_pairs.sort_unstable_by_key(|(i, _)| *i);
+            let tool_msgs: Vec<Message> = all_pairs.into_iter().map(|(_, msg)| msg).collect();
 
             // Track only successful tool calls for required_tools enforcement.
             for msg in &tool_msgs {
