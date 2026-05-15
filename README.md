@@ -105,40 +105,7 @@ Output goes to stdout. Exit code is 0 on success. Pipe-friendly.
 garudust-server --port 3000
 ```
 
-Exposes `POST /chat`, `POST /chat/stream`, and `ws://…/chat/ws`. Connect any platform by setting its token in `~/.garudust/.env` and enabling it in `~/.garudust/config.yaml`:
-
-```bash
-# ~/.garudust/.env  — secrets only, never committed
-ANTHROPIC_API_KEY=sk-ant-...
-TELEGRAM_TOKEN=123456789:AAFxxx
-LINE_CHANNEL_TOKEN=<channel-access-token>
-LINE_CHANNEL_SECRET=<32-char-hex>
-DISCORD_TOKEN=<bot-token>
-BRAVE_SEARCH_API_KEY=BSA...        # optional — falls back to DuckDuckGo
-```
-
-```yaml
-# ~/.garudust/config.yaml
-model: anthropic/claude-sonnet-4-6
-provider: anthropic
-
-platforms:
-  telegram:
-    enabled: true
-  discord:
-    enabled: true
-  line:
-    enabled: true
-    port: 3002
-    webhook_path: /line    # LINE console webhook → https://your-host:3002/line
-
-security:
-  terminal_sandbox: docker           # isolate shell commands in a container
-  approval_mode: smart               # smart | auto | deny
-
-cron:
-  memory_consolidation: "0 3 * * *" # nightly memory housekeeping
-```
+Exposes `POST /chat`, `POST /chat/stream`, and `ws://…/chat/ws`. See [Configuration](#configuration) for `.env` and `config.yaml` setup.
 
 ```bash
 # Quick API test
@@ -155,19 +122,10 @@ curl -X POST http://localhost:3000/chat/stream \
 ### 4 — Docker
 
 ```bash
-# 1. Create a .env file with your secrets
-cat > .env <<'EOF'
-ANTHROPIC_API_KEY=sk-ant-...
-TELEGRAM_TOKEN=123456789:AAFxxx        # optional — remove if unused
-LINE_CHANNEL_TOKEN=<token>             # optional
-LINE_CHANNEL_SECRET=<secret>           # optional
-GARUDUST_API_KEY=my-gateway-secret     # protects the HTTP API
-GARUDUST_APPROVAL_MODE=smart
-EOF
-
+# 1. Create a .env file with your secrets (see Configuration below)
+cp .env.example .env   # or write it manually
 # 2. Start
 docker compose up -d
-
 # 3. Check health
 curl http://localhost:3000/health
 ```
@@ -175,17 +133,85 @@ curl http://localhost:3000/health
 Data is persisted in the `garudust-data` Docker volume (`/root/.garudust` inside the container). To use a custom `config.yaml`, bind-mount it:
 
 ```yaml
-# docker-compose.yml (override)
-services:
-  garudust:
-    volumes:
-      - garudust-data:/root/.garudust
-      - ./config.yaml:/root/.garudust/config.yaml:ro
+# docker-compose.yml (add to volumes block)
+- ./config.yaml:/root/.garudust/config.yaml:ro
 ```
 
-<div align="center">
-  <img src="assets/demo-line.jpg" alt="LINE Demo" width="420"/>
-</div>
+---
+
+## Configuration
+
+Secrets live in `~/.garudust/.env`. Everything else goes in `~/.garudust/config.yaml`. Run `garudust setup` to generate both interactively.
+
+### `~/.garudust/.env`
+
+```bash
+# LLM provider — set at least one
+ANTHROPIC_API_KEY=sk-ant-...
+# OPENROUTER_API_KEY=sk-or-...
+# VLLM_API_KEY=...
+
+# Fallback keys — rotated automatically on auth failure
+# LLM_FALLBACK_API_KEYS=sk-ant-backup1,sk-ant-backup2
+
+# Platform adapters — only set what you use
+TELEGRAM_TOKEN=123456789:AAFxxx
+DISCORD_TOKEN=<bot-token>
+SLACK_BOT_TOKEN=xoxb-...
+SLACK_APP_TOKEN=xapp-...
+LINE_CHANNEL_TOKEN=<channel-access-token>
+LINE_CHANNEL_SECRET=<32-char-hex>
+WHATSAPP_ACCESS_TOKEN=EAAxxxxx
+WHATSAPP_PHONE_NUMBER_ID=123456789012345
+WHATSAPP_VERIFY_TOKEN=my_verify_token
+
+# Tools
+BRAVE_SEARCH_API_KEY=BSA...      # optional — falls back to DuckDuckGo
+SERPER_API_KEY=...               # optional — Google search via Serper
+
+# Gateway security
+GARUDUST_API_KEY=my-gateway-secret
+```
+
+### `~/.garudust/config.yaml`
+
+```yaml
+model: anthropic/claude-sonnet-4-6
+provider: anthropic        # anthropic | openrouter | ollama | vllm | bedrock | thaillm
+
+# Platform adapters — set tokens in .env, enable here
+platforms:
+  telegram:
+    enabled: true
+  discord:
+    enabled: true
+  slack:
+    enabled: true
+  line:
+    enabled: true
+    port: 3002
+    webhook_path: /line        # LINE console webhook → https://your-host:3002/line
+  whatsapp:
+    enabled: true
+    port: 3003
+    webhook_path: /whatsapp
+
+security:
+  terminal_sandbox: docker     # none | docker — isolate shell commands
+  approval_mode: smart         # smart | auto | deny
+
+# Scheduled tasks
+cron:
+  jobs:
+    - schedule: "0 9 * * *"
+      task: "Write a morning briefing and save to ~/briefing.md"
+  memory_consolidation: "0 3 * * *"   # nightly memory housekeeping
+  memory_expiry: "0 4 * * *"          # prune stale memory entries
+
+# Context and performance
+context_window: 128000         # adjust for your model
+nudge_interval: 5              # memory-save reminder every N turns (0 = off)
+```
 
 ---
 

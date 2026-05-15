@@ -105,43 +105,10 @@ output ออก stdout รหัสออก 0 เมื่อสำเร็�
 garudust-server --port 3000
 ```
 
-เปิด `POST /chat`, `POST /chat/stream` และ `ws://…/chat/ws` ตั้ง token ใน `~/.garudust/.env` และ enable แพลตฟอร์มใน `~/.garudust/config.yaml`:
+เปิด `POST /chat`, `POST /chat/stream` และ `ws://…/chat/ws` ดูตัวอย่าง `.env` และ `config.yaml` ได้ที่หัวข้อ [การตั้งค่า](#การตั้งค่า)
 
 ```bash
-# ~/.garudust/.env  — เก็บ secret เท่านั้น, ไม่ commit
-ANTHROPIC_API_KEY=sk-ant-...
-TELEGRAM_TOKEN=123456789:AAFxxx
-LINE_CHANNEL_TOKEN=<channel-access-token>
-LINE_CHANNEL_SECRET=<32-char-hex>
-DISCORD_TOKEN=<bot-token>
-BRAVE_SEARCH_API_KEY=BSA...        # optional — fallback เป็น DuckDuckGo
-```
-
-```yaml
-# ~/.garudust/config.yaml
-model: anthropic/claude-sonnet-4-6
-provider: anthropic
-
-platforms:
-  telegram:
-    enabled: true
-  discord:
-    enabled: true
-  line:
-    enabled: true
-    port: 3002
-    webhook_path: /line    # LINE console webhook → https://your-host:3002/line
-
-security:
-  terminal_sandbox: docker           # รันคำสั่ง shell ใน container แยก
-  approval_mode: smart               # smart | auto | deny
-
-cron:
-  memory_consolidation: "0 3 * * *" # housekeeping memory ทุกคืน
-```
-
-```bash
-# ทดสอบ API เร็ว ๆ
+# ทดสอบ API
 curl -X POST http://localhost:3000/chat \
   -H "Content-Type: application/json" \
   -d '{"message": "เขียน haiku เกี่ยวกับ Rust"}'
@@ -155,19 +122,10 @@ curl -X POST http://localhost:3000/chat/stream \
 ### 4 — Docker
 
 ```bash
-# 1. สร้างไฟล์ .env ใส่ secret
-cat > .env <<'EOF'
-ANTHROPIC_API_KEY=sk-ant-...
-TELEGRAM_TOKEN=123456789:AAFxxx        # optional — ลบทิ้งถ้าไม่ใช้
-LINE_CHANNEL_TOKEN=<token>             # optional
-LINE_CHANNEL_SECRET=<secret>           # optional
-GARUDUST_API_KEY=my-gateway-secret     # ป้องกัน HTTP API
-GARUDUST_APPROVAL_MODE=smart
-EOF
-
+# 1. สร้างไฟล์ .env (ดูตัวอย่างได้ที่หัวข้อการตั้งค่า)
+cp .env.example .env   # หรือสร้างเอง
 # 2. เริ่มต้น
 docker compose up -d
-
 # 3. ตรวจสอบ
 curl http://localhost:3000/health
 ```
@@ -175,17 +133,85 @@ curl http://localhost:3000/health
 ข้อมูลถูกเก็บใน Docker volume `garudust-data` (`/root/.garudust` ใน container) หากต้องการใช้ `config.yaml` เอง ให้ bind-mount:
 
 ```yaml
-# docker-compose.yml (override)
-services:
-  garudust:
-    volumes:
-      - garudust-data:/root/.garudust
-      - ./config.yaml:/root/.garudust/config.yaml:ro
+# docker-compose.yml (เพิ่มใน volumes block)
+- ./config.yaml:/root/.garudust/config.yaml:ro
 ```
 
-<div align="center">
-  <img src="../../../assets/demo-line.jpg" alt="LINE Demo" width="420"/>
-</div>
+---
+
+## การตั้งค่า
+
+Secret เก็บใน `~/.garudust/.env` ส่วนการตั้งค่าอื่น ๆ อยู่ใน `~/.garudust/config.yaml` รัน `garudust setup` เพื่อสร้างทั้งสองไฟล์แบบ interactive
+
+### `~/.garudust/.env`
+
+```bash
+# LLM provider — ตั้งอย่างน้อย 1 ตัว
+ANTHROPIC_API_KEY=sk-ant-...
+# OPENROUTER_API_KEY=sk-or-...
+# VLLM_API_KEY=...
+
+# Fallback keys — สลับอัตโนมัติเมื่อ auth ล้มเหลว
+# LLM_FALLBACK_API_KEYS=sk-ant-backup1,sk-ant-backup2
+
+# Platform adapters — ตั้งเฉพาะที่ใช้
+TELEGRAM_TOKEN=123456789:AAFxxx
+DISCORD_TOKEN=<bot-token>
+SLACK_BOT_TOKEN=xoxb-...
+SLACK_APP_TOKEN=xapp-...
+LINE_CHANNEL_TOKEN=<channel-access-token>
+LINE_CHANNEL_SECRET=<32-char-hex>
+WHATSAPP_ACCESS_TOKEN=EAAxxxxx
+WHATSAPP_PHONE_NUMBER_ID=123456789012345
+WHATSAPP_VERIFY_TOKEN=my_verify_token
+
+# Tools
+BRAVE_SEARCH_API_KEY=BSA...      # optional — fallback เป็น DuckDuckGo
+SERPER_API_KEY=...               # optional — ค้นหาผ่าน Google (Serper)
+
+# ป้องกัน HTTP API
+GARUDUST_API_KEY=my-gateway-secret
+```
+
+### `~/.garudust/config.yaml`
+
+```yaml
+model: anthropic/claude-sonnet-4-6
+provider: anthropic        # anthropic | openrouter | ollama | vllm | bedrock | thaillm
+
+# Platform adapters — ตั้ง token ใน .env แล้ว enable ที่นี่
+platforms:
+  telegram:
+    enabled: true
+  discord:
+    enabled: true
+  slack:
+    enabled: true
+  line:
+    enabled: true
+    port: 3002
+    webhook_path: /line        # LINE console webhook → https://your-host:3002/line
+  whatsapp:
+    enabled: true
+    port: 3003
+    webhook_path: /whatsapp
+
+security:
+  terminal_sandbox: docker     # none | docker — รัน shell ใน container แยก
+  approval_mode: smart         # smart | auto | deny
+
+# งานตามกำหนดเวลา
+cron:
+  jobs:
+    - schedule: "0 9 * * *"
+      task: "เขียน morning briefing และบันทึกที่ ~/briefing.md"
+  memory_consolidation: "0 3 * * *"   # housekeeping memory ทุกคืน
+  memory_expiry: "0 4 * * *"          # ลบ memory ที่หมดอายุ
+
+# Context และประสิทธิภาพ
+context_window: 128000         # ปรับตาม model ที่ใช้
+nudge_interval: 5              # เตือนบันทึก memory ทุก N turns (0 = ปิด)
+```
 
 ---
 

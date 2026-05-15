@@ -105,40 +105,7 @@ garudust "将最近 7 天的 git log 整理成 changelog"
 garudust-server --port 3000
 ```
 
-开放 `POST /chat`、`POST /chat/stream` 和 `ws://…/chat/ws`。在 `~/.garudust/.env` 中设置对应 token，并在 `~/.garudust/config.yaml` 中启用相应平台：
-
-```bash
-# ~/.garudust/.env  — 仅存放密钥，不要提交到版本控制
-ANTHROPIC_API_KEY=sk-ant-...
-TELEGRAM_TOKEN=123456789:AAFxxx
-LINE_CHANNEL_TOKEN=<channel-access-token>
-LINE_CHANNEL_SECRET=<32位十六进制密钥>
-DISCORD_TOKEN=<bot-token>
-BRAVE_SEARCH_API_KEY=BSA...        # 可选 — 未设置时回退到 DuckDuckGo
-```
-
-```yaml
-# ~/.garudust/config.yaml
-model: anthropic/claude-sonnet-4-6
-provider: anthropic
-
-platforms:
-  telegram:
-    enabled: true
-  discord:
-    enabled: true
-  line:
-    enabled: true
-    port: 3002
-    webhook_path: /line    # LINE 控制台 webhook → https://your-host:3002/line
-
-security:
-  terminal_sandbox: docker           # 在隔离容器中运行 shell 命令
-  approval_mode: smart               # smart | auto | deny
-
-cron:
-  memory_consolidation: "0 3 * * *" # 每晚自动整理记忆
-```
+开放 `POST /chat`、`POST /chat/stream` 和 `ws://…/chat/ws`。详细配置请参见[配置](#配置)章节。
 
 ```bash
 # 快速 API 测试
@@ -155,19 +122,10 @@ curl -X POST http://localhost:3000/chat/stream \
 ### 4 — Docker
 
 ```bash
-# 1. 创建 .env 文件存放密钥
-cat > .env <<'EOF'
-ANTHROPIC_API_KEY=sk-ant-...
-TELEGRAM_TOKEN=123456789:AAFxxx        # 可选 — 不用则删除
-LINE_CHANNEL_TOKEN=<token>             # 可选
-LINE_CHANNEL_SECRET=<secret>           # 可选
-GARUDUST_API_KEY=my-gateway-secret     # 保护 HTTP API
-GARUDUST_APPROVAL_MODE=smart
-EOF
-
+# 1. 创建 .env 文件（详见下方配置章节）
+cp .env.example .env   # 或手动创建
 # 2. 启动
 docker compose up -d
-
 # 3. 检查健康状态
 curl http://localhost:3000/health
 ```
@@ -175,17 +133,85 @@ curl http://localhost:3000/health
 数据持久化在 Docker volume `garudust-data`（容器内为 `/root/.garudust`）。如需使用自定义 `config.yaml`，可通过 bind-mount 挂载：
 
 ```yaml
-# docker-compose.yml（覆盖配置）
-services:
-  garudust:
-    volumes:
-      - garudust-data:/root/.garudust
-      - ./config.yaml:/root/.garudust/config.yaml:ro
+# docker-compose.yml（添加到 volumes 块）
+- ./config.yaml:/root/.garudust/config.yaml:ro
 ```
 
-<div align="center">
-  <img src="../../../assets/demo-line.jpg" alt="LINE Demo" width="420"/>
-</div>
+---
+
+## 配置
+
+密钥存放在 `~/.garudust/.env`，其余配置放在 `~/.garudust/config.yaml`。运行 `garudust setup` 可交互式生成两个文件。
+
+### `~/.garudust/.env`
+
+```bash
+# LLM 提供商 — 至少设置一个
+ANTHROPIC_API_KEY=sk-ant-...
+# OPENROUTER_API_KEY=sk-or-...
+# VLLM_API_KEY=...
+
+# 备用密钥 — 鉴权失败时自动轮换
+# LLM_FALLBACK_API_KEYS=sk-ant-backup1,sk-ant-backup2
+
+# 平台适配器 — 仅设置需要使用的
+TELEGRAM_TOKEN=123456789:AAFxxx
+DISCORD_TOKEN=<bot-token>
+SLACK_BOT_TOKEN=xoxb-...
+SLACK_APP_TOKEN=xapp-...
+LINE_CHANNEL_TOKEN=<channel-access-token>
+LINE_CHANNEL_SECRET=<32位十六进制密钥>
+WHATSAPP_ACCESS_TOKEN=EAAxxxxx
+WHATSAPP_PHONE_NUMBER_ID=123456789012345
+WHATSAPP_VERIFY_TOKEN=my_verify_token
+
+# 搜索工具
+BRAVE_SEARCH_API_KEY=BSA...      # 可选 — 未设置时回退到 DuckDuckGo
+SERPER_API_KEY=...               # 可选 — 通过 Serper 使用 Google 搜索
+
+# 网关安全
+GARUDUST_API_KEY=my-gateway-secret
+```
+
+### `~/.garudust/config.yaml`
+
+```yaml
+model: anthropic/claude-sonnet-4-6
+provider: anthropic        # anthropic | openrouter | ollama | vllm | bedrock | thaillm
+
+# 平台适配器 — 在 .env 中设置 token，在此处启用
+platforms:
+  telegram:
+    enabled: true
+  discord:
+    enabled: true
+  slack:
+    enabled: true
+  line:
+    enabled: true
+    port: 3002
+    webhook_path: /line        # LINE 控制台 webhook → https://your-host:3002/line
+  whatsapp:
+    enabled: true
+    port: 3003
+    webhook_path: /whatsapp
+
+security:
+  terminal_sandbox: docker     # none | docker — 在隔离容器中运行 shell 命令
+  approval_mode: smart         # smart | auto | deny
+
+# 定时任务
+cron:
+  jobs:
+    - schedule: "0 9 * * *"
+      task: "生成每日简报并保存到 ~/briefing.md"
+  memory_consolidation: "0 3 * * *"   # 每晚自动整理记忆
+  memory_expiry: "0 4 * * *"          # 清理过期记忆条目
+
+# 上下文与性能
+context_window: 128000         # 根据使用的模型调整
+nudge_interval: 5              # 每 N 轮提醒保存记忆（0 = 关闭）
+```
 
 ---
 
