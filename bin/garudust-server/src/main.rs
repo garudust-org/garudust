@@ -281,9 +281,9 @@ fn spawn_config_watcher(
                         event.kind,
                         EventKind::Create(_)
                             | EventKind::Remove(_)
-                            | EventKind::Modify(ModifyKind::Data(_))
-                            | EventKind::Modify(ModifyKind::Name(_))
-                            | EventKind::Modify(ModifyKind::Any)
+                            | EventKind::Modify(
+                                ModifyKind::Data(_) | ModifyKind::Name(_) | ModifyKind::Any
+                            )
                     );
                     let matches = event
                         .paths
