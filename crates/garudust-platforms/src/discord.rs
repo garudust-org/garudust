@@ -43,11 +43,11 @@ impl EventHandler for DiscordHandler {
                     Ok(bytes) => match tokio::fs::write(&dest, &bytes).await {
                         Ok(()) => attachments.push(ImageAttachment { path: dest }),
                         Err(e) => {
-                            tracing::warn!(att_id = %att.id, error = %e, "Discord: write tmp failed")
+                            tracing::warn!(att_id = %att.id, error = %e, "Discord: write tmp failed");
                         }
                     },
                     Err(e) => {
-                        tracing::warn!(att_id = %att.id, error = %e, "Discord: read bytes failed")
+                        tracing::warn!(att_id = %att.id, error = %e, "Discord: read bytes failed");
                     }
                 },
                 Err(e) => tracing::warn!(att_id = %att.id, error = %e, "Discord: download failed"),

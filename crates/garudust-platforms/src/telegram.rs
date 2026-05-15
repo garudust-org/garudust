@@ -54,8 +54,8 @@ impl PlatformAdapter for TelegramAdapter {
                             let dest = format!("/tmp/garudust_telegram_{file_id}.jpg");
                             match bot.get_file(photo.file.id.clone()).await {
                                 Ok(tg_file) => match tokio::fs::File::create(&dest).await {
-                                    Ok(mut dst) => {
-                                        match bot.download_file(&tg_file.path, &mut dst).await {
+                                    Ok(mut writer) => {
+                                        match bot.download_file(&tg_file.path, &mut writer).await {
                                             Ok(()) => {
                                                 attachments.push(ImageAttachment { path: dest });
                                             }
