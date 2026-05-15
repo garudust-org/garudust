@@ -71,24 +71,64 @@ cd garudust-agent && cargo build --release
 
 ```bash
 garudust setup   # 首次配置向导 — 选择提供商、保存 API 密钥
-garudust         # 交互式 TUI
-garudust "将最近 7 天的 git log 整理成 changelog"   # 单次执行
 ```
 
-### 以服务器模式运行
+### 1 — 交互式 TUI
+
+```bash
+garudust
+```
+
+<div align="center">
+  <img src="../../../assets/demo-tui.png" alt="Garudust TUI" width="800"/>
+</div>
+
+| 按键 | 操作 |
+|------|------|
+| `Enter` | 发送消息 |
+| `↑ ↓` | 滚动历史 |
+| `/new` | 开始新会话 |
+| `/model <name>` | 即时切换模型 |
+| `Ctrl+C` | 退出 |
+
+### 2 — 单次执行
+
+```bash
+garudust "将最近 7 天的 git log 整理成 changelog"
+```
+
+输出至 stdout，成功时退出码为 0，支持管道操作。
+
+### 3 — 服务器模式
 
 ```bash
 garudust-server --port 3000
 ```
 
-在 `~/.garudust/.env` 中设置对应 token，并在 `~/.garudust/config.yaml` 中启用相应平台：
+开放 `POST /chat`、`POST /chat/stream` 和 `ws://…/chat/ws`。在 `~/.garudust/.env` 中设置对应 token，并在 `~/.garudust/config.yaml` 中启用相应平台：
 
 ```yaml
 platforms:
+  telegram:
+    enabled: true          # 从 .env 读取 TELEGRAM_TOKEN
   line:
     enabled: true
     port: 3002
-    webhook_path: /line
+    webhook_path: /line    # 将 LINE 控制台 webhook 指向 https://your-host:3002/line
+  discord:
+    enabled: true          # 从 .env 读取 DISCORD_TOKEN
+```
+
+```bash
+# 快速 API 测试
+curl -X POST http://localhost:3000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "写一首关于 Rust 的俳句"}'
+
+# 流式输出（Server-Sent Events）
+curl -X POST http://localhost:3000/chat/stream \
+  -H "Content-Type: application/json" \
+  -d '{"message": "用 3 句话解释 async/await"}'
 ```
 
 <div align="center">

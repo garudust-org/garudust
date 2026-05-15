@@ -71,24 +71,64 @@ cd garudust-agent && cargo build --release
 
 ```bash
 garudust setup   # ตั้งค่าครั้งแรก — เลือก provider, บันทึก API key
-garudust         # เปิด TUI แบบ interactive
-garudust "สรุป git log 7 วันล่าสุดเป็น changelog"   # one-shot
 ```
 
-### รันเป็น server
+### 1 — Interactive TUI
+
+```bash
+garudust
+```
+
+<div align="center">
+  <img src="../../../assets/demo-tui.png" alt="Garudust TUI" width="800"/>
+</div>
+
+| ปุ่ม | การทำงาน |
+|------|----------|
+| `Enter` | ส่งข้อความ |
+| `↑ ↓` | เลื่อนประวัติ |
+| `/new` | เริ่ม session ใหม่ |
+| `/model <name>` | เปลี่ยน model ทันที |
+| `Ctrl+C` | ออกจากโปรแกรม |
+
+### 2 — One-shot
+
+```bash
+garudust "สรุป git log 7 วันล่าสุดเป็น changelog"
+```
+
+output ออก stdout รหัสออก 0 เมื่อสำเร็จ ใช้ pipe ได้เลย
+
+### 3 — Server
 
 ```bash
 garudust-server --port 3000
 ```
 
-เปิดใช้แพลตฟอร์มโดยตั้ง token ใน `~/.garudust/.env` และ enable ใน `~/.garudust/config.yaml`:
+เปิด `POST /chat`, `POST /chat/stream` และ `ws://…/chat/ws` เปิดใช้แพลตฟอร์มโดยตั้ง token ใน `~/.garudust/.env` และ enable ใน `~/.garudust/config.yaml`:
 
 ```yaml
 platforms:
+  telegram:
+    enabled: true          # อ่าน TELEGRAM_TOKEN จาก .env
   line:
     enabled: true
     port: 3002
-    webhook_path: /line
+    webhook_path: /line    # ชี้ LINE console → https://your-host:3002/line
+  discord:
+    enabled: true          # อ่าน DISCORD_TOKEN จาก .env
+```
+
+```bash
+# ทดสอบ API เร็ว ๆ
+curl -X POST http://localhost:3000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "เขียน haiku เกี่ยวกับ Rust"}'
+
+# Streaming (Server-Sent Events)
+curl -X POST http://localhost:3000/chat/stream \
+  -H "Content-Type: application/json" \
+  -d '{"message": "อธิบาย async/await ใน 3 ประโยค"}'
 ```
 
 <div align="center">

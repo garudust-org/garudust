@@ -71,24 +71,64 @@ cd garudust-agent && cargo build --release
 
 ```bash
 garudust setup   # first-time wizard — pick provider, save API key
-garudust         # interactive TUI
-garudust "summarise the git log from the last 7 days"   # one-shot
 ```
 
-### Run as a server
+### 1 — Interactive TUI
+
+```bash
+garudust
+```
+
+<div align="center">
+  <img src="assets/demo-tui.png" alt="Garudust TUI" width="800"/>
+</div>
+
+| Key | Action |
+|-----|--------|
+| `Enter` | Send message |
+| `↑ ↓` | Scroll history |
+| `/new` | Start a fresh session |
+| `/model <name>` | Switch model on the fly |
+| `Ctrl+C` | Quit |
+
+### 2 — One-shot
+
+```bash
+garudust "summarise the git log from the last 7 days into a changelog"
+```
+
+Output goes to stdout. Exit code is 0 on success. Pipe-friendly.
+
+### 3 — Server
 
 ```bash
 garudust-server --port 3000
 ```
 
-Expose any platform by setting its token in `~/.garudust/.env` and enabling it in `~/.garudust/config.yaml`:
+Exposes `POST /chat`, `POST /chat/stream`, and `ws://…/chat/ws`. Connect any platform by setting its token in `~/.garudust/.env` and enabling it in `~/.garudust/config.yaml`:
 
 ```yaml
 platforms:
+  telegram:
+    enabled: true          # reads TELEGRAM_TOKEN from .env
   line:
     enabled: true
     port: 3002
-    webhook_path: /line
+    webhook_path: /line    # point LINE console → https://your-host:3002/line
+  discord:
+    enabled: true          # reads DISCORD_TOKEN from .env
+```
+
+```bash
+# Quick API test
+curl -X POST http://localhost:3000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "write a haiku about Rust"}'
+
+# Streaming (Server-Sent Events)
+curl -X POST http://localhost:3000/chat/stream \
+  -H "Content-Type: application/json" \
+  -d '{"message": "explain async/await in 3 sentences"}'
 ```
 
 <div align="center">
