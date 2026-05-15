@@ -265,15 +265,82 @@ nudge_interval: 5              # 每 N 轮提醒保存记忆（0 = 关闭）
 
 ---
 
-## 技能与记忆
+## 工具
 
-智能体将所学内容保存至 `~/.garudust/memory/`，并在每次会话开始时自动加载。可复用的工作流会被自动写入 `~/.garudust/skills/` 作为技能，无需手动操作。
+内置工具开箱即用，无需任何配置。
 
-从 [agentskills.io](https://agentskills.io) 安装技能：
+| 工具 | 说明 |
+|------|------|
+| `web_fetch` | 抓取 URL 内容 |
+| `web_search` | 网页搜索（Brave / Serper / DuckDuckGo） |
+| `http_request` | 自定义 HTTP 请求，支持自定义 headers 和 body |
+| `browser` | 通过 CDP 控制 Chrome/Chromium — 点击、输入、截图、执行 JS |
+| `read_file` / `write_file` | 文件读写 |
+| `list_directory` | 支持 glob 模式和深度限制的目录列表 |
+| `terminal` | 执行 shell 命令（可选 Docker 沙箱隔离） |
+| `memory` | 跨会话持久化键值存储 |
+| `session_search` | 全文搜索历史对话（FTS5 trigram） |
+| `delegate_task` | 并行派生子智能体处理分解任务 |
+| `skill_view` / `write_skill` | 加载和编写可复用技能 |
+
+**自定义脚本工具** — 在 `~/.garudust/tools/<name>/` 中放置 `tool.yaml` 和脚本：
+
+```yaml
+# tool.yaml
+name: get_weather
+description: 获取城市当前天气
+schema:
+  type: object
+  properties:
+    city: { type: string }
+  required: [city]
+command: "curl -s wttr.in/{city}?format=3"
+```
+
+**MCP** — 在 `config.yaml` 中接入任意 [Model Context Protocol](https://modelcontextprotocol.io) 服务器：
+
+```yaml
+mcp_servers:
+  - name: filesystem
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+```
+
+---
+
+## Hub
+
+一条命令，即可用社区工具和技能扩展智能体能力。
+
+**Tool Hub**（[garudust-hub](https://github.com/garudust-org/garudust-hub)）
 
 ```bash
+garudust tool list                        # 浏览可用工具
+garudust tool install weather             # 下载到 ~/.garudust/tools/weather/
+garudust tool install hash_text
+garudust tool uninstall weather
+garudust tool update                      # 更新所有 hub 工具
+```
+
+**Skills Hub**（[agentskills.io](https://agentskills.io)）
+
+```bash
+garudust skill list
 garudust skill install agentskills-org/hub/git-workflow
-garudust tool install weather   # 社区脚本工具
+garudust skill install https://example.com/skills/my-skill/SKILL.md
+garudust skill uninstall git-workflow
+```
+
+---
+
+## 记忆
+
+智能体将所学内容保存至 `~/.garudust/memory/`，并在每次会话开始时自动加载 — 无需重复说明。可复用的工作流会被自动写入 `~/.garudust/skills/`，无需任何手动操作。
+
+```
+你：JSON 始终使用 2 个空格缩进
+Agent：已记录。
+# 下次会话：直接应用，无需再次提醒
 ```
 
 ---

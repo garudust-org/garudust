@@ -265,15 +265,82 @@ Fallback keys: `LLM_FALLBACK_API_KEYS=key2,key3` — rotated automatically on au
 
 ---
 
-## Skills & Memory
+## Tools
 
-The agent saves everything it learns to `~/.garudust/memory/` and loads it at the start of every session. Reusable workflows are automatically written as skills in `~/.garudust/skills/` — no manual prompting needed.
+Built-in tools are available out of the box — no configuration required.
 
-Install skills from the [agentskills.io](https://agentskills.io) hub:
+| Tool | Description |
+|------|-------------|
+| `web_fetch` | Fetch a URL |
+| `web_search` | Search the web (Brave / Serper / DuckDuckGo) |
+| `http_request` | Arbitrary HTTP requests with custom headers and body |
+| `browser` | Control Chrome/Chromium via CDP — click, type, screenshot, run JS |
+| `read_file` / `write_file` | Filesystem read and write |
+| `list_directory` | List files with glob patterns and depth limits |
+| `terminal` | Run shell commands (Docker sandbox optional) |
+| `memory` | Persistent key-value memory across sessions |
+| `session_search` | Full-text search across past conversations (FTS5 trigram) |
+| `delegate_task` | Spawn a parallel sub-agent for decomposed work |
+| `skill_view` / `write_skill` | Load and write reusable skills |
+
+**Custom script tools** — drop a `tool.yaml` + optional script into `~/.garudust/tools/<name>/`:
+
+```yaml
+# tool.yaml
+name: get_weather
+description: Get current weather for a city
+schema:
+  type: object
+  properties:
+    city: { type: string }
+  required: [city]
+command: "curl -s wttr.in/{city}?format=3"
+```
+
+**MCP** — connect any [Model Context Protocol](https://modelcontextprotocol.io) server in `config.yaml`:
+
+```yaml
+mcp_servers:
+  - name: filesystem
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+```
+
+---
+
+## Hub
+
+One command to extend the agent with community-built tools and skills.
+
+**Tool Hub** ([garudust-hub](https://github.com/garudust-org/garudust-hub))
 
 ```bash
+garudust tool list                        # browse available tools
+garudust tool install weather             # download to ~/.garudust/tools/weather/
+garudust tool install hash_text
+garudust tool uninstall weather
+garudust tool update                      # re-fetch all hub tools
+```
+
+**Skills Hub** ([agentskills.io](https://agentskills.io))
+
+```bash
+garudust skill list
 garudust skill install agentskills-org/hub/git-workflow
-garudust tool install weather   # community script tools
+garudust skill install https://example.com/skills/my-skill/SKILL.md
+garudust skill uninstall git-workflow
+```
+
+---
+
+## Memory
+
+The agent saves everything it learns to `~/.garudust/memory/` and loads it at the start of every session — you never need to repeat yourself. Reusable workflows are automatically written as skills in `~/.garudust/skills/` without any prompting.
+
+```
+You: always format JSON with 2-space indent
+Agent: Got it — saving to memory.
+# Next session: already applied, no reminder needed
 ```
 
 ---

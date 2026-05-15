@@ -265,15 +265,82 @@ Fallback keys: `LLM_FALLBACK_API_KEYS=key2,key3` — สลับอัตโน
 
 ---
 
-## Skills และ Memory
+## Tools
 
-agent บันทึกทุกสิ่งที่เรียนรู้ไว้ใน `~/.garudust/memory/` และโหลดทุก session workflow ที่ใช้ซ้ำได้จะถูกเขียนเป็น skill ใน `~/.garudust/skills/` โดยอัตโนมัติ
+built-in tools พร้อมใช้ทันที ไม่ต้องตั้งค่าเพิ่ม
 
-ติดตั้ง skill จาก [agentskills.io](https://agentskills.io):
+| Tool | คำอธิบาย |
+|------|----------|
+| `web_fetch` | ดึงข้อมูลจาก URL |
+| `web_search` | ค้นหาเว็บ (Brave / Serper / DuckDuckGo) |
+| `http_request` | HTTP request แบบกำหนดเอง พร้อม headers และ body |
+| `browser` | ควบคุม Chrome/Chromium ผ่าน CDP — คลิก, พิมพ์, screenshot, รัน JS |
+| `read_file` / `write_file` | อ่านและเขียนไฟล์ |
+| `list_directory` | แสดงไฟล์ด้วย glob pattern และ depth limit |
+| `terminal` | รัน shell command (รองรับ Docker sandbox) |
+| `memory` | memory แบบ key-value ที่คงอยู่ข้าม session |
+| `session_search` | ค้นหาประวัติการสนทนา (FTS5 trigram) |
+| `delegate_task` | spawn sub-agent แบบ parallel สำหรับงานย่อย |
+| `skill_view` / `write_skill` | โหลดและเขียน skill ที่ใช้ซ้ำได้ |
+
+**Custom script tools** — วาง `tool.yaml` + script ใน `~/.garudust/tools/<name>/`:
+
+```yaml
+# tool.yaml
+name: get_weather
+description: ดูสภาพอากาศของเมือง
+schema:
+  type: object
+  properties:
+    city: { type: string }
+  required: [city]
+command: "curl -s wttr.in/{city}?format=3"
+```
+
+**MCP** — เชื่อมต่อ [Model Context Protocol](https://modelcontextprotocol.io) server ใดก็ได้ใน `config.yaml`:
+
+```yaml
+mcp_servers:
+  - name: filesystem
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+```
+
+---
+
+## Hub
+
+คำสั่งเดียวเพื่อขยายความสามารถของ agent ด้วย tool และ skill จากชุมชน
+
+**Tool Hub** ([garudust-hub](https://github.com/garudust-org/garudust-hub))
 
 ```bash
+garudust tool list                        # ดู tool ที่มี
+garudust tool install weather             # ติดตั้งไปที่ ~/.garudust/tools/weather/
+garudust tool install hash_text
+garudust tool uninstall weather
+garudust tool update                      # อัปเดต hub tools ทั้งหมด
+```
+
+**Skills Hub** ([agentskills.io](https://agentskills.io))
+
+```bash
+garudust skill list
 garudust skill install agentskills-org/hub/git-workflow
-garudust tool install weather   # เครื่องมือจากชุมชน
+garudust skill install https://example.com/skills/my-skill/SKILL.md
+garudust skill uninstall git-workflow
+```
+
+---
+
+## Memory
+
+agent บันทึกทุกสิ่งที่เรียนรู้ไว้ใน `~/.garudust/memory/` และโหลดทุก session — ไม่ต้องบอกซ้ำ workflow ที่ใช้ซ้ำได้จะถูกเขียนเป็น skill ใน `~/.garudust/skills/` โดยอัตโนมัติ
+
+```
+คุณ: format JSON ด้วย 2-space indent เสมอ
+Agent: รับทราบ — บันทึกไว้ใน memory แล้ว
+# session ถัดไป: ทำให้เลย ไม่ต้องเตือนอีก
 ```
 
 ---
