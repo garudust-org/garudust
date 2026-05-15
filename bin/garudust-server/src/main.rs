@@ -256,12 +256,28 @@ fn spawn_config_watcher(
 ) {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<()>();
 
+    // Filename to match against incoming events. We watch the parent dir (so atomic
+    // write+rename saves are visible) but must filter to ONLY this filename —
+    // otherwise unrelated writes in ~/.garudust/ (state.db, state.db-wal, conversation
+    // files) trigger reload loops every few hundred ms as the agent writes to its DB.
+    let config_filename = config_path
+        .file_name()
+        .map(std::ffi::OsString::from)
+        .unwrap_or_default();
+
     tokio::spawn(async move {
         let tx2 = tx.clone();
+        let filename = config_filename.clone();
         let mut watcher: RecommendedWatcher =
             match notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-                if res.is_ok() {
-                    let _ = tx2.send(());
+                if let Ok(event) = res {
+                    let matches = event
+                        .paths
+                        .iter()
+                        .any(|p| p.file_name() == Some(filename.as_os_str()));
+                    if matches {
+                        let _ = tx2.send(());
+                    }
                 }
             }) {
                 Ok(w) => w,
@@ -385,7 +401,11 @@ async fn main() -> Result<()> {
     // read from `~/.garudust/.env` via `get_secret` (in-memory map — never
     // exposed to subprocess tools). This mirrors the LINE/WhatsApp wiring
     // below and avoids leaking secrets into the process environment.
-    if let Some(token) = cli.telegram_token.clone().or_else(|| get_secret("TELEGRAM_TOKEN")) {
+    if let Some(token) = cli
+        .telegram_token
+        .clone()
+        .or_else(|| get_secret("TELEGRAM_TOKEN"))
+    {
         let platform: Arc<dyn PlatformAdapter> = Arc::new(TelegramAdapter::new(token));
         start_platform(
             platform,
@@ -397,7 +417,11 @@ async fn main() -> Result<()> {
         .await?;
     }
 
-    if let Some(token) = cli.discord_token.clone().or_else(|| get_secret("DISCORD_TOKEN")) {
+    if let Some(token) = cli
+        .discord_token
+        .clone()
+        .or_else(|| get_secret("DISCORD_TOKEN"))
+    {
         let platform: Arc<dyn PlatformAdapter> = Arc::new(DiscordAdapter::new(token));
         start_platform(
             platform,
@@ -422,11 +446,16 @@ async fn main() -> Result<()> {
         .await?;
     }
 
-    let slack_bot = cli.slack_bot_token.clone().or_else(|| get_secret("SLACK_BOT_TOKEN"));
-    let slack_app = cli.slack_app_token.clone().or_else(|| get_secret("SLACK_APP_TOKEN"));
+    let slack_bot = cli
+        .slack_bot_token
+        .clone()
+        .or_else(|| get_secret("SLACK_BOT_TOKEN"));
+    let slack_app = cli
+        .slack_app_token
+        .clone()
+        .or_else(|| get_secret("SLACK_APP_TOKEN"));
     if let (Some(bot_token), Some(app_token)) = (slack_bot, slack_app) {
-        let platform: Arc<dyn PlatformAdapter> =
-            Arc::new(SlackAdapter::new(bot_token, app_token));
+        let platform: Arc<dyn PlatformAdapter> = Arc::new(SlackAdapter::new(bot_token, app_token));
         start_platform(
             platform,
             agent.load_full(),
@@ -437,15 +466,21 @@ async fn main() -> Result<()> {
         .await?;
     }
 
-    let matrix_hs = cli.matrix_homeserver.clone().or_else(|| get_secret("MATRIX_HOMESERVER"));
-    let matrix_user = cli.matrix_user.clone().or_else(|| get_secret("MATRIX_USER"));
-    let matrix_pw = cli.matrix_password.clone().or_else(|| get_secret("MATRIX_PASSWORD"));
+    let matrix_hs = cli
+        .matrix_homeserver
+        .clone()
+        .or_else(|| get_secret("MATRIX_HOMESERVER"));
+    let matrix_user = cli
+        .matrix_user
+        .clone()
+        .or_else(|| get_secret("MATRIX_USER"));
+    let matrix_pw = cli
+        .matrix_password
+        .clone()
+        .or_else(|| get_secret("MATRIX_PASSWORD"));
     if let (Some(homeserver), Some(user), Some(password)) = (matrix_hs, matrix_user, matrix_pw) {
-        let platform: Arc<dyn PlatformAdapter> = Arc::new(MatrixAdapter::new(
-            homeserver,
-            user,
-            password,
-        ));
+        let platform: Arc<dyn PlatformAdapter> =
+            Arc::new(MatrixAdapter::new(homeserver, user, password));
         start_platform(
             platform,
             agent.load_full(),

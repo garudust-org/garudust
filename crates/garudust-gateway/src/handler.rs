@@ -3,7 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use garudust_agent::Agent;
 use garudust_core::{
-    config::AgentConfig,
+    config::{get_secret, AgentConfig},
     platform::{MessageHandler, PlatformAdapter},
     tool::CommandApprover,
     types::{ImageAttachment, InboundMessage, OutboundMessage},
@@ -53,21 +53,53 @@ impl GatewayHandler {
             .join("view_image")
             .join("run.py");
 
+        // The view_image script reads OPENROUTER_API_KEY / GOOGLE_AI_API_KEY from
+        // its env. Since the server no longer loads ~/.garudust/.env into the
+        // process environment, we forward the relevant keys explicitly here —
+        // mirroring the env_required allowlist used by the regular tool dispatch.
+        let or_key = get_secret("OPENROUTER_API_KEY");
+        let gm_key = get_secret("GOOGLE_AI_API_KEY");
+
+        // `uv` is typically installed at ~/.local/bin/uv which is NOT in the
+        // server's PATH when launched as a daemon (PATH inherits from the
+        // launching shell — desktop entries / systemd units often strip it).
+        // Augment PATH so `Command::new("uv")` resolves regardless of how the
+        // server was started.
+        let augmented_path = {
+            let cur = std::env::var("PATH").unwrap_or_default();
+            match std::env::var("HOME") {
+                Ok(home) if !home.is_empty() => {
+                    let extra = format!("{home}/.local/bin");
+                    if cur.split(':').any(|seg| seg == extra) {
+                        cur
+                    } else {
+                        format!("{extra}:{cur}")
+                    }
+                }
+                _ => cur,
+            }
+        };
+
         for (i, att) in attachments.iter().enumerate() {
             let seq = seq_start + i + 1;
             let description = if script.exists() {
-                match tokio::process::Command::new("uv")
-                    .args([
-                        "run",
-                        "--with",
-                        "httpx",
-                        script.to_str().unwrap_or("run.py"),
-                        &att.path,
-                        "อธิบายรูปนี้โดยละเอียด",
-                    ])
-                    .output()
-                    .await
-                {
+                let mut cmd = tokio::process::Command::new("uv");
+                cmd.args([
+                    "run",
+                    "--with",
+                    "httpx",
+                    script.to_str().unwrap_or("run.py"),
+                    &att.path,
+                    "อธิบายรูปนี้โดยละเอียด",
+                ]);
+                cmd.env("PATH", &augmented_path);
+                if let Some(v) = &or_key {
+                    cmd.env("OPENROUTER_API_KEY", v);
+                }
+                if let Some(v) = &gm_key {
+                    cmd.env("GOOGLE_AI_API_KEY", v);
+                }
+                match cmd.output().await {
                     Ok(out) if out.status.success() => {
                         String::from_utf8_lossy(&out.stdout).trim().to_string()
                     }
@@ -109,6 +141,19 @@ impl MessageHandler for GatewayHandler {
             return Ok(());
         }
 
+        // Per-user session isolation — must run BEFORE both the image-only and
+        // image+text branches so the silent image description is injected into
+        // the same session bucket the agent will later read from. Otherwise an
+        // image-only event gets stored under `line:{chat_id}` while a follow-up
+        // text mention from the same user is rewritten to
+        // `line:{chat_id}:{user_id}` and the agent sees no image.
+        if pcfg.session_per_user && msg.channel.platform != "webhook" {
+            msg.session_key = format!(
+                "{}:{}:{}",
+                msg.channel.platform, msg.channel.chat_id, msg.user_id
+            );
+        }
+
         // Image-only messages bypass the mention gate (e.g. LINE where you
         // cannot @mention inside an image event) and are stored silently.
         if msg.text.trim().is_empty() && !msg.attachments.is_empty() {
@@ -136,14 +181,6 @@ impl MessageHandler for GatewayHandler {
             if !mentioned {
                 return Ok(());
             }
-        }
-
-        // Per-user session isolation
-        if pcfg.session_per_user && msg.channel.platform != "webhook" {
-            msg.session_key = format!(
-                "{}:{}:{}",
-                msg.channel.platform, msg.channel.chat_id, msg.user_id
-            );
         }
 
         self.sessions
