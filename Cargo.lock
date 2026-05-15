@@ -1810,6 +1810,7 @@ dependencies = [
  "garudust-transport",
  "ratatui",
  "reqwest",
+ "serde",
  "serde_yaml",
  "tokio",
  "tracing",

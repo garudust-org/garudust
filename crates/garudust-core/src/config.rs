@@ -554,32 +554,48 @@ impl AgentConfig {
             config.security.allowed_write_paths = vec![cwd];
         }
 
-        // Apply env/dotenv overrides (real env takes priority over dotenv and config.yaml).
-        // Provider-specific keys override whatever was set in config.yaml.
-        if let Some(k) = env_or_dotenv("ANTHROPIC_API_KEY", dotenv) {
-            config.api_key = Some(k);
-            config.provider = "anthropic".into();
-        } else if let Some(k) = env_or_dotenv("OPENROUTER_API_KEY", dotenv) {
-            config.api_key = Some(k);
-        } else if let Some(url) = env_or_dotenv("OLLAMA_BASE_URL", dotenv) {
-            config.provider = "ollama".into();
-            config.base_url = Some(url);
-        } else if let Some(url) = env_or_dotenv("VLLM_BASE_URL", dotenv) {
-            config.provider = "vllm".into();
-            config.base_url = Some(url);
-        } else if let Some(k) = env_or_dotenv("THAILLM_API_KEY", dotenv) {
-            config.api_key = Some(k);
-            config.provider = "thaillm".into();
-        }
-        // Load api_key for the resolved provider when not already set above.
-        // This handles the case where provider/base_url come from config.yaml.
-        if config.api_key.is_none() {
-            config.api_key = match config.provider.as_str() {
-                "vllm" => env_or_dotenv("VLLM_API_KEY", dotenv),
-                "anthropic" => env_or_dotenv("ANTHROPIC_API_KEY", dotenv),
-                "thaillm" => env_or_dotenv("THAILLM_API_KEY", dotenv),
-                _ => env_or_dotenv("OPENROUTER_API_KEY", dotenv),
-            };
+        // Provider→env binding rule:
+        //   1. If config.yaml explicitly set the provider, load *only* that provider's
+        //      env key. Other providers' keys (e.g. OPENROUTER_API_KEY left in .env for
+        //      tools like view_image) must not leak into config.api_key.
+        //   2. If yaml did not exist (config.provider is still default), allow env-based
+        //      auto-detection: ANTHROPIC_API_KEY → anthropic, OPENROUTER_API_KEY → openrouter,
+        //      VLLM_BASE_URL → vllm, etc.
+        //
+        // This prevents the "tool credential leaks into LLM transport" bug while
+        // preserving zero-config UX for users who only set one *_API_KEY in env.
+        let yaml_authoritative = yaml_path.exists();
+
+        if yaml_authoritative {
+            if config.api_key.is_none() {
+                config.api_key = match config.provider.as_str() {
+                    "vllm" => env_or_dotenv("VLLM_API_KEY", dotenv),
+                    "anthropic" => env_or_dotenv("ANTHROPIC_API_KEY", dotenv),
+                    "thaillm" => env_or_dotenv("THAILLM_API_KEY", dotenv),
+                    "ollama" | "bedrock" | "codex" => None,
+                    // openrouter and any unknown provider default to OpenRouter's key
+                    _ => env_or_dotenv("OPENROUTER_API_KEY", dotenv),
+                };
+            }
+        } else {
+            // Auto-detect provider from env when no yaml is present.
+            if let Some(k) = env_or_dotenv("ANTHROPIC_API_KEY", dotenv) {
+                config.api_key = Some(k);
+                config.provider = "anthropic".into();
+            } else if let Some(url) = env_or_dotenv("OLLAMA_BASE_URL", dotenv) {
+                config.provider = "ollama".into();
+                config.base_url = Some(url);
+            } else if let Some(url) = env_or_dotenv("VLLM_BASE_URL", dotenv) {
+                config.provider = "vllm".into();
+                config.base_url = Some(url);
+                config.api_key = env_or_dotenv("VLLM_API_KEY", dotenv);
+            } else if let Some(k) = env_or_dotenv("THAILLM_API_KEY", dotenv) {
+                config.api_key = Some(k);
+                config.provider = "thaillm".into();
+            } else if let Some(k) = env_or_dotenv("OPENROUTER_API_KEY", dotenv) {
+                config.api_key = Some(k);
+                config.provider = "openrouter".into();
+            }
         }
         if let Some(m) = env_or_dotenv("GARUDUST_MODEL", dotenv) {
             config.model = m;

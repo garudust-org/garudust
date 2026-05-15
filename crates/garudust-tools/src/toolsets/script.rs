@@ -25,6 +25,12 @@ struct ScriptToolDef {
     /// Whether this tool requires approval before running. Defaults to true.
     #[serde(default = "default_destructive")]
     destructive: bool,
+    /// Allowlist of env keys forwarded from `~/.garudust/.env` to the tool subprocess.
+    /// Tools see only the secrets they declare here, not the whole .env file. This
+    /// prevents a hub-installed tool from reading credentials it has no business
+    /// touching (LLM keys, platform tokens, etc).
+    #[serde(default)]
+    env_required: Vec<String>,
 }
 
 fn default_toolset() -> String {
@@ -51,6 +57,8 @@ pub struct ScriptTool {
     /// The tool's folder; `sh -c` runs here so `./run.py` and sibling files
     /// resolve correctly. `$TOOL_DIR` is also set in the environment.
     tool_dir: PathBuf,
+    /// Allowlist of env keys to forward from `.env` to this tool's subprocess.
+    env_required: Vec<String>,
 }
 
 // ── Shell quoting ─────────────────────────────────────────────────────────────
@@ -141,8 +149,13 @@ impl Tool for ScriptTool {
             .env("HOME", std::env::var("HOME").unwrap_or_default())
             .env("LANG", "en_US.UTF-8")
             .env("TOOL_DIR", &self.tool_dir);
-        for (k, v) in &dotenv_vars {
-            cmd.env(k, v);
+        // Forward only declared env keys (capability allowlist). Tools that
+        // predate `env_required` keep working as long as their tool.yaml lists
+        // every secret they read.
+        for key in &self.env_required {
+            if let Some((_, v)) = dotenv_vars.iter().find(|(k, _)| k == key) {
+                cmd.env(key, v);
+            }
         }
         let out = cmd
             .output()
@@ -236,6 +249,7 @@ async fn load_tool_from_folder(dir: &Path) -> Option<ScriptTool> {
         command: def.command,
         destructive: def.destructive,
         tool_dir: dir.to_path_buf(),
+        env_required: def.env_required,
     })
 }
 
@@ -500,7 +514,35 @@ command: "curl -s wttr.in/{city}?format=3"
             command: command.into(),
             destructive: false,
             tool_dir,
+            env_required: Vec::new(),
         }
+    }
+
+    fn make_tool_with_env(
+        tool_dir: std::path::PathBuf,
+        command: &str,
+        env_required: &[&str],
+    ) -> ScriptTool {
+        ScriptTool {
+            name: "test_tool".into(),
+            description: "test".into(),
+            toolset: "script".into(),
+            schema: json!({ "type": "object", "properties": {} }),
+            command: command.into(),
+            destructive: false,
+            tool_dir,
+            env_required: env_required.iter().map(|s| (*s).to_string()).collect(),
+        }
+    }
+
+    fn make_ctx_with_home(home: &std::path::Path) -> garudust_core::tool::ToolContext {
+        let mut ctx = make_ctx();
+        let cfg = garudust_core::config::AgentConfig {
+            home_dir: home.to_path_buf(),
+            ..Default::default()
+        };
+        ctx.config = std::sync::Arc::new(cfg);
+        ctx
     }
 
     #[tokio::test]
@@ -557,5 +599,70 @@ command: "curl -s wttr.in/{city}?format=3"
             matches!(err, garudust_core::error::ToolError::Execution(_)),
             "non-zero exit must produce ToolError::Execution"
         );
+    }
+
+    // ── env_required allowlist enforcement ───────────────────────────────────
+    #[tokio::test]
+    async fn execute_forwards_only_declared_env() {
+        let home = tempfile::tempdir().unwrap();
+        tokio::fs::write(
+            home.path().join(".env"),
+            "OPENROUTER_API_KEY=allowed\nLINE_CHANNEL_TOKEN=secret\nVLLM_API_KEY=other\n",
+        )
+        .await
+        .unwrap();
+
+        let tool_dir = home.path().join("tool");
+        tokio::fs::create_dir_all(&tool_dir).await.unwrap();
+        let tool = make_tool_with_env(
+            tool_dir,
+            "echo \"or=${OPENROUTER_API_KEY:-unset} line=${LINE_CHANNEL_TOKEN:-unset} vllm=${VLLM_API_KEY:-unset}\"",
+            &["OPENROUTER_API_KEY"],
+        );
+        let ctx = make_ctx_with_home(home.path());
+        let result = tool.execute(json!({}), &ctx).await.unwrap();
+        assert_eq!(
+            result.content.trim(),
+            "or=allowed line=unset vllm=unset",
+            "only env_required keys should be forwarded"
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_with_empty_env_required_forwards_nothing() {
+        let home = tempfile::tempdir().unwrap();
+        tokio::fs::write(home.path().join(".env"), "SECRET=hidden\n")
+            .await
+            .unwrap();
+        let tool_dir = home.path().join("tool");
+        tokio::fs::create_dir_all(&tool_dir).await.unwrap();
+        let tool = make_tool(tool_dir, "echo ${SECRET:-unset}");
+        let ctx = make_ctx_with_home(home.path());
+        let result = tool.execute(json!({}), &ctx).await.unwrap();
+        assert_eq!(result.content.trim(), "unset");
+    }
+
+    #[test]
+    fn parse_yaml_with_env_required() {
+        let yaml = r"
+name: view_image
+description: vision tool
+command: ./run.py
+env_required:
+  - OPENROUTER_API_KEY
+  - GOOGLE_AI_API_KEY
+";
+        let def: ScriptToolDef = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(
+            def.env_required,
+            vec!["OPENROUTER_API_KEY", "GOOGLE_AI_API_KEY"]
+        );
+    }
+
+    #[test]
+    fn parse_yaml_env_required_defaults_to_empty() {
+        let yaml = "name: x\ndescription: y\ncommand: echo\n";
+        let def: ScriptToolDef = serde_yaml::from_str(yaml).unwrap();
+        assert!(def.env_required.is_empty());
     }
 }

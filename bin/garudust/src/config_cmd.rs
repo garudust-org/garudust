@@ -57,6 +57,81 @@ fn print_platform(label: &str, cfg: Option<&WebhookPlatformConfig>) {
     }
 }
 
+#[derive(serde::Deserialize)]
+struct ToolEnvManifest {
+    name: String,
+    #[serde(default)]
+    env_required: Vec<String>,
+}
+
+fn print_tool_env_mapping(home_dir: &Path) {
+    println!("Script Tools (~/.garudust/tools/*/tool.yaml)");
+    println!("{}", "─".repeat(48));
+
+    let tools_dir = home_dir.join("tools");
+    let env_path = home_dir.join(".env");
+    let dotenv_keys = read_dotenv_keys(&env_path);
+
+    let Ok(entries) = std::fs::read_dir(&tools_dir) else {
+        println!("(no tools installed at {})", tools_dir.display());
+        return;
+    };
+
+    let mut manifests: Vec<ToolEnvManifest> = entries
+        .flatten()
+        .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+        .filter_map(|e| {
+            let yaml = e.path().join("tool.yaml");
+            let src = std::fs::read_to_string(&yaml).ok()?;
+            serde_yaml::from_str::<ToolEnvManifest>(&src).ok()
+        })
+        .collect();
+    manifests.sort_by(|a, b| a.name.cmp(&b.name));
+
+    if manifests.is_empty() {
+        println!("(no script tools found)");
+        return;
+    }
+
+    for m in &manifests {
+        if m.env_required.is_empty() {
+            println!("  {:20} env_required=[]", m.name);
+        } else {
+            let mapped: Vec<String> = m
+                .env_required
+                .iter()
+                .map(|k| {
+                    let status = if dotenv_keys.contains(k) {
+                        "✓"
+                    } else {
+                        "✗"
+                    };
+                    format!("{k}{status}")
+                })
+                .collect();
+            println!("  {:20} {}", m.name, mapped.join(" "));
+        }
+    }
+    println!("  legend: ✓ set in .env  ✗ missing");
+}
+
+fn read_dotenv_keys(path: &Path) -> std::collections::HashSet<String> {
+    let Ok(content) = std::fs::read_to_string(path) else {
+        return std::collections::HashSet::new();
+    };
+    content
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                return None;
+            }
+            let (k, _) = line.split_once('=')?;
+            Some(k.trim().to_string())
+        })
+        .collect()
+}
+
 pub fn show(config: &AgentConfig) {
     println!("Garudust Config");
     println!("{}", "─".repeat(48));
@@ -79,10 +154,21 @@ pub fn show(config: &AgentConfig) {
         });
     println!("base_url        : {effective_url}");
     println!("approval_mode   : {}", config.security.approval_mode);
-    let key_display = match &config.api_key {
-        Some(k) if k.len() > 10 => format!("{}…{}", &k[..6], &k[k.len() - 4..]),
-        Some(_) => "set".into(),
-        None => "not set".into(),
+    let source_env = match config.provider.as_str() {
+        "vllm" => Some("VLLM_API_KEY"),
+        "anthropic" => Some("ANTHROPIC_API_KEY"),
+        "thaillm" => Some("THAILLM_API_KEY"),
+        "openrouter" => Some("OPENROUTER_API_KEY"),
+        _ => None,
+    };
+    let key_display = match (&config.api_key, source_env) {
+        (Some(k), Some(env)) if k.len() > 10 => {
+            format!("{}…{} (from {env})", &k[..6], &k[k.len() - 4..])
+        }
+        (Some(_), Some(env)) => format!("set (from {env})"),
+        (Some(k), None) if k.len() > 10 => format!("{}…{}", &k[..6], &k[k.len() - 4..]),
+        (Some(_), None) => "set".into(),
+        (None, _) => "not set".into(),
     };
     println!("api_key         : {key_display}");
     println!(
@@ -122,6 +208,9 @@ pub fn show(config: &AgentConfig) {
         "memory_expiry       : {}",
         config.cron.memory_expiry.as_deref().unwrap_or("(disabled)")
     );
+    println!();
+
+    print_tool_env_mapping(&config.home_dir);
     println!();
 
     let yaml_path = config.home_dir.join("config.yaml");
