@@ -140,12 +140,33 @@ impl Tool for ScriptTool {
 
         let dotenv_vars = read_dotenv(&ctx.config.home_dir.join(".env"));
 
+        // `uv` (and other user-installed runtimes) typically live in
+        // ~/.local/bin, which is NOT in the server's PATH when launched as a
+        // daemon (PPID 1 / desktop entry / systemd unit strip it). Without this,
+        // tools that shell out to `uv` fail with `sh: uv: not found` (exit 127).
+        // Mirrors the augmentation in garudust-gateway's process_images path so
+        // both the gateway and agent-driven tool calls behave identically.
+        let augmented_path = {
+            let cur = std::env::var("PATH").unwrap_or_default();
+            match std::env::var("HOME") {
+                Ok(home) if !home.is_empty() => {
+                    let extra = format!("{home}/.local/bin");
+                    if cur.split(':').any(|seg| seg == extra) {
+                        cur
+                    } else {
+                        format!("{extra}:{cur}")
+                    }
+                }
+                _ => cur,
+            }
+        };
+
         let mut cmd = Command::new("sh");
         cmd.arg("-c")
             .arg(&command)
             .current_dir(&self.tool_dir)
             .env_clear()
-            .env("PATH", std::env::var("PATH").unwrap_or_default())
+            .env("PATH", &augmented_path)
             .env("HOME", std::env::var("HOME").unwrap_or_default())
             .env("LANG", "en_US.UTF-8")
             .env("TOOL_DIR", &self.tool_dir);
