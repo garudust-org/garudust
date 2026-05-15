@@ -107,16 +107,37 @@ garudust-server --port 3000
 
 开放 `POST /chat`、`POST /chat/stream` 和 `ws://…/chat/ws`。在 `~/.garudust/.env` 中设置对应 token，并在 `~/.garudust/config.yaml` 中启用相应平台：
 
+```bash
+# ~/.garudust/.env  — 仅存放密钥，不要提交到版本控制
+ANTHROPIC_API_KEY=sk-ant-...
+TELEGRAM_TOKEN=123456789:AAFxxx
+LINE_CHANNEL_TOKEN=<channel-access-token>
+LINE_CHANNEL_SECRET=<32位十六进制密钥>
+DISCORD_TOKEN=<bot-token>
+BRAVE_SEARCH_API_KEY=BSA...        # 可选 — 未设置时回退到 DuckDuckGo
+```
+
 ```yaml
+# ~/.garudust/config.yaml
+model: anthropic/claude-sonnet-4-6
+provider: anthropic
+
 platforms:
   telegram:
-    enabled: true          # 从 .env 读取 TELEGRAM_TOKEN
+    enabled: true
+  discord:
+    enabled: true
   line:
     enabled: true
     port: 3002
-    webhook_path: /line    # 将 LINE 控制台 webhook 指向 https://your-host:3002/line
-  discord:
-    enabled: true          # 从 .env 读取 DISCORD_TOKEN
+    webhook_path: /line    # LINE 控制台 webhook → https://your-host:3002/line
+
+security:
+  terminal_sandbox: docker           # 在隔离容器中运行 shell 命令
+  approval_mode: smart               # smart | auto | deny
+
+cron:
+  memory_consolidation: "0 3 * * *" # 每晚自动整理记忆
 ```
 
 ```bash
@@ -129,6 +150,37 @@ curl -X POST http://localhost:3000/chat \
 curl -X POST http://localhost:3000/chat/stream \
   -H "Content-Type: application/json" \
   -d '{"message": "用 3 句话解释 async/await"}'
+```
+
+### 4 — Docker
+
+```bash
+# 1. 创建 .env 文件存放密钥
+cat > .env <<'EOF'
+ANTHROPIC_API_KEY=sk-ant-...
+TELEGRAM_TOKEN=123456789:AAFxxx        # 可选 — 不用则删除
+LINE_CHANNEL_TOKEN=<token>             # 可选
+LINE_CHANNEL_SECRET=<secret>           # 可选
+GARUDUST_API_KEY=my-gateway-secret     # 保护 HTTP API
+GARUDUST_APPROVAL_MODE=smart
+EOF
+
+# 2. 启动
+docker compose up -d
+
+# 3. 检查健康状态
+curl http://localhost:3000/health
+```
+
+数据持久化在 Docker volume `garudust-data`（容器内为 `/root/.garudust`）。如需使用自定义 `config.yaml`，可通过 bind-mount 挂载：
+
+```yaml
+# docker-compose.yml（覆盖配置）
+services:
+  garudust:
+    volumes:
+      - garudust-data:/root/.garudust
+      - ./config.yaml:/root/.garudust/config.yaml:ro
 ```
 
 <div align="center">

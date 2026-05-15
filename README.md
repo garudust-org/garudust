@@ -107,16 +107,37 @@ garudust-server --port 3000
 
 Exposes `POST /chat`, `POST /chat/stream`, and `ws://…/chat/ws`. Connect any platform by setting its token in `~/.garudust/.env` and enabling it in `~/.garudust/config.yaml`:
 
+```bash
+# ~/.garudust/.env  — secrets only, never committed
+ANTHROPIC_API_KEY=sk-ant-...
+TELEGRAM_TOKEN=123456789:AAFxxx
+LINE_CHANNEL_TOKEN=<channel-access-token>
+LINE_CHANNEL_SECRET=<32-char-hex>
+DISCORD_TOKEN=<bot-token>
+BRAVE_SEARCH_API_KEY=BSA...        # optional — falls back to DuckDuckGo
+```
+
 ```yaml
+# ~/.garudust/config.yaml
+model: anthropic/claude-sonnet-4-6
+provider: anthropic
+
 platforms:
   telegram:
-    enabled: true          # reads TELEGRAM_TOKEN from .env
+    enabled: true
+  discord:
+    enabled: true
   line:
     enabled: true
     port: 3002
-    webhook_path: /line    # point LINE console → https://your-host:3002/line
-  discord:
-    enabled: true          # reads DISCORD_TOKEN from .env
+    webhook_path: /line    # LINE console webhook → https://your-host:3002/line
+
+security:
+  terminal_sandbox: docker           # isolate shell commands in a container
+  approval_mode: smart               # smart | auto | deny
+
+cron:
+  memory_consolidation: "0 3 * * *" # nightly memory housekeeping
 ```
 
 ```bash
@@ -129,6 +150,37 @@ curl -X POST http://localhost:3000/chat \
 curl -X POST http://localhost:3000/chat/stream \
   -H "Content-Type: application/json" \
   -d '{"message": "explain async/await in 3 sentences"}'
+```
+
+### 4 — Docker
+
+```bash
+# 1. Create a .env file with your secrets
+cat > .env <<'EOF'
+ANTHROPIC_API_KEY=sk-ant-...
+TELEGRAM_TOKEN=123456789:AAFxxx        # optional — remove if unused
+LINE_CHANNEL_TOKEN=<token>             # optional
+LINE_CHANNEL_SECRET=<secret>           # optional
+GARUDUST_API_KEY=my-gateway-secret     # protects the HTTP API
+GARUDUST_APPROVAL_MODE=smart
+EOF
+
+# 2. Start
+docker compose up -d
+
+# 3. Check health
+curl http://localhost:3000/health
+```
+
+Data is persisted in the `garudust-data` Docker volume (`/root/.garudust` inside the container). To use a custom `config.yaml`, bind-mount it:
+
+```yaml
+# docker-compose.yml (override)
+services:
+  garudust:
+    volumes:
+      - garudust-data:/root/.garudust
+      - ./config.yaml:/root/.garudust/config.yaml:ro
 ```
 
 <div align="center">

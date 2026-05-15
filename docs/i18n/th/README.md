@@ -105,18 +105,39 @@ output ออก stdout รหัสออก 0 เมื่อสำเร็�
 garudust-server --port 3000
 ```
 
-เปิด `POST /chat`, `POST /chat/stream` และ `ws://…/chat/ws` เปิดใช้แพลตฟอร์มโดยตั้ง token ใน `~/.garudust/.env` และ enable ใน `~/.garudust/config.yaml`:
+เปิด `POST /chat`, `POST /chat/stream` และ `ws://…/chat/ws` ตั้ง token ใน `~/.garudust/.env` และ enable แพลตฟอร์มใน `~/.garudust/config.yaml`:
+
+```bash
+# ~/.garudust/.env  — เก็บ secret เท่านั้น, ไม่ commit
+ANTHROPIC_API_KEY=sk-ant-...
+TELEGRAM_TOKEN=123456789:AAFxxx
+LINE_CHANNEL_TOKEN=<channel-access-token>
+LINE_CHANNEL_SECRET=<32-char-hex>
+DISCORD_TOKEN=<bot-token>
+BRAVE_SEARCH_API_KEY=BSA...        # optional — fallback เป็น DuckDuckGo
+```
 
 ```yaml
+# ~/.garudust/config.yaml
+model: anthropic/claude-sonnet-4-6
+provider: anthropic
+
 platforms:
   telegram:
-    enabled: true          # อ่าน TELEGRAM_TOKEN จาก .env
+    enabled: true
+  discord:
+    enabled: true
   line:
     enabled: true
     port: 3002
-    webhook_path: /line    # ชี้ LINE console → https://your-host:3002/line
-  discord:
-    enabled: true          # อ่าน DISCORD_TOKEN จาก .env
+    webhook_path: /line    # LINE console webhook → https://your-host:3002/line
+
+security:
+  terminal_sandbox: docker           # รันคำสั่ง shell ใน container แยก
+  approval_mode: smart               # smart | auto | deny
+
+cron:
+  memory_consolidation: "0 3 * * *" # housekeeping memory ทุกคืน
 ```
 
 ```bash
@@ -129,6 +150,37 @@ curl -X POST http://localhost:3000/chat \
 curl -X POST http://localhost:3000/chat/stream \
   -H "Content-Type: application/json" \
   -d '{"message": "อธิบาย async/await ใน 3 ประโยค"}'
+```
+
+### 4 — Docker
+
+```bash
+# 1. สร้างไฟล์ .env ใส่ secret
+cat > .env <<'EOF'
+ANTHROPIC_API_KEY=sk-ant-...
+TELEGRAM_TOKEN=123456789:AAFxxx        # optional — ลบทิ้งถ้าไม่ใช้
+LINE_CHANNEL_TOKEN=<token>             # optional
+LINE_CHANNEL_SECRET=<secret>           # optional
+GARUDUST_API_KEY=my-gateway-secret     # ป้องกัน HTTP API
+GARUDUST_APPROVAL_MODE=smart
+EOF
+
+# 2. เริ่มต้น
+docker compose up -d
+
+# 3. ตรวจสอบ
+curl http://localhost:3000/health
+```
+
+ข้อมูลถูกเก็บใน Docker volume `garudust-data` (`/root/.garudust` ใน container) หากต้องการใช้ `config.yaml` เอง ให้ bind-mount:
+
+```yaml
+# docker-compose.yml (override)
+services:
+  garudust:
+    volumes:
+      - garudust-data:/root/.garudust
+      - ./config.yaml:/root/.garudust/config.yaml:ro
 ```
 
 <div align="center">
