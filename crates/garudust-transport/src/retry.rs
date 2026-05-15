@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
 
 use async_trait::async_trait;
 use garudust_core::{
@@ -119,6 +122,77 @@ impl ProviderTransport for RetryTransport {
     }
 }
 
+/// Rotates through a list of transports on `Auth` failures.
+///
+/// Each `Auth` error advances the active index by one. Only after all
+/// candidates are exhausted does the error propagate to the caller.
+pub struct CredentialRotationTransport {
+    candidates: Vec<Arc<dyn ProviderTransport>>,
+    index: AtomicUsize,
+}
+
+impl CredentialRotationTransport {
+    pub fn new(candidates: Vec<Arc<dyn ProviderTransport>>) -> Self {
+        assert!(!candidates.is_empty(), "at least one transport required");
+        Self {
+            candidates,
+            index: AtomicUsize::new(0),
+        }
+    }
+
+    fn current(&self) -> &Arc<dyn ProviderTransport> {
+        let i = self
+            .index
+            .load(Ordering::SeqCst)
+            .min(self.candidates.len() - 1);
+        &self.candidates[i]
+    }
+
+    fn rotate(&self) -> bool {
+        let prev = self.index.fetch_add(1, Ordering::SeqCst);
+        prev + 1 < self.candidates.len()
+    }
+}
+
+#[async_trait]
+impl ProviderTransport for CredentialRotationTransport {
+    fn api_mode(&self) -> ApiMode {
+        self.candidates[0].api_mode()
+    }
+
+    async fn chat(
+        &self,
+        messages: &[Message],
+        config: &InferenceConfig,
+        tools: &[ToolSchema],
+    ) -> Result<TransportResponse, TransportError> {
+        loop {
+            match self.current().chat(messages, config, tools).await {
+                Err(TransportError::Auth) if self.rotate() => {
+                    tracing::warn!("auth failure, rotating to next API key");
+                }
+                other => return other,
+            }
+        }
+    }
+
+    async fn chat_stream(
+        &self,
+        messages: &[Message],
+        config: &InferenceConfig,
+        tools: &[ToolSchema],
+    ) -> Result<StreamResult, TransportError> {
+        loop {
+            match self.current().chat_stream(messages, config, tools).await {
+                Err(TransportError::Auth) if self.rotate() => {
+                    tracing::warn!("auth failure on stream, rotating to next API key");
+                }
+                other => return other,
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicU32, Ordering};
@@ -135,7 +209,7 @@ mod tests {
         },
     };
 
-    use super::RetryTransport;
+    use super::{CredentialRotationTransport, RetryTransport};
 
     fn dummy_config() -> InferenceConfig {
         InferenceConfig {
@@ -263,5 +337,58 @@ mod tests {
         let mut stream = retry.chat_stream(&[], &dummy_config(), &[]).await.unwrap();
         // CountingTransport returns an empty stream on success
         assert!(stream.next().await.is_none());
+    }
+
+    struct AuthFailTransport {
+        fail_auth: bool,
+    }
+
+    #[async_trait]
+    impl ProviderTransport for AuthFailTransport {
+        fn api_mode(&self) -> ApiMode {
+            ApiMode::ChatCompletions
+        }
+        async fn chat(
+            &self,
+            _messages: &[Message],
+            _config: &InferenceConfig,
+            _tools: &[ToolSchema],
+        ) -> Result<TransportResponse, TransportError> {
+            if self.fail_auth {
+                Err(TransportError::Auth)
+            } else {
+                Ok(ok_response())
+            }
+        }
+        async fn chat_stream(
+            &self,
+            _messages: &[Message],
+            _config: &InferenceConfig,
+            _tools: &[ToolSchema],
+        ) -> Result<StreamResult, TransportError> {
+            if self.fail_auth {
+                Err(TransportError::Auth)
+            } else {
+                Ok(Box::pin(futures::stream::empty()))
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn rotation_skips_bad_key_and_succeeds() {
+        let bad = Arc::new(AuthFailTransport { fail_auth: true });
+        let good = Arc::new(AuthFailTransport { fail_auth: false });
+        let rot = CredentialRotationTransport::new(vec![bad, good]);
+        let result = rot.chat(&[], &dummy_config(), &[]).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn rotation_fails_when_all_keys_exhausted() {
+        let bad1 = Arc::new(AuthFailTransport { fail_auth: true });
+        let bad2 = Arc::new(AuthFailTransport { fail_auth: true });
+        let rot = CredentialRotationTransport::new(vec![bad1, bad2]);
+        let result = rot.chat(&[], &dummy_config(), &[]).await;
+        assert!(matches!(result, Err(TransportError::Auth)));
     }
 }

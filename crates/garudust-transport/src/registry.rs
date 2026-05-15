@@ -8,13 +8,14 @@ use crate::bedrock::BedrockTransport;
 use crate::chat_completions::ChatCompletionsTransport;
 use crate::codex::CodexTransport;
 use crate::ollama;
-use crate::retry::RetryTransport;
+use crate::retry::{CredentialRotationTransport, RetryTransport};
 
-pub fn build_transport(config: &AgentConfig) -> Arc<dyn ProviderTransport> {
-    let base_url = config.base_url.clone();
-    let api_key = config.api_key.clone().unwrap_or_default();
-
-    let base: Arc<dyn ProviderTransport> = match config.provider.as_str() {
+fn build_base_transport(
+    provider: &str,
+    base_url: Option<String>,
+    api_key: String,
+) -> Arc<dyn ProviderTransport> {
+    match provider {
         "anthropic" => match base_url {
             Some(url) => Arc::new(ChatCompletionsTransport::new(url, api_key)),
             None => Arc::new(AnthropicTransport::new(api_key)),
@@ -53,6 +54,31 @@ pub fn build_transport(config: &AgentConfig) -> Arc<dyn ProviderTransport> {
             base_url.unwrap_or_else(|| "https://openrouter.ai/api/v1".into()),
             api_key,
         )),
+    }
+}
+
+pub fn build_transport(config: &AgentConfig) -> Arc<dyn ProviderTransport> {
+    let base_url = config.base_url.clone();
+    let primary_key = config.api_key.clone().unwrap_or_default();
+
+    let base: Arc<dyn ProviderTransport> = if config.fallback_api_keys.is_empty() {
+        build_base_transport(&config.provider, base_url, primary_key)
+    } else {
+        let mut candidates: Vec<Arc<dyn ProviderTransport>> =
+            Vec::with_capacity(1 + config.fallback_api_keys.len());
+        candidates.push(build_base_transport(
+            &config.provider,
+            base_url.clone(),
+            primary_key,
+        ));
+        for key in &config.fallback_api_keys {
+            candidates.push(build_base_transport(
+                &config.provider,
+                base_url.clone(),
+                key.clone(),
+            ));
+        }
+        Arc::new(CredentialRotationTransport::new(candidates))
     };
 
     if config.llm_max_retries > 0 {

@@ -74,6 +74,10 @@ pub struct AgentConfig {
     pub base_url: Option<String>,
     #[serde(skip)]
     pub api_key: Option<String>,
+    /// Fallback API keys tried in order when the primary key returns 401/403.
+    /// Set via `LLM_FALLBACK_API_KEYS` env var or .env file (comma-separated values).
+    #[serde(skip)]
+    pub fallback_api_keys: Vec<String>,
     #[serde(default)]
     pub compression: CompressionConfig,
     #[serde(default)]
@@ -492,6 +496,7 @@ impl Default for AgentConfig {
             provider: "openrouter".into(),
             base_url: None,
             api_key: None,
+            fallback_api_keys: Vec::new(),
             compression: CompressionConfig::default(),
             network: NetworkConfig::default(),
             mcp_servers: Vec::new(),
@@ -622,6 +627,14 @@ impl AgentConfig {
         }
         if let Some(u) = env_or_dotenv("GARUDUST_BASE_URL", dotenv) {
             config.base_url = Some(u);
+        }
+        if let Some(v) = env_or_dotenv("LLM_FALLBACK_API_KEYS", dotenv) {
+            config.fallback_api_keys = v
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect();
         }
         if let Some(k) = env_or_dotenv("GARUDUST_API_KEY", dotenv) {
             config.security.gateway_api_key = Some(k);

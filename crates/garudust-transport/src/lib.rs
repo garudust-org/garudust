@@ -41,4 +41,4 @@ pub mod registry;
 pub mod retry;
 
 pub use registry::build_transport;
-pub use retry::RetryTransport;
+pub use retry::{CredentialRotationTransport, RetryTransport};
