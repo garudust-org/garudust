@@ -3,10 +3,10 @@ use rusqlite::Connection;
 pub const SCHEMA_VERSION: u32 = 2;
 
 pub fn run(conn: &Connection) -> rusqlite::Result<()> {
-    // Bootstrap: journal mode, base tables, and schema_meta (all idempotent).
+    // Bootstrap: base tables and schema_meta (all idempotent).
+    // WAL mode is set by SessionDb::open() with a NFS-safe fallback.
     conn.execute_batch(
         "
-        PRAGMA journal_mode=WAL;
         PRAGMA foreign_keys=ON;
 
         CREATE TABLE IF NOT EXISTS schema_meta (

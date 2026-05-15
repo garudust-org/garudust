@@ -5,6 +5,23 @@ use rusqlite::{params, Connection};
 
 use crate::migrations;
 
+/// Attempt WAL journal mode; fall back to DELETE (the SQLite default) on
+/// filesystems that do not support shared-memory files (NFS, SMB, some tmpfs).
+fn enable_wal_or_fallback(conn: &Connection) {
+    match conn.query_row("PRAGMA journal_mode=WAL", [], |r| r.get::<_, String>(0)) {
+        Ok(mode) if mode == "wal" => {}
+        Ok(mode) => {
+            tracing::warn!(
+                actual_mode = %mode,
+                "WAL journal mode unavailable (possibly NFS/SMB); using fallback mode"
+            );
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "PRAGMA journal_mode=WAL failed; continuing without WAL");
+        }
+    }
+}
+
 pub struct SessionDb {
     conn: Arc<Mutex<Connection>>,
 }
@@ -16,6 +33,7 @@ impl SessionDb {
             std::fs::create_dir_all(parent)?;
         }
         let conn = Connection::open(&db_path)?;
+        enable_wal_or_fallback(&conn);
         migrations::run(&conn)?;
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
