@@ -6,7 +6,7 @@ use futures::Stream;
 use garudust_core::{
     error::PlatformError,
     platform::{MessageHandler, PlatformAdapter},
-    types::{ChannelId, InboundMessage, OutboundMessage},
+    types::{ChannelId, ImageAttachment, InboundMessage, OutboundMessage},
 };
 use serenity::{
     async_trait as serenity_async_trait,
@@ -27,6 +27,37 @@ impl EventHandler for DiscordHandler {
             return;
         }
 
+        // Download image attachments to /tmp
+        let mut attachments = Vec::new();
+        for att in &msg.attachments {
+            let is_image = att
+                .content_type
+                .as_deref()
+                .is_some_and(|ct| ct.starts_with("image/"));
+            if !is_image {
+                continue;
+            }
+            let dest = format!("/tmp/garudust_discord_{}.jpg", att.id);
+            match reqwest::get(&att.url).await {
+                Ok(resp) => match resp.bytes().await {
+                    Ok(bytes) => match tokio::fs::write(&dest, &bytes).await {
+                        Ok(()) => attachments.push(ImageAttachment { path: dest }),
+                        Err(e) => {
+                            tracing::warn!(att_id = %att.id, error = %e, "Discord: write tmp failed")
+                        }
+                    },
+                    Err(e) => {
+                        tracing::warn!(att_id = %att.id, error = %e, "Discord: read bytes failed")
+                    }
+                },
+                Err(e) => tracing::warn!(att_id = %att.id, error = %e, "Discord: download failed"),
+            }
+        }
+
+        if msg.content.is_empty() && attachments.is_empty() {
+            return;
+        }
+
         let inbound = InboundMessage {
             channel: ChannelId {
                 platform: "discord".into(),
@@ -39,6 +70,7 @@ impl EventHandler for DiscordHandler {
             session_key: format!("discord:{}", msg.channel_id),
             is_group: msg.guild_id.is_some(),
             bot_mentioned: None,
+            attachments,
         };
         let _ = self.handler.handle(inbound).await;
     }

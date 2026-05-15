@@ -21,13 +21,14 @@ use tokio::net::TcpListener;
 use garudust_core::{
     error::PlatformError,
     platform::{MessageHandler, PlatformAdapter},
-    types::{ChannelId, InboundMessage, OutboundMessage},
+    types::{ChannelId, ImageAttachment, InboundMessage, OutboundMessage},
 };
 
 const LINE_REPLY_URL: &str = "https://api.line.me/v2/bot/message/reply";
 const LINE_PUSH_URL: &str = "https://api.line.me/v2/bot/message/push";
 const LINE_PROFILE_URL: &str = "https://api.line.me/v2/bot/profile";
 const LINE_BOT_INFO_URL: &str = "https://api.line.me/v2/bot/info";
+const LINE_CONTENT_URL: &str = "https://api-data.line.me/v2/bot/message";
 /// Reply token is valid for 30 s; leave a 5 s safety margin.
 const REPLY_TTL: Duration = Duration::from_secs(25);
 const LINE_TEXT_LIMIT: usize = 5_000;
@@ -65,6 +66,7 @@ struct Source {
 
 #[derive(Deserialize)]
 struct LineMessage {
+    id: String,
     #[serde(rename = "type")]
     kind: String,
     text: Option<String>,
@@ -159,10 +161,9 @@ async fn handle_webhook(
             continue;
         }
         let Some(msg) = ev.message else { continue };
-        if msg.kind != "text" {
+        if msg.kind != "text" && msg.kind != "image" {
             continue;
         }
-        let Some(text) = msg.text else { continue };
 
         // Events without userId (e.g. some bot-event types) are unusable
         let Some(user_id) = ev.source.user_id.clone() else {
@@ -252,6 +253,27 @@ async fn handle_webhook(
             None
         };
 
+        // For image messages: download content from LINE Content API.
+        let (text, image_path) = if msg.kind == "image" {
+            let msg_id = msg.id.clone();
+            let token = state.inner.channel_token.clone();
+            let client = state.inner.client.clone();
+            let path = format!("/tmp/garudust_line_{msg_id}.jpg");
+            match download_line_content(&client, &token, &msg_id, &path).await {
+                Ok(()) => (String::new(), Some(path)),
+                Err(e) => {
+                    tracing::warn!(msg_id, error = %e, "LINE: image download failed");
+                    (String::new(), None)
+                }
+            }
+        } else {
+            (msg.text.unwrap_or_default(), None)
+        };
+
+        let attachments = image_path
+            .map(|p| vec![ImageAttachment { path: p }])
+            .unwrap_or_default();
+
         let inbound = InboundMessage {
             channel: ChannelId {
                 platform: "line".into(),
@@ -264,6 +286,7 @@ async fn handle_webhook(
             session_key: format!("line:{chat_id}"),
             is_group,
             bot_mentioned,
+            attachments,
         };
 
         let h = state.handler.clone();
@@ -276,6 +299,37 @@ async fn handle_webhook(
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+async fn download_line_content(
+    client: &reqwest::Client,
+    token: &str,
+    message_id: &str,
+    dest: &str,
+) -> Result<(), PlatformError> {
+    let url = format!("{LINE_CONTENT_URL}/{message_id}/content");
+    let resp = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .map_err(|e| PlatformError::Send(e.to_string()))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(PlatformError::Send(format!(
+            "LINE content {status}: {body}"
+        )));
+    }
+
+    let bytes = resp
+        .bytes()
+        .await
+        .map_err(|e| PlatformError::Send(e.to_string()))?;
+    tokio::fs::write(dest, &bytes)
+        .await
+        .map_err(|e| PlatformError::Send(e.to_string()))
+}
 
 fn verify_sig(secret: &str, body: &[u8], signature: &str) -> bool {
     type HmacSha256 = Hmac<Sha256>;

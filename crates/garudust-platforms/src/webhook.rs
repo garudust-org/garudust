@@ -53,6 +53,7 @@ async fn handle_webhook(
         session_key,
         is_group: false,
         bot_mentioned: None,
+        attachments: vec![],
     };
 
     match handler.handle(inbound).await {

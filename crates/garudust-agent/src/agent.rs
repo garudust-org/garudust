@@ -321,6 +321,22 @@ impl Agent {
         let _ = std::fs::remove_file(session_file(&self.config.home_dir, session_key));
     }
 
+    /// Inject a (user, assistant) pair directly into conversation history without
+    /// running the agent. Used by GatewayHandler to silently store image descriptions.
+    pub fn inject_history(&self, session_key: &str, user_msg: &str, assistant_msg: &str) {
+        let home_dir = self.config.home_dir.clone();
+        let key = session_key.to_string();
+        let mut entry = self
+            .conversation_history
+            .entry(key.clone())
+            .or_insert_with(|| load_conv_from_disk(&home_dir, &key));
+        entry.push_back((user_msg.to_string(), assistant_msg.to_string()));
+        while entry.len() > MAX_HISTORY_PAIRS {
+            entry.pop_front();
+        }
+        save_conv_to_disk(&home_dir, &key, &entry);
+    }
+
     pub async fn run(
         &self,
         task: &str,

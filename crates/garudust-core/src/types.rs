@@ -186,6 +186,13 @@ pub struct ChannelId {
     pub thread_id: Option<String>,
 }
 
+/// A downloaded image attachment from any platform, stored at a local /tmp path.
+#[derive(Debug, Clone)]
+pub struct ImageAttachment {
+    /// Absolute path to the downloaded image file (e.g. `/tmp/garudust_line_abc.jpg`).
+    pub path: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct InboundMessage {
     pub channel: ChannelId,
@@ -201,6 +208,9 @@ pub struct InboundMessage {
     /// `Some(true/false)` = adapter knows; `None` = gateway falls back to
     /// text-contains matching against `platform.bot_username`.
     pub bot_mentioned: Option<bool>,
+    /// Image files downloaded by the platform adapter, ready for analysis.
+    /// Empty for text-only messages.
+    pub attachments: Vec<ImageAttachment>,
 }
 
 #[derive(Debug, Clone)]

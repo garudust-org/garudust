@@ -91,6 +91,7 @@ impl PlatformAdapter for MatrixAdapter {
                     session_key: format!("matrix:{room_id}"),
                     is_group: true,
                     bot_mentioned: None,
+                    attachments: vec![],
                 };
                 let _ = handler.handle(inbound).await;
             }
