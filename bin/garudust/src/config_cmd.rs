@@ -79,7 +79,7 @@ fn print_tool_env_mapping(home_dir: &Path) {
 
     let mut manifests: Vec<ToolEnvManifest> = entries
         .flatten()
-        .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
         .filter_map(|e| {
             let yaml = e.path().join("tool.yaml");
             let src = std::fs::read_to_string(&yaml).ok()?;
