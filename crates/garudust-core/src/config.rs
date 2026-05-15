@@ -397,6 +397,20 @@ fn default_server_port() -> u16 {
     3000
 }
 
+/// Parse a comma-separated `"cron_expr=task"` env var into structured [`CronJob`]s.
+/// Mirrors `garudust_cron::parse_job_pairs` (kept inline to avoid a core→cron dep cycle).
+fn parse_cron_jobs_str(s: &str) -> Vec<CronJob> {
+    s.split(',')
+        .filter_map(|entry| {
+            let (expr, task) = entry.trim().split_once('=')?;
+            Some(CronJob {
+                schedule: expr.trim().to_string(),
+                task: task.trim().to_string(),
+            })
+        })
+        .collect()
+}
+
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
@@ -622,6 +636,25 @@ impl AgentConfig {
         }
         if let Some(image) = env_or_dotenv("GARUDUST_SANDBOX_IMAGE", dotenv) {
             config.security.terminal_sandbox_image = image;
+        }
+
+        // Non-secret env vars that previously reached clap via `dotenvy::from_path`.
+        // Reading them here lets us drop dotenvy from main.rs without losing the
+        // ability for operators to set these in ~/.garudust/.env. CLI flags still
+        // override these because main.rs applies CLI > config precedence at use sites.
+        if let Some(v) = env_or_dotenv("GARUDUST_PORT", dotenv) {
+            if let Ok(n) = v.parse::<u16>() {
+                config.server.port = n;
+            }
+        }
+        if let Some(v) = env_or_dotenv("GARUDUST_MEMORY_CRON", dotenv) {
+            config.cron.memory_consolidation = Some(v);
+        }
+        if let Some(v) = env_or_dotenv("GARUDUST_MEMORY_EXPIRY_CRON", dotenv) {
+            config.cron.memory_expiry = Some(v);
+        }
+        if let Some(v) = env_or_dotenv("GARUDUST_CRON_JOBS", dotenv) {
+            config.cron.jobs = parse_cron_jobs_str(&v);
         }
 
         config

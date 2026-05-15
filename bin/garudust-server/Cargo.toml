@@ -30,6 +30,5 @@ tokio              = { workspace = true }
 tracing            = { workspace = true }
 tracing-subscriber = { workspace = true }
 anyhow             = { workspace = true }
-dotenvy            = { workspace = true }
 arc-swap           = { workspace = true }
 notify             = { workspace = true }

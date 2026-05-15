@@ -1957,7 +1957,6 @@ dependencies = [
  "arc-swap",
  "axum",
  "clap",
- "dotenvy",
  "garudust-agent",
  "garudust-core",
  "garudust-cron",

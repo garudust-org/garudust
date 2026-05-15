@@ -30,56 +30,76 @@ type McpHandles = Vec<Box<dyn std::any::Any + Send>>;
     version
 )]
 struct Cli {
-    /// HTTP gateway port. Falls back to `server.port` in config.yaml
-    /// (default `3000`) when neither flag nor `GARUDUST_PORT` is set.
-    #[arg(long, env = "GARUDUST_PORT")]
+    /// HTTP gateway port. Falls back to `server.port` in config.yaml or
+    /// `GARUDUST_PORT` in `~/.garudust/.env` (default `3000`).
+    #[arg(long)]
     port: Option<u16>,
 
-    /// Override model
-    #[arg(long, env = "GARUDUST_MODEL")]
+    /// Override model. Falls back to `model` in config.yaml or `GARUDUST_MODEL`
+    /// in `~/.garudust/.env`.
+    #[arg(long)]
     model: Option<String>,
 
-    #[arg(long, env = "OPENROUTER_API_KEY")]
+    /// Override LLM API key. Flag-only — the server reads the key for the
+    /// configured provider from `~/.garudust/.env` via strict provider→env
+    /// binding (see `AgentConfig::load`). Use this flag for ad-hoc one-off runs.
+    #[arg(long)]
     api_key: Option<String>,
 
-    /// Sets provider=anthropic when provided
-    #[arg(long, env = "ANTHROPIC_API_KEY")]
+    /// Sets provider=anthropic and overrides the LLM API key. Flag-only.
+    #[arg(long)]
     anthropic_key: Option<String>,
 
-    #[arg(long, env = "TELEGRAM_TOKEN")]
+    /// Telegram bot token override. Falls back to `TELEGRAM_TOKEN` in
+    /// `~/.garudust/.env`.
+    #[arg(long)]
     telegram_token: Option<String>,
 
-    #[arg(long, env = "DISCORD_TOKEN")]
+    /// Discord bot token override. Falls back to `DISCORD_TOKEN` in
+    /// `~/.garudust/.env`.
+    #[arg(long)]
     discord_token: Option<String>,
 
-    #[arg(long, env = "SLACK_BOT_TOKEN")]
+    /// Slack bot token override. Falls back to `SLACK_BOT_TOKEN` in
+    /// `~/.garudust/.env`.
+    #[arg(long)]
     slack_bot_token: Option<String>,
 
-    #[arg(long, env = "SLACK_APP_TOKEN")]
+    /// Slack app token override. Falls back to `SLACK_APP_TOKEN` in
+    /// `~/.garudust/.env`.
+    #[arg(long)]
     slack_app_token: Option<String>,
 
-    #[arg(long, env = "MATRIX_HOMESERVER")]
+    /// Matrix homeserver URL override. Falls back to `MATRIX_HOMESERVER` in
+    /// `~/.garudust/.env`.
+    #[arg(long)]
     matrix_homeserver: Option<String>,
 
-    #[arg(long, env = "MATRIX_USER")]
+    /// Matrix user override. Falls back to `MATRIX_USER` in `~/.garudust/.env`.
+    #[arg(long)]
     matrix_user: Option<String>,
 
-    #[arg(long, env = "MATRIX_PASSWORD")]
+    /// Matrix password override. Falls back to `MATRIX_PASSWORD` in
+    /// `~/.garudust/.env`.
+    #[arg(long)]
     matrix_password: Option<String>,
 
     /// Comma-separated list of cron jobs: "cron_expr=task" pairs
-    /// e.g. "0 9 * * *=Good morning report"
-    #[arg(long, env = "GARUDUST_CRON_JOBS")]
+    /// e.g. "0 9 * * *=Good morning report". Falls back to `cron.jobs` in
+    /// config.yaml or `GARUDUST_CRON_JOBS` in `~/.garudust/.env`.
+    #[arg(long)]
     cron_jobs: Option<String>,
 
     /// Cron expression for automatic memory consolidation (default disabled).
-    /// Example: "0 3 * * *" runs daily at 03:00.
-    #[arg(long, env = "GARUDUST_MEMORY_CRON")]
+    /// Example: "0 3 * * *" runs daily at 03:00. Falls back to
+    /// `cron.memory_consolidation` in config.yaml or `GARUDUST_MEMORY_CRON`.
+    #[arg(long)]
     memory_cron: Option<String>,
 
     /// Cron expression for automatic memory expiry (default disabled).
-    /// Example: "0 4 * * *" runs daily at 04:00.
-    #[arg(long, env = "GARUDUST_MEMORY_EXPIRY_CRON")]
+    /// Example: "0 4 * * *" runs daily at 04:00. Falls back to
+    /// `cron.memory_expiry` in config.yaml or `GARUDUST_MEMORY_EXPIRY_CRON`.
+    #[arg(long)]
     memory_expiry_cron: Option<String>,
 
     /// Command approval mode for tool execution
@@ -325,10 +345,11 @@ async fn main() -> Result<()> {
         .with_env_filter(std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()))
         .with_writer(std::io::stderr)
         .init();
-    // Load ~/.garudust/.env first so platform tokens saved by `garudust setup`
-    // are visible to clap's env = "..." attributes below.
-    dotenvy::from_path(AgentConfig::garudust_dir().join(".env")).ok();
-    dotenvy::dotenv().ok(); // local .env override for development
+    // Secrets and non-secret env vars from `~/.garudust/.env` are loaded into an
+    // in-memory map by `AgentConfig::load` (see config.rs), then read on demand
+    // via `get_secret`. We deliberately do not call `dotenvy::from_path` — that
+    // would dump every secret into the process environment where any spawned
+    // tool subprocess could read it.
 
     let cli = Cli::parse();
     let config = build_config(&cli);
@@ -360,8 +381,12 @@ async fn main() -> Result<()> {
     spawn_config_watcher(config_file, agent.clone(), db.clone(), mcp_handles.clone());
 
     // ── Platform adapters ─────────────────────────────────────────────────────
-    if let Some(token) = &cli.telegram_token {
-        let platform: Arc<dyn PlatformAdapter> = Arc::new(TelegramAdapter::new(token.clone()));
+    // For each adapter, the CLI flag takes precedence; otherwise the secret is
+    // read from `~/.garudust/.env` via `get_secret` (in-memory map — never
+    // exposed to subprocess tools). This mirrors the LINE/WhatsApp wiring
+    // below and avoids leaking secrets into the process environment.
+    if let Some(token) = cli.telegram_token.clone().or_else(|| get_secret("TELEGRAM_TOKEN")) {
+        let platform: Arc<dyn PlatformAdapter> = Arc::new(TelegramAdapter::new(token));
         start_platform(
             platform,
             agent.load_full(),
@@ -372,8 +397,8 @@ async fn main() -> Result<()> {
         .await?;
     }
 
-    if let Some(token) = &cli.discord_token {
-        let platform: Arc<dyn PlatformAdapter> = Arc::new(DiscordAdapter::new(token.clone()));
+    if let Some(token) = cli.discord_token.clone().or_else(|| get_secret("DISCORD_TOKEN")) {
+        let platform: Arc<dyn PlatformAdapter> = Arc::new(DiscordAdapter::new(token));
         start_platform(
             platform,
             agent.load_full(),
@@ -397,9 +422,11 @@ async fn main() -> Result<()> {
         .await?;
     }
 
-    if let (Some(bot_token), Some(app_token)) = (&cli.slack_bot_token, &cli.slack_app_token) {
+    let slack_bot = cli.slack_bot_token.clone().or_else(|| get_secret("SLACK_BOT_TOKEN"));
+    let slack_app = cli.slack_app_token.clone().or_else(|| get_secret("SLACK_APP_TOKEN"));
+    if let (Some(bot_token), Some(app_token)) = (slack_bot, slack_app) {
         let platform: Arc<dyn PlatformAdapter> =
-            Arc::new(SlackAdapter::new(bot_token.clone(), app_token.clone()));
+            Arc::new(SlackAdapter::new(bot_token, app_token));
         start_platform(
             platform,
             agent.load_full(),
@@ -410,15 +437,14 @@ async fn main() -> Result<()> {
         .await?;
     }
 
-    if let (Some(homeserver), Some(user), Some(password)) = (
-        &cli.matrix_homeserver,
-        &cli.matrix_user,
-        &cli.matrix_password,
-    ) {
+    let matrix_hs = cli.matrix_homeserver.clone().or_else(|| get_secret("MATRIX_HOMESERVER"));
+    let matrix_user = cli.matrix_user.clone().or_else(|| get_secret("MATRIX_USER"));
+    let matrix_pw = cli.matrix_password.clone().or_else(|| get_secret("MATRIX_PASSWORD"));
+    if let (Some(homeserver), Some(user), Some(password)) = (matrix_hs, matrix_user, matrix_pw) {
         let platform: Arc<dyn PlatformAdapter> = Arc::new(MatrixAdapter::new(
-            homeserver.clone(),
-            user.clone(),
-            password.clone(),
+            homeserver,
+            user,
+            password,
         ));
         start_platform(
             platform,
