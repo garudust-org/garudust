@@ -282,9 +282,7 @@ fn spawn_config_watcher(
                         EventKind::Create(_)
                             | EventKind::Remove(_)
                             | EventKind::Modify(
-                                ModifyKind::Data(_)
-                                    | ModifyKind::Name(_)
-                                    | ModifyKind::Any
+                                ModifyKind::Data(_) | ModifyKind::Name(_) | ModifyKind::Any
                             )
                     );
                     let matches = event
