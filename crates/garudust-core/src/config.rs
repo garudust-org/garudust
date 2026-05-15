@@ -62,6 +62,11 @@ pub struct AgentConfig {
     pub model: String,
     #[serde(default = "default_max_iterations")]
     pub max_iterations: u32,
+    /// Maximum iterations for sub-agents spawned via delegate_task / delegate_tasks.
+    /// Defaults to `max_iterations` when unset, letting you cap sub-agents lower than
+    /// the parent (e.g. `sub_agent_max_iterations: 10`) to limit runaway delegation chains.
+    #[serde(default)]
+    pub sub_agent_max_iterations: Option<u32>,
     #[serde(default)]
     pub tool_delay_ms: u64,
     #[serde(default = "default_provider")]
@@ -482,6 +487,7 @@ impl Default for AgentConfig {
             home_dir: Self::garudust_dir(),
             model: "anthropic/claude-sonnet-4-6".into(),
             max_iterations: 90,
+            sub_agent_max_iterations: None,
             tool_delay_ms: 0,
             provider: "openrouter".into(),
             base_url: None,
