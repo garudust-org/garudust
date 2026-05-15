@@ -101,25 +101,15 @@ Output goes to stdout. Exit code is 0 on success. Pipe-friendly.
 
 ### 3 — Server
 
+`garudust-server` exposes `POST /chat`, `POST /chat/stream`, and `ws://…/chat/ws`, and runs all platform adapters in the same process. See [Configuration](#configuration) for `.env` and `config.yaml` setup.
+
+**Binary**
+
 ```bash
 garudust-server --port 3000
 ```
 
-Exposes `POST /chat`, `POST /chat/stream`, and `ws://…/chat/ws`. See [Configuration](#configuration) for `.env` and `config.yaml` setup.
-
-```bash
-# Quick API test
-curl -X POST http://localhost:3000/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "write a haiku about Rust"}'
-
-# Streaming (Server-Sent Events)
-curl -X POST http://localhost:3000/chat/stream \
-  -H "Content-Type: application/json" \
-  -d '{"message": "explain async/await in 3 sentences"}'
-```
-
-### 4 — Docker
+**Docker** (same binary, containerised)
 
 ```bash
 # 1. Create a .env file with your secrets (see Configuration below)
@@ -135,6 +125,19 @@ Data is persisted in the `garudust-data` Docker volume (`/root/.garudust` inside
 ```yaml
 # docker-compose.yml (add to volumes block)
 - ./config.yaml:/root/.garudust/config.yaml:ro
+```
+
+**API test**
+
+```bash
+curl -X POST http://localhost:3000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "write a haiku about Rust"}'
+
+# Streaming (Server-Sent Events)
+curl -X POST http://localhost:3000/chat/stream \
+  -H "Content-Type: application/json" \
+  -d '{"message": "explain async/await in 3 sentences"}'
 ```
 
 ---

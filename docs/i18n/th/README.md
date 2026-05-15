@@ -101,25 +101,15 @@ output ออก stdout รหัสออก 0 เมื่อสำเร็�
 
 ### 3 — Server
 
+`garudust-server` เปิด `POST /chat`, `POST /chat/stream` และ `ws://…/chat/ws` พร้อมรัน platform adapter ทุกตัวในกระบวนการเดียว ดูตัวอย่าง `.env` และ `config.yaml` ได้ที่หัวข้อ [การตั้งค่า](#การตั้งค่า)
+
+**Binary**
+
 ```bash
 garudust-server --port 3000
 ```
 
-เปิด `POST /chat`, `POST /chat/stream` และ `ws://…/chat/ws` ดูตัวอย่าง `.env` และ `config.yaml` ได้ที่หัวข้อ [การตั้งค่า](#การตั้งค่า)
-
-```bash
-# ทดสอบ API
-curl -X POST http://localhost:3000/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "เขียน haiku เกี่ยวกับ Rust"}'
-
-# Streaming (Server-Sent Events)
-curl -X POST http://localhost:3000/chat/stream \
-  -H "Content-Type: application/json" \
-  -d '{"message": "อธิบาย async/await ใน 3 ประโยค"}'
-```
-
-### 4 — Docker
+**Docker** (binary เดียวกัน ใส่ container)
 
 ```bash
 # 1. สร้างไฟล์ .env (ดูตัวอย่างได้ที่หัวข้อการตั้งค่า)
@@ -135,6 +125,19 @@ curl http://localhost:3000/health
 ```yaml
 # docker-compose.yml (เพิ่มใน volumes block)
 - ./config.yaml:/root/.garudust/config.yaml:ro
+```
+
+**ทดสอบ API**
+
+```bash
+curl -X POST http://localhost:3000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "เขียน haiku เกี่ยวกับ Rust"}'
+
+# Streaming (Server-Sent Events)
+curl -X POST http://localhost:3000/chat/stream \
+  -H "Content-Type: application/json" \
+  -d '{"message": "อธิบาย async/await ใน 3 ประโยค"}'
 ```
 
 ---

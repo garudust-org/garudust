@@ -101,25 +101,15 @@ garudust "将最近 7 天的 git log 整理成 changelog"
 
 ### 3 — 服务器模式
 
+`garudust-server` 开放 `POST /chat`、`POST /chat/stream` 和 `ws://…/chat/ws`，并在同一进程中运行所有平台适配器。详细配置请参见[配置](#配置)章节。
+
+**直接运行 binary**
+
 ```bash
 garudust-server --port 3000
 ```
 
-开放 `POST /chat`、`POST /chat/stream` 和 `ws://…/chat/ws`。详细配置请参见[配置](#配置)章节。
-
-```bash
-# 快速 API 测试
-curl -X POST http://localhost:3000/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "写一首关于 Rust 的俳句"}'
-
-# 流式输出（Server-Sent Events）
-curl -X POST http://localhost:3000/chat/stream \
-  -H "Content-Type: application/json" \
-  -d '{"message": "用 3 句话解释 async/await"}'
-```
-
-### 4 — Docker
+**Docker**（同一 binary，容器化部署）
 
 ```bash
 # 1. 创建 .env 文件（详见下方配置章节）
@@ -135,6 +125,19 @@ curl http://localhost:3000/health
 ```yaml
 # docker-compose.yml（添加到 volumes 块）
 - ./config.yaml:/root/.garudust/config.yaml:ro
+```
+
+**API 测试**
+
+```bash
+curl -X POST http://localhost:3000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "写一首关于 Rust 的俳句"}'
+
+# 流式输出（Server-Sent Events）
+curl -X POST http://localhost:3000/chat/stream \
+  -H "Content-Type: application/json" \
+  -d '{"message": "用 3 句话解释 async/await"}'
 ```
 
 ---
