@@ -8,6 +8,7 @@ use garudust_core::{
     budget::IterationBudget,
     config::AgentConfig,
     error::AgentError,
+    hooks::{AgentHooks, NoopHooks},
     memory::MemoryStore,
     pricing::usage_footer,
     tool::{SubAgentRunner, ToolContext},
@@ -189,6 +190,7 @@ pub struct Agent {
     config: Arc<AgentConfig>,
     compressor: ContextCompressor,
     session_db: Option<Arc<SessionDb>>,
+    hooks: Arc<dyn AgentHooks>,
     /// Per-session conversation history: session_key → (user_input, assistant_output) pairs.
     /// Shared across Clone (same logical agent); fresh for spawn_child() (sub-agent).
     conversation_history: Arc<DashMap<String, VecDeque<(String, String)>>>,
@@ -214,6 +216,7 @@ impl Clone for Agent {
             config: self.config.clone(),
             compressor: build_compressor(self.transport.clone(), comp_model, &self.config),
             session_db: self.session_db.clone(),
+            hooks: self.hooks.clone(),
             conversation_history: self.conversation_history.clone(),
         }
     }
@@ -234,6 +237,7 @@ fn build_compressor(
 #[async_trait::async_trait]
 impl SubAgentRunner for Agent {
     async fn run_task(&self, task: &str, session_id: &str) -> Result<String, AgentError> {
+        self.hooks.on_delegation(task, session_id).await;
         let approver = Arc::new(crate::approver::AutoApprover);
         let result = self.run(task, approver, session_id, None).await?;
         Ok(result.output)
@@ -263,12 +267,18 @@ impl Agent {
             config,
             compressor,
             session_db: None,
+            hooks: Arc::new(NoopHooks),
             conversation_history: Arc::new(DashMap::new()),
         }
     }
 
     pub fn with_session_db(mut self, db: Arc<SessionDb>) -> Self {
         self.session_db = Some(db);
+        self
+    }
+
+    pub fn with_hooks(mut self, hooks: impl AgentHooks) -> Self {
+        self.hooks = Arc::new(hooks);
         self
     }
 
@@ -310,6 +320,7 @@ impl Agent {
             config: self.config.clone(),
             compressor: build_compressor(self.transport.clone(), comp_model, &self.config),
             session_db: self.session_db.clone(),
+            hooks: self.hooks.clone(),
             conversation_history: Arc::new(DashMap::new()),
         }
     }
@@ -499,6 +510,7 @@ impl Agent {
 
             // Compress if needed before every LLM call
             if self.config.compression.enabled && self.compressor.should_compress(&history) {
+                self.hooks.on_pre_compress(history.len(), &session_id).await;
                 info!("compressing context before turn {}", iters + 1);
                 let (compressed, usage) = self.compressor.compress(history).await?;
                 history = compressed;
@@ -508,6 +520,7 @@ impl Agent {
 
             self.budget.consume()?;
             iters += 1;
+            self.hooks.on_turn_start(iters, &session_id).await;
             info!(agent_id = %self.id, iteration = iters, "agent turn");
 
             let secs = self.config.llm_timeout_secs;
@@ -554,6 +567,7 @@ impl Agent {
                     let budget_msg = format!(
                         "[Token budget of {cap} exceeded after {used} tokens — stopping early.]"
                     );
+                    self.hooks.on_session_end(&budget_msg, &session_id).await;
                     let output = if self.config.show_usage_footer {
                         let footer = usage_footer(&self.config.model, iters, total_in, total_out);
                         format!("{budget_msg}\n\n{footer}")
@@ -619,6 +633,8 @@ impl Agent {
                     .join("\n");
                 // Scrub any <recalled_memory> block the model may have echoed back.
                 let raw_output = scrub_recalled_memory(&raw_output);
+
+                self.hooks.on_session_end(&raw_output, &session_id).await;
 
                 // Save this exchange to conversation history (raw_output, no footer).
                 // Persist to disk so history survives server restarts (Hermes-style).

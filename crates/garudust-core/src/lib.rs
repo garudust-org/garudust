@@ -21,6 +21,7 @@
 pub mod budget;
 pub mod config;
 pub mod error;
+pub mod hooks;
 pub mod memory;
 pub mod net_guard;
 pub mod platform;
@@ -30,4 +31,5 @@ pub mod transport;
 pub mod types;
 
 pub use error::{AgentError, PlatformError, ToolError, TransportError};
+pub use hooks::{AgentHooks, NoopHooks};
 pub use types::*;
