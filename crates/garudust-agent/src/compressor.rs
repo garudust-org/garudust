@@ -68,23 +68,32 @@ impl ContextCompressor {
         &self,
         messages: Vec<Message>,
     ) -> Result<(Vec<Message>, TokenUsage), AgentError> {
-        // Separate system prompt from conversation
+        // Separate system prompt from conversation.
         let (system_msgs, conv_msgs): (Vec<_>, Vec<_>) =
             messages.into_iter().partition(|m| m.role == Role::System);
 
-        if conv_msgs.len() <= self.tail_turns * 2 {
+        // Need more than head (1) + tail (tail_turns*2) messages to have a middle to compress.
+        if conv_msgs.len() <= 1 + self.tail_turns * 2 {
             let all: Vec<_> = system_msgs.into_iter().chain(conv_msgs).collect();
             return Ok((all, TokenUsage::default()));
         }
 
-        let split = conv_msgs.len().saturating_sub(self.tail_turns * 2);
-        let (to_compress, tail) = conv_msgs.split_at(split);
+        // Three-region split (mirrors Hermes selective compression):
+        //   head   — first message (original task) — always preserved
+        //   middle — turns between head and tail — summarized via LLM
+        //   tail   — last tail_turns*2 messages — always preserved
+        let (head, rest) = conv_msgs.split_at(1);
+        let split = rest.len().saturating_sub(self.tail_turns * 2);
+        let (to_compress, tail) = rest.split_at(split);
 
-        info!(turns = to_compress.len(), "compressing context");
+        info!(
+            head = head.len(),
+            middle = to_compress.len(),
+            tail = tail.len(),
+            "compressing context"
+        );
 
-        let summary = self.summarize(to_compress).await?;
-        let usage = summary.1;
-        let summary_text = summary.0;
+        let (summary_text, usage) = self.summarize(to_compress).await?;
 
         let summary_msg = Message {
             role: Role::Assistant,
@@ -94,6 +103,7 @@ impl ContextCompressor {
         };
 
         let mut result = system_msgs;
+        result.extend_from_slice(head);
         result.push(summary_msg);
         result.extend_from_slice(tail);
 
