@@ -18,7 +18,8 @@ use garudust_tools::{
     toolsets::mcp::connect_mcp_server, ToolRegistry,
 };
 use garudust_transport::build_transport;
-use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+use notify::event::ModifyKind;
+use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 
 // Each element is held only for its Drop impl — dropping terminates the MCP child process.
 type McpHandles = Vec<Box<dyn std::any::Any + Send>>;
@@ -271,11 +272,24 @@ fn spawn_config_watcher(
         let mut watcher: RecommendedWatcher =
             match notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
                 if let Ok(event) = res {
+                    // Only react to genuine content changes. Reloading reads
+                    // config.yaml via AgentConfig::load(), which emits inotify
+                    // Access (open/read/close) events on the watched file — if
+                    // those triggered a reload we would loop forever. Accept
+                    // create/remove/rename/data-modify; drop Access & Metadata.
+                    let is_content_change = matches!(
+                        event.kind,
+                        EventKind::Create(_)
+                            | EventKind::Remove(_)
+                            | EventKind::Modify(ModifyKind::Data(_))
+                            | EventKind::Modify(ModifyKind::Name(_))
+                            | EventKind::Modify(ModifyKind::Any)
+                    );
                     let matches = event
                         .paths
                         .iter()
                         .any(|p| p.file_name() == Some(filename.as_os_str()));
-                    if matches {
+                    if is_content_change && matches {
                         let _ = tx2.send(());
                     }
                 }
