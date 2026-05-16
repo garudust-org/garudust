@@ -21,7 +21,7 @@ use tokio::net::TcpListener;
 use garudust_core::{
     error::PlatformError,
     platform::{MessageHandler, PlatformAdapter},
-    types::{ChannelId, ImageAttachment, InboundMessage, OutboundMessage},
+    types::{ChannelId, DocAttachment, ImageAttachment, InboundMessage, OutboundMessage},
 };
 
 const LINE_REPLY_URL: &str = "https://api.line.me/v2/bot/message/reply";
@@ -70,6 +70,9 @@ struct LineMessage {
     #[serde(rename = "type")]
     kind: String,
     text: Option<String>,
+    /// Original file name for `type = "file"` messages.
+    #[serde(rename = "fileName")]
+    file_name: Option<String>,
     /// Structured mention info delivered by LINE when users tag others in groups.
     mention: Option<Mention>,
 }
@@ -159,7 +162,7 @@ async fn handle_webhook(
             continue;
         }
         let Some(msg) = ev.message else { continue };
-        if msg.kind != "text" && msg.kind != "image" {
+        if msg.kind != "text" && msg.kind != "image" && msg.kind != "file" {
             continue;
         }
 
@@ -237,26 +240,50 @@ async fn handle_webhook(
             None
         };
 
-        // For image messages: download content from LINE Content API.
-        let (text, image_path) = if msg.kind == "image" {
-            let msg_id = msg.id.clone();
-            let token = state.inner.channel_token.clone();
-            let client = state.inner.client.clone();
-            let path = format!("/tmp/garudust_line_{msg_id}.jpg");
-            match download_line_content(&client, &token, &msg_id, &path).await {
-                Ok(()) => (String::new(), Some(path)),
-                Err(e) => {
-                    tracing::warn!(msg_id, error = %e, "LINE: image download failed");
-                    (String::new(), None)
+        // Download image or file content from LINE Content API.
+        let mut text = String::new();
+        let mut attachments: Vec<ImageAttachment> = Vec::new();
+        let mut doc_attachments: Vec<DocAttachment> = Vec::new();
+
+        match msg.kind.as_str() {
+            "image" => {
+                let msg_id = msg.id.clone();
+                let token = state.inner.channel_token.clone();
+                let client = state.inner.client.clone();
+                let path = format!("/tmp/garudust_line_{msg_id}.jpg");
+                match download_line_content(&client, &token, &msg_id, &path).await {
+                    Ok(()) => attachments.push(ImageAttachment { path }),
+                    Err(e) => {
+                        tracing::warn!(msg_id, error = %e, "LINE: image download failed");
+                    }
                 }
             }
-        } else {
-            (msg.text.unwrap_or_default(), None)
-        };
-
-        let attachments = image_path
-            .map(|p| vec![ImageAttachment { path: p }])
-            .unwrap_or_default();
+            "file" => {
+                let msg_id = msg.id.clone();
+                let file_name = msg
+                    .file_name
+                    .clone()
+                    .unwrap_or_else(|| format!("{msg_id}.bin"));
+                let ext = std::path::Path::new(&file_name)
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("bin");
+                if is_supported_doc_ext(ext) {
+                    let token = state.inner.channel_token.clone();
+                    let client = state.inner.client.clone();
+                    let path = format!("/tmp/garudust_line_{msg_id}.{ext}");
+                    match download_line_content(&client, &token, &msg_id, &path).await {
+                        Ok(()) => doc_attachments.push(DocAttachment { path, file_name }),
+                        Err(e) => {
+                            tracing::warn!(msg_id, error = %e, "LINE: file download failed");
+                        }
+                    }
+                }
+            }
+            _ => {
+                text = msg.text.unwrap_or_default();
+            }
+        }
 
         let inbound = InboundMessage {
             channel: ChannelId {
@@ -271,6 +298,7 @@ async fn handle_webhook(
             is_group,
             bot_mentioned,
             attachments,
+            doc_attachments,
         };
 
         let h = state.handler.clone();
@@ -313,6 +341,13 @@ async fn download_line_content(
     tokio::fs::write(dest, &bytes)
         .await
         .map_err(|e| PlatformError::Send(e.to_string()))
+}
+
+fn is_supported_doc_ext(ext: &str) -> bool {
+    matches!(
+        ext.to_lowercase().as_str(),
+        "pdf" | "txt" | "csv" | "md" | "json" | "docx" | "doc" | "xlsx" | "xls"
+    )
 }
 
 fn verify_sig(secret: &str, body: &[u8], signature: &str) -> bool {

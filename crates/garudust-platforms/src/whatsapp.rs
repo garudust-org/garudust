@@ -204,6 +204,7 @@ async fn handle_webhook(
                     is_group: false,
                     bot_mentioned: None,
                     attachments: vec![],
+                    doc_attachments: vec![],
                 };
 
                 let handler = state.handler.clone();

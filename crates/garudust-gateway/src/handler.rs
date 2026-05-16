@@ -6,7 +6,7 @@ use garudust_core::{
     config::AgentConfig,
     platform::{MessageHandler, PlatformAdapter},
     tool::CommandApprover,
-    types::{ImageAttachment, InboundMessage, OutboundMessage},
+    types::{DocAttachment, ImageAttachment, InboundMessage, OutboundMessage},
 };
 
 use crate::sessions::SessionRegistry;
@@ -89,6 +89,105 @@ impl GatewayHandler {
             }
         }
     }
+
+    /// Inject received document info into history (with file path so the agent
+    /// can later ingest on confirmation) and spawn an agent turn that asks the
+    /// user whether they want the file ingested into the RAG store.  The LLM
+    /// generates the question in whichever language the conversation is in.
+    async fn process_docs(
+        &self,
+        attachments: &[DocAttachment],
+        session_key: &str,
+        user_name: &str,
+        channel: &garudust_core::types::ChannelId,
+        approver: Arc<dyn CommandApprover>,
+    ) {
+        if attachments.is_empty() {
+            return;
+        }
+
+        let rag_enabled = self.agent.has_tool("doc_ingest");
+
+        for att in attachments {
+            let ts = chrono::Local::now().format("%d/%m/%Y %H:%M");
+            let user_label = if user_name.is_empty() {
+                format!("[ส่งไฟล์ {} เวลา {ts}]", att.file_name)
+            } else {
+                format!("[@{user_name} ส่งไฟล์ {} เวลา {ts}]", att.file_name)
+            };
+
+            // Record the file in history so the agent can find the path when
+            // the user confirms.  Do NOT delete the file yet.
+            let note = if rag_enabled {
+                format!(
+                    "[ไฟล์บันทึกชั่วคราวที่ {} — รอการยืนยันจากผู้ใช้]",
+                    att.path
+                )
+            } else {
+                "[RAG ยังไม่ได้เปิดใช้งาน — ลบ 'rag' ออกจาก disabled_toolsets ใน config.yaml]"
+                    .to_string()
+            };
+            self.agent.inject_history(session_key, &user_label, &note);
+        }
+
+        if !rag_enabled {
+            // No point asking; inform directly.
+            let names = attachments
+                .iter()
+                .map(|a| a.file_name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let reply = OutboundMessage::text(format!(
+                "รับไฟล์แล้ว: {names}\n\nRAG ยังไม่ได้เปิดใช้งาน — ลบ \"rag\" ออกจาก \
+                 disabled_toolsets ใน config.yaml เพื่อให้บอทอ่านเนื้อหาไฟล์ได้"
+            ));
+            let _ = self.platform.send_message(channel, reply).await;
+            // Clean up temp files
+            for att in attachments {
+                if att.path.starts_with("/tmp/") {
+                    let _ = tokio::fs::remove_file(&att.path).await;
+                }
+            }
+            return;
+        }
+
+        // Ask via agent LLM so the question is in the same language as the
+        // ongoing conversation.
+        let names = attachments
+            .iter()
+            .map(|a| a.file_name.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let task = format!(
+            "[SYSTEM] ผู้ใช้ส่งไฟล์เอกสาร: {names} \
+             ถามผู้ใช้ว่าต้องการให้บอทอ่านและจำเนื้อหาไฟล์นี้ไว้หรือไม่ \
+             ถามสั้นๆ ในภาษาเดียวกับที่ผู้ใช้ใช้ล่าสุดในการสนทนา"
+        );
+
+        let agent = self.agent.clone();
+        let platform = self.platform.clone();
+        let channel = channel.clone();
+        let session_key = session_key.to_string();
+        let platform_name = channel.platform.clone();
+
+        tokio::spawn(async move {
+            match agent
+                .run(&task, approver, &platform_name, None, Some(&session_key))
+                .await
+            {
+                Ok(result) => {
+                    let _ = platform
+                        .send_message(&channel, OutboundMessage::markdown(result.output))
+                        .await;
+                }
+                Err(e) => {
+                    let _ = platform
+                        .send_message(&channel, OutboundMessage::text(format!("Error: {e}")))
+                        .await;
+                }
+            }
+        });
+    }
 }
 
 #[async_trait]
@@ -115,14 +214,30 @@ impl MessageHandler for GatewayHandler {
             );
         }
 
-        // Image-only messages bypass the mention gate (e.g. LINE where you
-        // cannot @mention inside an image event) and are stored silently.
-        if msg.text.trim().is_empty() && !msg.attachments.is_empty() {
+        // Image-only or doc-only messages bypass the mention gate.
+        if msg.text.trim().is_empty()
+            && (!msg.attachments.is_empty() || !msg.doc_attachments.is_empty())
+        {
             self.sessions
                 .touch(&msg.session_key, &msg.channel.platform, &msg.user_id)
                 .await;
-            self.process_images(&msg.attachments, &msg.session_key, 0, &msg.user_name)
+
+            if !msg.attachments.is_empty() {
+                self.process_images(&msg.attachments, &msg.session_key, 0, &msg.user_name)
+                    .await;
+            }
+            if !msg.doc_attachments.is_empty() {
+                // process_docs spawns the agent to ask confirmation — no extra
+                // return value needed; the spawned task sends the reply.
+                self.process_docs(
+                    &msg.doc_attachments,
+                    &msg.session_key,
+                    &msg.user_name,
+                    &msg.channel,
+                    self.approver.clone(),
+                )
                 .await;
+            }
             return Ok(());
         }
 
@@ -166,10 +281,28 @@ impl MessageHandler for GatewayHandler {
             return Ok(());
         }
 
-        // If the message has images alongside text, process them first (silent)
+        // Process any image or document attachments that come alongside text
         if !msg.attachments.is_empty() {
             self.process_images(&msg.attachments, &msg.session_key, 0, &msg.user_name)
                 .await;
+        }
+        // Doc attachments alongside text: inject into history only (the user's
+        // text message is the "confirmation" if they explicitly ask to ingest).
+        if !msg.doc_attachments.is_empty() {
+            for att in &msg.doc_attachments {
+                let ts = chrono::Local::now().format("%d/%m/%Y %H:%M");
+                let user_label = if msg.user_name.is_empty() {
+                    format!("[ส่งไฟล์ {} เวลา {ts}]", att.file_name)
+                } else {
+                    format!("[@{} ส่งไฟล์ {} เวลา {ts}]", msg.user_name, att.file_name)
+                };
+                let note = format!(
+                    "[ไฟล์บันทึกชั่วคราวที่ {} — รอการยืนยันจากผู้ใช้]",
+                    att.path
+                );
+                self.agent
+                    .inject_history(&msg.session_key, &user_label, &note);
+            }
         }
 
         let channel = msg.channel.clone();

@@ -199,6 +199,7 @@ async fn socket_loop(
                 is_group,
                 bot_mentioned: None,
                 attachments: vec![],
+                    doc_attachments: vec![],
             };
             let h = handler.clone();
             tokio::spawn(async move {

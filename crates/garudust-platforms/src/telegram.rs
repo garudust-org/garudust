@@ -6,7 +6,7 @@ use futures::Stream;
 use garudust_core::{
     error::PlatformError,
     platform::{MessageHandler, PlatformAdapter},
-    types::{ChannelId, ImageAttachment, InboundMessage, OutboundMessage},
+    types::{ChannelId, DocAttachment, ImageAttachment, InboundMessage, OutboundMessage},
 };
 use teloxide::{net::Download, prelude::*};
 
@@ -54,7 +54,10 @@ impl PlatformAdapter for TelegramAdapter {
                         .unwrap_or_default();
                     let chat_id = msg.chat.id;
 
-                    let mut attachments = Vec::new();
+                    let mut attachments: Vec<ImageAttachment> = Vec::new();
+                    let mut doc_attachments: Vec<DocAttachment> = Vec::new();
+
+                    // Photos
                     if let Some(photos) = msg.photo() {
                         if let Some(photo) = photos.last() {
                             let file_id = photo.file.id.to_string();
@@ -94,9 +97,55 @@ impl PlatformAdapter for TelegramAdapter {
                         }
                     }
 
+                    // Documents (PDF, TXT, CSV, DOCX, …)
+                    if let Some(doc) = msg.document() {
+                        let file_name = doc
+                            .file_name
+                            .clone()
+                            .unwrap_or_else(|| format!("{}.bin", doc.file.id));
+                        let ext = std::path::Path::new(&file_name)
+                            .extension()
+                            .and_then(|e| e.to_str())
+                            .unwrap_or("bin");
+                        let supported = matches!(
+                            ext.to_lowercase().as_str(),
+                            "pdf" | "txt" | "csv" | "md" | "json" | "docx" | "doc" | "xlsx"
+                                | "xls"
+                        );
+                        if supported {
+                            let file_id = doc.file.id.to_string();
+                            let dest = format!("/tmp/garudust_telegram_{file_id}.{ext}");
+                            match bot.get_file(doc.file.id.clone()).await {
+                                Ok(tg_file) => match tokio::fs::File::create(&dest).await {
+                                    Ok(mut writer) => {
+                                        match bot.download_file(&tg_file.path, &mut writer).await {
+                                            Ok(()) => doc_attachments
+                                                .push(DocAttachment { path: dest, file_name }),
+                                            Err(e) => tracing::warn!(
+                                                file_id,
+                                                error = %e,
+                                                "Telegram: doc download_file failed"
+                                            ),
+                                        }
+                                    }
+                                    Err(e) => tracing::warn!(
+                                        file_id,
+                                        error = %e,
+                                        "Telegram: doc create tmp failed"
+                                    ),
+                                },
+                                Err(e) => tracing::warn!(
+                                    file_id,
+                                    error = %e,
+                                    "Telegram: doc get_file failed"
+                                ),
+                            }
+                        }
+                    }
+
                     let text = msg.text().unwrap_or("").to_string();
 
-                    if text.is_empty() && attachments.is_empty() {
+                    if text.is_empty() && attachments.is_empty() && doc_attachments.is_empty() {
                         return respond(());
                     }
 
@@ -113,6 +162,7 @@ impl PlatformAdapter for TelegramAdapter {
                         is_group,
                         bot_mentioned: None,
                         attachments,
+                        doc_attachments,
                     };
                     let _ = handler.handle(inbound).await;
                     respond(())

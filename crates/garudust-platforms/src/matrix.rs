@@ -92,6 +92,7 @@ impl PlatformAdapter for MatrixAdapter {
                     is_group: true,
                     bot_mentioned: None,
                     attachments: vec![],
+                    doc_attachments: vec![],
                 };
                 let _ = handler.handle(inbound).await;
             }

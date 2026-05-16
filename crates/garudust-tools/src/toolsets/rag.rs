@@ -136,7 +136,12 @@ impl Tool for DocIngest {
             .as_str()
             .ok_or_else(|| ToolError::InvalidArgs("'path' required".into()))?;
 
-        if !is_path_allowed(Path::new(path), &ctx.config.security.allowed_read_paths) {
+        // Files downloaded by the platform adapters live under /tmp/garudust_
+        // and are always safe to ingest regardless of allowed_read_paths.
+        let is_platform_tmp = path.starts_with("/tmp/garudust_");
+        if !is_platform_tmp
+            && !is_path_allowed(Path::new(path), &ctx.config.security.allowed_read_paths)
+        {
             return Err(ToolError::Execution(format!(
                 "path '{path}' is outside allowed read directories"
             )));

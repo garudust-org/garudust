@@ -199,6 +199,16 @@ pub struct ImageAttachment {
     pub path: String,
 }
 
+/// A non-image file attachment (PDF, TXT, CSV, DOCX, …) downloaded from a
+/// platform and stored at a local /tmp path, pending user confirmation to ingest.
+#[derive(Debug, Clone)]
+pub struct DocAttachment {
+    /// Absolute path to the downloaded file (e.g. `/tmp/garudust_line_abc.pdf`).
+    pub path: String,
+    /// Original file name as reported by the platform (e.g. `price_list.pdf`).
+    pub file_name: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct InboundMessage {
     pub channel: ChannelId,
@@ -217,6 +227,9 @@ pub struct InboundMessage {
     /// Image files downloaded by the platform adapter, ready for analysis.
     /// Empty for text-only messages.
     pub attachments: Vec<ImageAttachment>,
+    /// Non-image document files (PDF, TXT, CSV, …) awaiting user confirmation
+    /// before being ingested into the RAG store.
+    pub doc_attachments: Vec<DocAttachment>,
 }
 
 #[derive(Debug, Clone)]
