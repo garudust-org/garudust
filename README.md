@@ -88,6 +88,8 @@ git clone https://github.com/garudust-org/garudust-agent
 cd garudust-agent && cargo build --release
 ```
 
+---
+
 **02 — Configure**
 
 Run the interactive wizard — it picks a provider, asks for an API key, and writes `~/.garudust/.env`:
@@ -98,6 +100,8 @@ garudust setup
 
 Or drop your key directly into `~/.garudust/.env`. See [Configuration](#configuration) for the full `config.yaml` reference.
 
+---
+
 **03 — Run**
 
 ```bash
@@ -107,6 +111,8 @@ garudust --hint fast "is this correct?"   # route to cheaper model
 garudust-server --port 3000               # headless server (REST + WS)
 docker compose up -d                      # Docker
 ```
+
+---
 
 ### TUI keyboard shortcuts
 

@@ -88,6 +88,8 @@ git clone https://github.com/garudust-org/garudust-agent
 cd garudust-agent && cargo build --release
 ```
 
+---
+
 **02 — ตั้งค่า**
 
 รัน wizard ครั้งแรก — เลือก provider ใส่ API key แล้วเขียน `~/.garudust/.env` ให้อัตโนมัติ:
@@ -98,6 +100,8 @@ garudust setup
 
 หรือใส่ key ตรงใน `~/.garudust/.env` เอง ดู [การตั้งค่า](#การตั้งค่า) สำหรับ `config.yaml` แบบเต็ม
 
+---
+
 **03 — รัน**
 
 ```bash
@@ -107,6 +111,8 @@ garudust --hint fast "ตรวจสอบโค้ดนี้"   # ใช้ 
 garudust-server --port 3000               # headless server (REST + WS)
 docker compose up -d                      # Docker
 ```
+
+---
 
 ### ปุ่มลัด TUI
 

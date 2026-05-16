@@ -88,6 +88,8 @@ git clone https://github.com/garudust-org/garudust-agent
 cd garudust-agent && cargo build --release
 ```
 
+---
+
 **02 — 配置**
 
 运行首次配置向导 — 自动选择提供商、输入 API 密钥并写入 `~/.garudust/.env`：
@@ -98,6 +100,8 @@ garudust setup
 
 或直接将密钥写入 `~/.garudust/.env`。完整 `config.yaml` 参考见[配置](#配置)章节。
 
+---
+
 **03 — 运行**
 
 ```bash
@@ -107,6 +111,8 @@ garudust --hint fast "这段代码正确吗？"      # 使用更廉价的模型
 garudust-server --port 3000                  # 无头服务器（REST + WS）
 docker compose up -d                         # Docker
 ```
+
+---
 
 ### TUI 快捷键
 
