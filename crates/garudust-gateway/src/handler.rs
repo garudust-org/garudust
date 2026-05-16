@@ -67,9 +67,9 @@ impl GatewayHandler {
 
             let ts = chrono::Local::now().format("%d/%m/%Y %H:%M");
             let user_label = if user_name.is_empty() {
-                format!("[รูปที่ {seq} — {ts}]")
+                format!("[รูปที่ {seq} เวลา {ts}]")
             } else {
-                format!("[รูปที่ {seq} — {ts} @{user_name}]")
+                format!("[@{user_name} ส่งรูปที่ {seq} เวลา {ts}]")
             };
             self.agent
                 .inject_history(session_key, &user_label, &description);
