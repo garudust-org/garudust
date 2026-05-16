@@ -54,6 +54,22 @@ pub fn get_secret(key: &str) -> Option<String> {
         })
 }
 
+/// Per-tool or per-skill configuration overrides.
+/// All fields are optional; unset fields leave the tool's own defaults intact.
+/// This struct is intentionally open-ended — new fields can be added here in
+/// future releases without breaking existing config files (serde default).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ToolOverrideConfig {
+    /// Primary LLM model the tool's subprocess should use.
+    /// Forwarded as `GARUDUST_MODEL` env var. Empty string = tool's own default.
+    #[serde(default)]
+    pub model: String,
+    /// Fallback model tried when the primary model fails or is unavailable.
+    /// Forwarded as `GARUDUST_FALLBACK_MODEL` env var. Empty string = tool's own default.
+    #[serde(default)]
+    pub fallback_model: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentConfig {
     #[serde(skip)]
@@ -78,6 +94,22 @@ pub struct AgentConfig {
     /// builds an appropriate transport, and overrides the model for that task only.
     #[serde(default)]
     pub routing: std::collections::HashMap<String, String>,
+    /// Per-tool configuration overrides, keyed by tool name.
+    /// Example:
+    /// ```yaml
+    /// tools:
+    ///   view_image:
+    ///     model: "openrouter/google/gemini-flash-1.5"
+    ///     fallback_model: "google/gemini-1.5-flash"
+    /// ```
+    /// Values are forwarded as `GARUDUST_MODEL` / `GARUDUST_FALLBACK_MODEL` env vars
+    /// to the tool's subprocess. Tools that do not read these vars are unaffected.
+    #[serde(default)]
+    pub tools: std::collections::HashMap<String, ToolOverrideConfig>,
+    /// Per-skill configuration overrides, keyed by skill name.
+    /// Same structure as `tools`; reserved for future skill-level overrides.
+    #[serde(default)]
+    pub skills: std::collections::HashMap<String, ToolOverrideConfig>,
     #[serde(skip)]
     pub api_key: Option<String>,
     /// Fallback API keys tried in order when the primary key returns 401/403.
@@ -503,6 +535,8 @@ impl Default for AgentConfig {
             provider: "openrouter".into(),
             base_url: None,
             routing: std::collections::HashMap::new(),
+            tools: std::collections::HashMap::new(),
+            skills: std::collections::HashMap::new(),
             api_key: None,
             fallback_api_keys: Vec::new(),
             compression: CompressionConfig::default(),

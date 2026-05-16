@@ -178,6 +178,18 @@ impl Tool for ScriptTool {
                 cmd.env(key, v);
             }
         }
+        // Forward per-tool model overrides from config.yaml → subprocess env.
+        // Scripts read GARUDUST_MODEL / GARUDUST_FALLBACK_MODEL and fall back to
+        // their own hardcoded defaults when these vars are absent, preserving
+        // backward compatibility with scripts that pre-date this feature.
+        if let Some(cfg) = ctx.config.tools.get(self.name()) {
+            if !cfg.model.is_empty() {
+                cmd.env("GARUDUST_MODEL", &cfg.model);
+            }
+            if !cfg.fallback_model.is_empty() {
+                cmd.env("GARUDUST_FALLBACK_MODEL", &cfg.fallback_model);
+            }
+        }
         let out = cmd
             .output()
             .await

@@ -99,6 +99,14 @@ impl GatewayHandler {
                 if let Some(v) = &gm_key {
                     cmd.env("GOOGLE_AI_API_KEY", v);
                 }
+                if let Some(cfg) = self.config.tools.get("view_image") {
+                    if !cfg.model.is_empty() {
+                        cmd.env("GARUDUST_MODEL", &cfg.model);
+                    }
+                    if !cfg.fallback_model.is_empty() {
+                        cmd.env("GARUDUST_FALLBACK_MODEL", &cfg.fallback_model);
+                    }
+                }
                 match cmd.output().await {
                     Ok(out) if out.status.success() => {
                         String::from_utf8_lossy(&out.stdout).trim().to_string()
