@@ -162,6 +162,10 @@ impl ToolRegistry {
         self.tools.keys().map(String::as_str).collect()
     }
 
+    pub fn has_tool(&self, name: &str) -> bool {
+        self.tools.contains_key(name)
+    }
+
     pub fn tool_count(&self) -> usize {
         self.tools.len()
     }

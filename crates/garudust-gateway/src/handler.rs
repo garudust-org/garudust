@@ -46,18 +46,24 @@ impl GatewayHandler {
         seq_start: usize,
         user_name: &str,
     ) {
+        let view_image_installed = self.agent.has_tool("view_image");
+
         for (i, att) in attachments.iter().enumerate() {
             let seq = seq_start + i + 1;
-            let description = self
-                .agent
-                .run_tool(
-                    "view_image",
-                    serde_json::json!({
-                        "source": att.path,
-                        "question": "อธิบายรูปนี้โดยละเอียด"
-                    }),
-                )
-                .await;
+            let description = if view_image_installed {
+                self.agent
+                    .run_tool(
+                        "view_image",
+                        serde_json::json!({
+                            "source": att.path,
+                            "question": "อธิบายรูปนี้โดยละเอียด"
+                        }),
+                    )
+                    .await
+            } else {
+                "[รูปภาพ — ติดตั้ง view_image tool เพื่อให้วิเคราะห์ได้: garudust tool install view_image]"
+                    .to_string()
+            };
 
             let ts = chrono::Local::now().format("%d/%m/%Y %H:%M");
             let user_label = if user_name.is_empty() {

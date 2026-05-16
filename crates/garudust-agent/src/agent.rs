@@ -282,6 +282,10 @@ impl Agent {
         self
     }
 
+    pub fn has_tool(&self, name: &str) -> bool {
+        self.tools.has_tool(name)
+    }
+
     pub fn tool_count(&self) -> usize {
         self.tools.tool_count()
     }
