@@ -75,38 +75,40 @@ cd garudust-agent && cargo build --release
 <tr><td bgcolor="#000000">
 <h3><font color="#4af626">01 — 安装</font></h3>
 <font color="#cccccc">从 <a href="https://github.com/garudust-org/garudust-agent/releases/latest">GitHub Releases</a> 下载预构建 binary：</font><br><br>
-<font color="#4af626" face="monospace">curl -LO https://github.com/garudust-org/garudust-agent/releases/latest/download/garudust-linux-x64.tar.gz<br>
-tar -xzf garudust-*.tar.gz<br>
-sudo mv garudust garudust-server /usr/local/bin/</font><br><br>
+<pre>curl -LO https://github.com/garudust-org/garudust-agent/releases/latest/download/garudust-linux-x64.tar.gz
+tar -xzf garudust-*.tar.gz
+sudo mv garudust garudust-server /usr/local/bin/</pre>
 <font color="#cccccc">或从源码构建（需 Rust 1.87+）：</font><br><br>
-<font color="#4af626" face="monospace">git clone https://github.com/garudust-org/garudust-agent<br>
-cd garudust-agent &amp;&amp; cargo build --release</font>
+<pre>git clone https://github.com/garudust-org/garudust-agent
+cd garudust-agent &amp;&amp; cargo build --release</pre>
 </td></tr>
 <tr><td bgcolor="#000000">
 <h3><font color="#4af626">02 — 配置</font></h3>
 <font color="#cccccc">运行首次配置向导：</font><br><br>
-<font color="#4af626" face="monospace">garudust setup &nbsp;<font color="#555555"># 选择提供商 → 输入 API 密钥 → 选择模型</font></font><br><br>
+<pre>garudust setup   # 选择提供商 → 输入 API 密钥 → 选择模型</pre>
 <font color="#cccccc">或直接写入 <code>~/.garudust/.env</code>：</font><br><br>
-<font color="#4af626" face="monospace">ANTHROPIC_API_KEY=sk-ant-...<br>
-<font color="#555555"># OPENAI_API_KEY=sk-...<br>
-# GROQ_API_KEY=gsk_...<br>
-# OPENROUTER_API_KEY=sk-or-...</font></font><br><br>
+<pre>ANTHROPIC_API_KEY=sk-ant-...
+# OPENAI_API_KEY=sk-...
+# GROQ_API_KEY=gsk_...
+# OPENROUTER_API_KEY=sk-or-...</pre>
 <font color="#cccccc">完整 <code>config.yaml</code> 参考见<a href="#配置">配置</a>章节。</font>
 </td></tr>
 <tr><td bgcolor="#000000">
 <h3><font color="#4af626">03 — 运行</font></h3>
-<font color="#4af626" face="monospace">
-<font color="#555555"># 交互式 TUI</font><br>
-garudust<br><br>
-<font color="#555555"># 单次任务</font><br>
-garudust "整理 git log 为 changelog"<br><br>
-<font color="#555555"># 使用更廉价的模型</font><br>
-garudust --hint fast "这段代码正确吗？"<br><br>
-<font color="#555555"># 无头服务器（REST + WS）</font><br>
-garudust-server --port 3000<br><br>
-<font color="#555555"># Docker</font><br>
-docker compose up -d
-</font>
+<pre># 交互式 TUI
+garudust
+
+# 单次任务
+garudust "整理 git log 为 changelog"
+
+# 使用更廉价的模型
+garudust --hint fast "这段代码正确吗？"
+
+# 无头服务器（REST + WS）
+garudust-server --port 3000
+
+# Docker
+docker compose up -d</pre>
 </td></tr>
 </table>
 
