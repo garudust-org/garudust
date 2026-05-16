@@ -77,6 +77,15 @@ Download a pre-built binary from [GitHub Releases](https://github.com/garudust-o
 
 ```bash
 curl -LO https://github.com/garudust-org/garudust-agent/releases/latest/download/garudust-linux-x64.tar.gz
+tar -xzf garudust-*.tar.gz
+sudo mv garudust garudust-server /usr/local/bin/
+```
+
+Or build from source (Rust 1.87+):
+
+```bash
+git clone https://github.com/garudust-org/garudust-agent
+cd garudust-agent && cargo build --release
 ```
 
 ---
