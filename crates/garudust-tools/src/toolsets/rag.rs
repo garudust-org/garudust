@@ -158,8 +158,9 @@ impl Tool for DocIngest {
         let preview = chunks[0].chars().take(200).collect::<String>();
         let store = self.store.clone();
         let path_owned = path.to_string();
+        let session_key = ctx.session_id.clone();
 
-        tokio::task::spawn_blocking(move || store.ingest(&path_owned, &chunks))
+        tokio::task::spawn_blocking(move || store.ingest(&session_key, &path_owned, &chunks))
             .await
             .map_err(|e| ToolError::Execution(e.to_string()))?
             .map_err(|e| ToolError::Execution(e.to_string()))?;
@@ -223,15 +224,16 @@ impl Tool for DocSearch {
         })
     }
 
-    async fn execute(&self, params: Value, _ctx: &ToolContext) -> Result<ToolResult, ToolError> {
+    async fn execute(&self, params: Value, ctx: &ToolContext) -> Result<ToolResult, ToolError> {
         let query = params["query"]
             .as_str()
             .ok_or_else(|| ToolError::InvalidArgs("'query' required".into()))?
             .to_string();
         let limit = params["limit"].as_u64().unwrap_or(5).min(20) as usize;
+        let session_key = ctx.session_id.clone();
 
         let store = self.store.clone();
-        let results = tokio::task::spawn_blocking(move || store.search(&query, limit))
+        let results = tokio::task::spawn_blocking(move || store.search(&session_key, &query, limit))
             .await
             .map_err(|e| ToolError::Execution(e.to_string()))?
             .map_err(|e| ToolError::Execution(e.to_string()))?;
@@ -286,9 +288,10 @@ impl Tool for DocList {
         json!({ "type": "object", "properties": {} })
     }
 
-    async fn execute(&self, _params: Value, _ctx: &ToolContext) -> Result<ToolResult, ToolError> {
+    async fn execute(&self, _params: Value, ctx: &ToolContext) -> Result<ToolResult, ToolError> {
+        let session_key = ctx.session_id.clone();
         let store = self.store.clone();
-        let docs = tokio::task::spawn_blocking(move || store.list())
+        let docs = tokio::task::spawn_blocking(move || store.list(&session_key))
             .await
             .map_err(|e| ToolError::Execution(e.to_string()))?
             .map_err(|e| ToolError::Execution(e.to_string()))?;
@@ -353,14 +356,15 @@ impl Tool for DocForget {
         })
     }
 
-    async fn execute(&self, params: Value, _ctx: &ToolContext) -> Result<ToolResult, ToolError> {
+    async fn execute(&self, params: Value, ctx: &ToolContext) -> Result<ToolResult, ToolError> {
         let path = params["path"]
             .as_str()
             .ok_or_else(|| ToolError::InvalidArgs("'path' required".into()))?
             .to_string();
+        let session_key = ctx.session_id.clone();
 
         let store = self.store.clone();
-        let removed = tokio::task::spawn_blocking(move || store.forget(&path))
+        let removed = tokio::task::spawn_blocking(move || store.forget(&session_key, &path))
             .await
             .map_err(|e| ToolError::Execution(e.to_string()))?
             .map_err(|e| ToolError::Execution(e.to_string()))?;

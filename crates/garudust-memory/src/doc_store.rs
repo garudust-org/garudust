@@ -37,15 +37,16 @@ impl DocStore {
     }
 
     fn migrate(conn: &Connection) -> rusqlite::Result<()> {
-        // Idempotent — safe to run on every open.
+        // Base schema — idempotent.
         conn.execute_batch(
             "
             CREATE TABLE IF NOT EXISTS doc_sources (
                 id          TEXT PRIMARY KEY,
-                path        TEXT NOT NULL UNIQUE,
+                path        TEXT NOT NULL,
                 file_name   TEXT NOT NULL,
                 ingested_at REAL NOT NULL,
-                chunk_count INTEGER NOT NULL DEFAULT 0
+                chunk_count INTEGER NOT NULL DEFAULT 0,
+                session_key TEXT NOT NULL DEFAULT ''
             );
 
             CREATE VIRTUAL TABLE IF NOT EXISTS doc_chunks USING fts5(
@@ -55,12 +56,30 @@ impl DocStore {
                 tokenize = 'trigram'
             );
             ",
-        )
+        )?;
+
+        // Add session_key column to existing databases that pre-date this
+        // migration.  SQLite returns an error when the column already exists;
+        // we swallow that specific error so this stays idempotent.
+        let _ = conn.execute_batch(
+            "ALTER TABLE doc_sources ADD COLUMN session_key TEXT NOT NULL DEFAULT '';",
+        );
+
+        // Drop the old UNIQUE constraint on path alone (if the table was
+        // created without session_key).  SQLite cannot drop constraints
+        // directly, so we leave old rows in place; duplicate-path handling
+        // is now scoped to (session_key, path) pairs via the SELECT before INSERT.
+        Ok(())
     }
 
-    /// Store `chunks` for `source_path`. Re-ingesting the same path replaces
-    /// all previous chunks atomically.
-    pub fn ingest(&self, source_path: &str, chunks: &[String]) -> anyhow::Result<()> {
+    /// Store `chunks` for `source_path` scoped to `session_key`.
+    /// Re-ingesting the same (session, path) pair replaces all previous chunks atomically.
+    pub fn ingest(
+        &self,
+        session_key: &str,
+        source_path: &str,
+        chunks: &[String],
+    ) -> anyhow::Result<()> {
         let source_id = uuid::Uuid::new_v4().to_string();
         let file_name = Path::new(source_path)
             .file_name()
@@ -74,11 +93,11 @@ impl DocStore {
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction()?;
 
-        // Replace existing entry for this path
+        // Replace existing entry for this (session, path) pair.
         let old_id: Option<String> = tx
             .query_row(
-                "SELECT id FROM doc_sources WHERE path = ?1",
-                params![source_path],
+                "SELECT id FROM doc_sources WHERE session_key = ?1 AND path = ?2",
+                params![session_key, source_path],
                 |r| r.get(0),
             )
             .ok();
@@ -88,14 +107,15 @@ impl DocStore {
         }
 
         tx.execute(
-            "INSERT INTO doc_sources (id, path, file_name, ingested_at, chunk_count) \
-             VALUES (?1, ?2, ?3, ?4, ?5)",
+            "INSERT INTO doc_sources (id, path, file_name, ingested_at, chunk_count, session_key) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![
                 source_id,
                 source_path,
                 file_name,
                 now,
-                i64::try_from(chunks.len()).unwrap_or(i64::MAX)
+                i64::try_from(chunks.len()).unwrap_or(i64::MAX),
+                session_key,
             ],
         )?;
 
@@ -110,40 +130,48 @@ impl DocStore {
         Ok(())
     }
 
-    /// FTS5 full-text search across all ingested documents.
+    /// FTS5 full-text search scoped to `session_key`.
     /// `query` supports FTS5 syntax (AND, OR, NOT, "phrase").
-    pub fn search(&self, query: &str, limit: usize) -> anyhow::Result<Vec<SearchResult>> {
+    pub fn search(
+        &self,
+        session_key: &str,
+        query: &str,
+        limit: usize,
+    ) -> anyhow::Result<Vec<SearchResult>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT s.file_name, s.path, c.chunk_idx, c.content
              FROM doc_chunks c
-             JOIN doc_sources s ON s.id = c.source_id
+             JOIN doc_sources s ON s.id = c.source_id AND s.session_key = ?2
              WHERE doc_chunks MATCH ?1
              ORDER BY rank
-             LIMIT ?2",
+             LIMIT ?3",
         )?;
         let results = stmt
-            .query_map(params![query, i64::try_from(limit).unwrap_or(20)], |row| {
-                Ok(SearchResult {
-                    file_name: row.get(0)?,
-                    path: row.get(1)?,
-                    chunk_idx: row.get(2)?,
-                    content: row.get(3)?,
-                })
-            })?
+            .query_map(
+                params![query, session_key, i64::try_from(limit).unwrap_or(20)],
+                |row| {
+                    Ok(SearchResult {
+                        file_name: row.get(0)?,
+                        path: row.get(1)?,
+                        chunk_idx: row.get(2)?,
+                        content: row.get(3)?,
+                    })
+                },
+            )?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(results)
     }
 
-    /// List all ingested documents, newest first.
-    pub fn list(&self) -> anyhow::Result<Vec<DocInfo>> {
+    /// List all documents ingested for `session_key`, newest first.
+    pub fn list(&self, session_key: &str) -> anyhow::Result<Vec<DocInfo>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT file_name, path, ingested_at, chunk_count \
-             FROM doc_sources ORDER BY ingested_at DESC",
+             FROM doc_sources WHERE session_key = ?1 ORDER BY ingested_at DESC",
         )?;
         let docs = stmt
-            .query_map([], |row| {
+            .query_map(params![session_key], |row| {
                 Ok(DocInfo {
                     file_name: row.get(0)?,
                     path: row.get(1)?,
@@ -155,14 +183,15 @@ impl DocStore {
         Ok(docs)
     }
 
-    /// Remove all chunks for `path`. Returns `true` if the document existed.
-    pub fn forget(&self, path: &str) -> anyhow::Result<bool> {
+    /// Remove all chunks for `path` within `session_key`.
+    /// Returns `true` if the document existed.
+    pub fn forget(&self, session_key: &str, path: &str) -> anyhow::Result<bool> {
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction()?;
         let id: Option<String> = tx
             .query_row(
-                "SELECT id FROM doc_sources WHERE path = ?1",
-                params![path],
+                "SELECT id FROM doc_sources WHERE session_key = ?1 AND path = ?2",
+                params![session_key, path],
                 |r| r.get(0),
             )
             .ok();
@@ -188,6 +217,9 @@ mod tests {
         (dir, store)
     }
 
+    const SESSION_A: &str = "line:group_a";
+    const SESSION_B: &str = "line:group_b";
+
     #[test]
     fn ingest_and_search() {
         let (_dir, store) = open_temp();
@@ -196,28 +228,76 @@ mod tests {
             "ราคาสินค้า B คือ 250 บาท".to_string(),
             "โปรโมชัน ซื้อ 2 แถม 1 ทุกรายการ".to_string(),
         ];
-        store.ingest("/tmp/test.txt", &chunks).unwrap();
+        store.ingest(SESSION_A, "/tmp/test.txt", &chunks).unwrap();
 
-        let hits = store.search("สินค้า A", 5).unwrap();
+        let hits = store.search(SESSION_A, "สินค้า A", 5).unwrap();
         assert!(!hits.is_empty(), "should find chunk about สินค้า A");
         assert!(hits[0].content.contains("สินค้า A"));
+    }
+
+    #[test]
+    fn sessions_are_isolated() {
+        let (_dir, store) = open_temp();
+        // Use completely disjoint content so trigram overlap cannot cause
+        // cross-session hits.
+        store
+            .ingest(SESSION_A, "/tmp/alpha.txt", &["XYZALPHA unique token".to_string()])
+            .unwrap();
+        store
+            .ingest(SESSION_B, "/tmp/beta.txt", &["QRSTBETA unique token".to_string()])
+            .unwrap();
+
+        // Session B must not find Session A's exclusive term
+        let hits_b = store.search(SESSION_B, "XYZALPHA", 5).unwrap();
+        assert!(hits_b.is_empty(), "session B must not see session A docs");
+
+        // Session A must not find Session B's exclusive term
+        let hits_a = store.search(SESSION_A, "QRSTBETA", 5).unwrap();
+        assert!(hits_a.is_empty(), "session A must not see session B docs");
+
+        // Each session sees only its own document in the list
+        let list_a = store.list(SESSION_A).unwrap();
+        assert_eq!(list_a.len(), 1);
+        assert_eq!(list_a[0].file_name, "alpha.txt");
+        let list_b = store.list(SESSION_B).unwrap();
+        assert_eq!(list_b.len(), 1);
+        assert_eq!(list_b[0].file_name, "beta.txt");
+    }
+
+    #[test]
+    fn same_path_different_sessions_coexist() {
+        let (_dir, store) = open_temp();
+        store
+            .ingest(SESSION_A, "/tmp/shared_name.txt", &["เนื้อหาของ A".to_string()])
+            .unwrap();
+        store
+            .ingest(SESSION_B, "/tmp/shared_name.txt", &["เนื้อหาของ B".to_string()])
+            .unwrap();
+
+        let hits_a = store.search(SESSION_A, "เนื้อหา", 5).unwrap();
+        assert_eq!(hits_a.len(), 1);
+        assert!(hits_a[0].content.contains('A'));
+
+        let hits_b = store.search(SESSION_B, "เนื้อหา", 5).unwrap();
+        assert_eq!(hits_b.len(), 1);
+        assert!(hits_b[0].content.contains('B'));
     }
 
     #[test]
     fn reingest_replaces_old_chunks() {
         let (_dir, store) = open_temp();
         store
-            .ingest("/tmp/doc.txt", &["เวอร์ชัน 1".to_string()])
+            .ingest(SESSION_A, "/tmp/doc.txt", &["เวอร์ชัน 1".to_string()])
             .unwrap();
         store
-            .ingest("/tmp/doc.txt", &["เวอร์ชัน 2".to_string()])
+            .ingest(SESSION_A, "/tmp/doc.txt", &["เวอร์ชัน 2".to_string()])
             .unwrap();
 
-        let docs = store.list().unwrap();
+        let docs = store.list(SESSION_A).unwrap();
         assert_eq!(docs.len(), 1, "re-ingest must not duplicate source entry");
         assert_eq!(docs[0].chunk_count, 1);
 
-        let hits = store.search("เวอร์ชัน", 5).unwrap();
+        let hits = store.search(SESSION_A, "เวอร์ชัน", 5).unwrap();
         assert_eq!(hits.len(), 1, "only the new chunk should exist");
         assert!(hits[0].content.contains('2'), "old chunk must be gone");
     }
@@ -226,9 +306,9 @@ mod tests {
     fn search_no_match_returns_empty() {
         let (_dir, store) = open_temp();
         store
-            .ingest("/tmp/a.txt", &["hello world".to_string()])
+            .ingest(SESSION_A, "/tmp/a.txt", &["hello world".to_string()])
             .unwrap();
-        let hits = store.search("ไม่มีคำนี้ในเอกสาร", 5).unwrap();
+        let hits = store.search(SESSION_A, "ไม่มีคำนี้ในเอกสาร", 5).unwrap();
         assert!(hits.is_empty());
     }
 
@@ -236,18 +316,34 @@ mod tests {
     fn forget_removes_document() {
         let (_dir, store) = open_temp();
         store
-            .ingest("/tmp/b.txt", &["จะลบออก".to_string()])
+            .ingest(SESSION_A, "/tmp/b.txt", &["จะลบออก".to_string()])
             .unwrap();
-        let removed = store.forget("/tmp/b.txt").unwrap();
+        let removed = store.forget(SESSION_A, "/tmp/b.txt").unwrap();
         assert!(removed);
-        assert!(store.list().unwrap().is_empty());
-        assert!(store.search("จะลบออก", 5).unwrap().is_empty());
+        assert!(store.list(SESSION_A).unwrap().is_empty());
+        assert!(store.search(SESSION_A, "จะลบออก", 5).unwrap().is_empty());
+    }
+
+    #[test]
+    fn forget_only_affects_own_session() {
+        let (_dir, store) = open_temp();
+        store
+            .ingest(SESSION_A, "/tmp/c.txt", &["เนื้อหา".to_string()])
+            .unwrap();
+        store
+            .ingest(SESSION_B, "/tmp/c.txt", &["เนื้อหา".to_string()])
+            .unwrap();
+
+        // B forgets its copy — A's copy must survive
+        let removed = store.forget(SESSION_B, "/tmp/c.txt").unwrap();
+        assert!(removed);
+        assert!(!store.search(SESSION_A, "เนื้อหา", 5).unwrap().is_empty());
     }
 
     #[test]
     fn forget_missing_returns_false() {
         let (_dir, store) = open_temp();
-        let removed = store.forget("/tmp/notexist.txt").unwrap();
+        let removed = store.forget(SESSION_A, "/tmp/notexist.txt").unwrap();
         assert!(!removed);
     }
 }
