@@ -693,7 +693,11 @@ mod tests {
         let mc = MemoryContent::parse(raw);
         // Mixed query: English word "Bangkok" (≥5 chars) and Thai trigrams from "กาแฟ".
         let hits = mc.prefetch("Bangkok กาแฟ");
-        assert_eq!(hits.len(), 2, "both entries should match via their respective paths");
+        assert_eq!(
+            hits.len(),
+            2,
+            "both entries should match via their respective paths"
+        );
     }
 
     #[test]
