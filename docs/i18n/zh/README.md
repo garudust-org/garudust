@@ -321,6 +321,10 @@ mcp_servers:
 | `session_search` | 全文搜索历史对话（FTS5 trigram） |
 | `delegate_task` | 并行派生子智能体处理分解任务 |
 | `skill_view` / `write_skill` | 加载和编写可复用技能 |
+| `doc_ingest` | 将文档（PDF、TXT、CSV、MD 等）建立全文索引 |
+| `doc_search` | 在所有已建索引的文档中全文搜索 |
+| `doc_list` | 列出当前会话中所有已建索引的文档 |
+| `doc_forget` | 从 RAG 索引中移除一个或全部文档 |
 
 **自定义脚本工具** — 在 `~/.garudust/tools/<name>/` 中放置 `tool.yaml` 和脚本：
 
@@ -353,6 +357,72 @@ mcp_servers:
   - name: filesystem
     command: npx
     args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+```
+
+---
+
+## RAG（文档搜索）
+
+向机器人发送文档文件，然后就其内容提问。智能体会在本地建立索引，并在收到相关问题时自动搜索文档内容。
+
+**支持格式：** PDF、TXT、CSV、MD、JSON、DOCX、DOC、XLSX、XLS
+
+### 通过聊天平台（LINE、Telegram、Discord 等）
+
+发送文档文件 → 机器人用对话语言询问确认 → 回复确认 → 文件建立索引，可供搜索。
+
+```
+[你发送 price_list.pdf]
+机器人：你发送了 "price_list.pdf"。是否要为其建立索引以便回答相关问题？
+你：是
+机器人：已从 price_list.pdf 建立 12 个索引块。
+你：B 商品的价格是多少？
+机器人：根据 price_list.pdf，B 商品售价为 250 泰铢。
+```
+
+### 通过 CLI 或智能体
+
+提及文件路径，智能体会自动建立索引：
+
+```
+你：请读取并索引 /home/user/report.pdf，以便我提问。
+```
+
+### 搜索文档
+
+直接自然提问 — 智能体会自动调用 `doc_search`：
+
+```
+你：Q3 的总收入是多少？
+你：总结一下上传文档的要点。
+```
+
+### 查看已建索引的文档
+
+```
+你：哪些文档已经建立了索引？
+Agent：[调用 doc_list — 返回文件名、索引块数量和建立时间]
+```
+
+### 删除文档
+
+可按文件名、精确路径删除，或一次性清除全部：
+
+```
+你：删除 price_list.pdf
+你：删除所有已建索引的文档
+```
+
+### 数据隔离
+
+每个群聊、私聊和平台会话均拥有独立的文档索引 — 不同会话之间的文档数据完全隔离，互不可见。
+
+### 禁用 RAG
+
+RAG 默认启用。如需禁用：
+
+```yaml
+disabled_toolsets: ["rag"]
 ```
 
 ---
