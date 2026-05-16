@@ -45,6 +45,7 @@ impl GatewayHandler {
         attachments: &[ImageAttachment],
         session_key: &str,
         seq_start: usize,
+        user_name: &str,
     ) {
         let script = self
             .config
@@ -127,7 +128,11 @@ impl GatewayHandler {
             };
 
             let ts = chrono::Local::now().format("%d/%m/%Y %H:%M");
-            let user_label = format!("[รูปที่ {seq} — {ts}]");
+            let user_label = if user_name.is_empty() {
+                format!("[รูปที่ {seq} — {ts}]")
+            } else {
+                format!("[รูปที่ {seq} — {ts} @{user_name}]")
+            };
             self.agent
                 .inject_history(session_key, &user_label, &description);
 
@@ -169,7 +174,7 @@ impl MessageHandler for GatewayHandler {
             self.sessions
                 .touch(&msg.session_key, &msg.channel.platform, &msg.user_id)
                 .await;
-            self.process_images(&msg.attachments, &msg.session_key, 0)
+            self.process_images(&msg.attachments, &msg.session_key, 0, &msg.user_name)
                 .await;
             return Ok(());
         }
@@ -216,7 +221,7 @@ impl MessageHandler for GatewayHandler {
 
         // If the message has images alongside text, process them first (silent)
         if !msg.attachments.is_empty() {
-            self.process_images(&msg.attachments, &msg.session_key, 0)
+            self.process_images(&msg.attachments, &msg.session_key, 0, &msg.user_name)
                 .await;
         }
 
