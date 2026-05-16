@@ -211,11 +211,16 @@ pub struct AgentConfig {
     pub cron: CronConfig,
 }
 
+/// Default model used when no `config.yaml`, env override, or routing hint applies.
+pub const DEFAULT_MODEL: &str = "anthropic/claude-sonnet-4-6";
+/// Default provider used when none is configured or auto-detected.
+pub const DEFAULT_PROVIDER: &str = "openrouter";
+
 fn default_model() -> String {
-    "anthropic/claude-sonnet-4-6".into()
+    DEFAULT_MODEL.into()
 }
 fn default_provider() -> String {
-    "openrouter".into()
+    DEFAULT_PROVIDER.into()
 }
 fn default_max_iterations() -> u32 {
     90
@@ -528,11 +533,11 @@ impl Default for AgentConfig {
         let home = dirs::home_dir().unwrap_or_default();
         Self {
             home_dir: Self::garudust_dir(),
-            model: "anthropic/claude-sonnet-4-6".into(),
+            model: DEFAULT_MODEL.into(),
             max_iterations: 90,
             sub_agent_max_iterations: None,
             tool_delay_ms: 0,
-            provider: "openrouter".into(),
+            provider: DEFAULT_PROVIDER.into(),
             base_url: None,
             routing: std::collections::HashMap::new(),
             tools: std::collections::HashMap::new(),
