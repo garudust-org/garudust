@@ -44,11 +44,11 @@ impl EventHandler for DiscordHandler {
                             }
                         },
                         Err(e) => {
-                            tracing::warn!(att_id = %att.id, error = %e, "Discord: read img bytes failed")
+                            tracing::warn!(att_id = %att.id, error = %e, "Discord: read img bytes failed");
                         }
                     },
                     Err(e) => {
-                        tracing::warn!(att_id = %att.id, error = %e, "Discord: download img failed")
+                        tracing::warn!(att_id = %att.id, error = %e, "Discord: download img failed");
                     }
                 }
             } else {

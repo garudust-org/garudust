@@ -319,7 +319,9 @@ impl MessageHandler for GatewayHandler {
         // If there are files waiting for RAG confirmation, prepend an explicit
         // directive so the agent knows the exact paths — no LLM text extraction needed.
         let task = if let Some((_, pending)) = self.pending_docs.remove(&msg.session_key) {
-            if !pending.is_empty() {
+            if pending.is_empty() {
+                msg.text.clone()
+            } else {
                 let files_info = pending
                     .iter()
                     .map(|d| format!("\"{}\" (path: {})", d.file_name, d.path))
@@ -331,8 +333,6 @@ impl MessageHandler for GatewayHandler {
                      ถ้าผู้ใช้ไม่ยืนยัน ให้ลบไฟล์ชั่วคราวและแจ้งผู้ใช้]\n\n{}",
                     msg.text
                 )
-            } else {
-                msg.text.clone()
             }
         } else {
             msg.text.clone()
