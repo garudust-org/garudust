@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use dashmap::DashMap;
 use garudust_agent::Agent;
 use garudust_core::{
     config::AgentConfig,
@@ -18,6 +19,9 @@ pub struct GatewayHandler {
     sessions: Arc<SessionRegistry>,
     approver: Arc<dyn CommandApprover>,
     config: Arc<AgentConfig>,
+    /// Files awaiting RAG ingest confirmation, keyed by session_key.
+    /// Populated when a doc-only message arrives; consumed on the next text turn.
+    pending_docs: Arc<DashMap<String, Vec<DocAttachment>>>,
 }
 
 impl GatewayHandler {
@@ -34,6 +38,7 @@ impl GatewayHandler {
             sessions,
             approver,
             config,
+            pending_docs: Arc::new(DashMap::new()),
         }
     }
 
@@ -116,15 +121,20 @@ impl GatewayHandler {
                 format!("[@{user_name} ส่งไฟล์ {} เวลา {ts}]", att.file_name)
             };
 
-            // Record the file in history so the agent can find the path when
-            // the user confirms.  Do NOT delete the file yet.
             let note = if rag_enabled {
-                format!("[ไฟล์บันทึกชั่วคราวที่ {} — รอการยืนยันจากผู้ใช้]", att.path)
+                "[รอการยืนยันจากผู้ใช้ว่าต้องการให้นำเข้าไฟล์นี้หรือไม่]".to_string()
             } else {
                 "[RAG ยังไม่ได้เปิดใช้งาน — ลบ 'rag' ออกจาก disabled_toolsets ใน config.yaml]"
                     .to_string()
             };
             self.agent.inject_history(session_key, &user_label, &note);
+        }
+
+        // Store attachments so the next text turn can pass the exact paths to
+        // doc_ingest without relying on the LLM to extract them from history.
+        if rag_enabled {
+            self.pending_docs
+                .insert(session_key.to_string(), attachments.to_vec());
         }
 
         if !rag_enabled {
@@ -303,9 +313,30 @@ impl MessageHandler for GatewayHandler {
         let agent = self.agent.clone();
         let platform = self.platform.clone();
         let approver = self.approver.clone();
-        let task = msg.text.clone();
         let platform_name = msg.channel.platform.clone();
         let session_key = msg.session_key.clone();
+
+        // If there are files waiting for RAG confirmation, prepend an explicit
+        // directive so the agent knows the exact paths — no LLM text extraction needed.
+        let task = if let Some((_, pending)) = self.pending_docs.remove(&msg.session_key) {
+            if !pending.is_empty() {
+                let files_info = pending
+                    .iter()
+                    .map(|d| format!("\"{}\" (path: {})", d.file_name, d.path))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!(
+                    "[SYSTEM: ผู้ใช้กำลังตอบคำถามเรื่องการนำเข้าไฟล์: {files_info} \
+                     ถ้าผู้ใช้ยืนยัน ให้เรียก doc_ingest สำหรับแต่ละ path ทันที \
+                     ถ้าผู้ใช้ไม่ยืนยัน ให้ลบไฟล์ชั่วคราวและแจ้งผู้ใช้]\n\n{}",
+                    msg.text
+                )
+            } else {
+                msg.text.clone()
+            }
+        } else {
+            msg.text.clone()
+        };
 
         tokio::spawn(async move {
             match agent
