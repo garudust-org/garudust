@@ -309,8 +309,8 @@ impl Tool for DocList {
                     |dt| dt.format("%Y-%m-%d %H:%M").to_string(),
                 );
                 format!(
-                    "- {} ({} chunks, ingested {})",
-                    d.file_name, d.chunk_count, ts
+                    "- {} | path: {} | {} chunks | ingested {}",
+                    d.file_name, d.path, d.chunk_count, ts
                 )
             })
             .collect::<Vec<_>>()
@@ -338,7 +338,9 @@ impl Tool for DocForget {
         "doc_forget"
     }
     fn description(&self) -> &'static str {
-        "Remove a document from the search index by its file path."
+        "Remove one or all documents from the RAG search index for the current session. \
+         Provide 'file_name' to remove a specific file by name, 'path' to remove by exact path, \
+         or set 'all' to true to clear every document in this session."
     }
     fn toolset(&self) -> &'static str {
         "rag"
@@ -347,32 +349,71 @@ impl Tool for DocForget {
         json!({
             "type": "object",
             "properties": {
+                "file_name": {
+                    "type": "string",
+                    "description": "Name of the file to remove (e.g. 'price_list.pdf')"
+                },
                 "path": {
                     "type": "string",
-                    "description": "Absolute path of the document to remove"
+                    "description": "Exact stored path of the document to remove"
+                },
+                "all": {
+                    "type": "boolean",
+                    "description": "Set to true to remove ALL documents in this session"
                 }
-            },
-            "required": ["path"]
+            }
         })
     }
 
     async fn execute(&self, params: Value, ctx: &ToolContext) -> Result<ToolResult, ToolError> {
-        let path = params["path"]
-            .as_str()
-            .ok_or_else(|| ToolError::InvalidArgs("'path' required".into()))?
-            .to_string();
         let session_key = ctx.conv_key.clone();
-
         let store = self.store.clone();
-        let removed = tokio::task::spawn_blocking(move || store.forget(&session_key, &path))
-            .await
-            .map_err(|e| ToolError::Execution(e.to_string()))?
-            .map_err(|e| ToolError::Execution(e.to_string()))?;
 
-        if removed {
-            Ok(ToolResult::ok("", "Document removed from index."))
-        } else {
-            Ok(ToolResult::ok("", "Document not found in index."))
+        // Clear all documents for this session
+        if params["all"].as_bool().unwrap_or(false) {
+            let count =
+                tokio::task::spawn_blocking(move || store.forget_all(&session_key))
+                    .await
+                    .map_err(|e| ToolError::Execution(e.to_string()))?
+                    .map_err(|e| ToolError::Execution(e.to_string()))?;
+            return Ok(ToolResult::ok(
+                "",
+                format!("Removed {count} document(s) from index."),
+            ));
         }
+
+        // Remove by file_name (user-friendly)
+        if let Some(file_name) = params["file_name"].as_str() {
+            let file_name = file_name.to_string();
+            let removed =
+                tokio::task::spawn_blocking(move || store.forget_by_name(&session_key, &file_name))
+                    .await
+                    .map_err(|e| ToolError::Execution(e.to_string()))?
+                    .map_err(|e| ToolError::Execution(e.to_string()))?;
+            return if removed {
+                Ok(ToolResult::ok("", "Document removed from index."))
+            } else {
+                Ok(ToolResult::ok("", "Document not found in index."))
+            };
+        }
+
+        // Remove by exact path
+        if let Some(path) = params["path"].as_str() {
+            let path = path.to_string();
+            let removed =
+                tokio::task::spawn_blocking(move || store.forget(&session_key, &path))
+                    .await
+                    .map_err(|e| ToolError::Execution(e.to_string()))?
+                    .map_err(|e| ToolError::Execution(e.to_string()))?;
+            return if removed {
+                Ok(ToolResult::ok("", "Document removed from index."))
+            } else {
+                Ok(ToolResult::ok("", "Document not found in index."))
+            };
+        }
+
+        Err(ToolError::InvalidArgs(
+            "provide 'file_name', 'path', or 'all: true'".into(),
+        ))
     }
 }

@@ -204,6 +204,50 @@ impl DocStore {
         tx.commit()?;
         Ok(true)
     }
+
+    /// Remove the first document whose `file_name` matches (case-insensitive)
+    /// within `session_key`. Returns `true` if a document was removed.
+    pub fn forget_by_name(&self, session_key: &str, file_name: &str) -> anyhow::Result<bool> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+        let row: Option<(String, String)> = tx
+            .query_row(
+                "SELECT id, path FROM doc_sources \
+                 WHERE session_key = ?1 AND lower(file_name) = lower(?2) \
+                 LIMIT 1",
+                params![session_key, file_name],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .ok();
+        let Some((id, _path)) = row else {
+            tx.commit()?;
+            return Ok(false);
+        };
+        tx.execute("DELETE FROM doc_chunks WHERE source_id = ?1", params![id])?;
+        tx.execute("DELETE FROM doc_sources WHERE id = ?1", params![id])?;
+        tx.commit()?;
+        Ok(true)
+    }
+
+    /// Remove ALL documents for `session_key`. Returns the number removed.
+    pub fn forget_all(&self, session_key: &str) -> anyhow::Result<usize> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+        let ids: Vec<String> = tx
+            .prepare("SELECT id FROM doc_sources WHERE session_key = ?1")?
+            .query_map(params![session_key], |r| r.get(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        let count = ids.len();
+        for id in &ids {
+            tx.execute("DELETE FROM doc_chunks WHERE source_id = ?1", params![id])?;
+        }
+        tx.execute(
+            "DELETE FROM doc_sources WHERE session_key = ?1",
+            params![session_key],
+        )?;
+        tx.commit()?;
+        Ok(count)
+    }
 }
 
 #[cfg(test)]
