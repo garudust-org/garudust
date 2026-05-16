@@ -43,7 +43,7 @@ A self-improving AI agent runtime written in Rust — delivered as a single ~10 
 
 ---
 
-## Install
+## Supported Platforms
 
 Download a pre-built binary from [**GitHub Releases**](https://github.com/garudust-org/garudust-agent/releases/latest) — no Rust required:
 

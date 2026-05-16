@@ -43,7 +43,7 @@ AI agent runtime แบบ self-improving เขียนด้วย Rust — b
 
 ---
 
-## ติดตั้ง
+## Supported Platforms
 
 ดาวน์โหลด binary สำเร็จรูปจาก [**GitHub Releases**](https://github.com/garudust-org/garudust-agent/releases/latest) — ไม่ต้องติดตั้ง Rust:
 

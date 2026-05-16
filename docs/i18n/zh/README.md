@@ -43,7 +43,7 @@
 
 ---
 
-## 安装
+## Supported Platforms
 
 从 [**GitHub Releases**](https://github.com/garudust-org/garudust-agent/releases/latest) 下载预构建 binary — 无需安装 Rust：
 
