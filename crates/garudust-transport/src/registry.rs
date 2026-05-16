@@ -42,6 +42,47 @@ fn build_base_transport(
         "ollama" => Arc::new(ollama::new(
             base_url.unwrap_or_else(|| ollama::DEFAULT_BASE_URL.into()),
         )),
+        "openai" => Arc::new(ChatCompletionsTransport::new(
+            base_url.unwrap_or_else(|| "https://api.openai.com/v1".into()),
+            api_key,
+        )),
+        "gemini" => Arc::new(
+            ChatCompletionsTransport::new(
+                base_url.unwrap_or_else(|| {
+                    "https://generativelanguage.googleapis.com/v1beta/openai".into()
+                }),
+                api_key,
+            )
+            .with_tokens_param("max_tokens"),
+        ),
+        "groq" => Arc::new(
+            ChatCompletionsTransport::new(
+                base_url.unwrap_or_else(|| "https://api.groq.com/openai/v1".into()),
+                api_key,
+            )
+            .with_tokens_param("max_tokens"),
+        ),
+        "mistral" => Arc::new(
+            ChatCompletionsTransport::new(
+                base_url.unwrap_or_else(|| "https://api.mistral.ai/v1".into()),
+                api_key,
+            )
+            .with_tokens_param("max_tokens"),
+        ),
+        "deepseek" => Arc::new(
+            ChatCompletionsTransport::new(
+                base_url.unwrap_or_else(|| "https://api.deepseek.com/v1".into()),
+                api_key,
+            )
+            .with_tokens_param("max_tokens"),
+        ),
+        "xai" => Arc::new(
+            ChatCompletionsTransport::new(
+                base_url.unwrap_or_else(|| "https://api.x.ai/v1".into()),
+                api_key,
+            )
+            .with_tokens_param("max_tokens"),
+        ),
         "vllm" => Arc::new(ChatCompletionsTransport::new(
             base_url.unwrap_or_else(|| "http://localhost:8000/v1".into()),
             api_key,

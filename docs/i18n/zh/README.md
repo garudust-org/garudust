@@ -36,7 +36,7 @@
 - **生命周期钩子** — `AgentHooks` 回调覆盖每轮对话、压缩事件、委派及会话结束
 - **兼容 agentskills.io** — 一条命令从社区 hub 或任意 GitHub 仓库安装技能
 - **7 大平台适配器** — Telegram、Discord、Slack、Matrix、LINE、WhatsApp、Webhook，同进程运行
-- **一个环境变量切换提供商** — 支持 Anthropic、OpenRouter、AWS Bedrock、Ollama、vLLM、ThaiLLM
+- **一个环境变量切换提供商** — 支持 Anthropic、OpenAI、Gemini、Groq、Mistral、DeepSeek、xAI、OpenRouter、AWS Bedrock、Ollama、vLLM、ThaiLLM
 - **安全优先设计** — Docker 沙箱、硬性命令拦截、内存投毒防护、工具输出自动脱敏
 
 ---
@@ -180,7 +180,7 @@ GARUDUST_API_KEY=my-gateway-secret
 
 ```yaml
 model: anthropic/claude-sonnet-4-6
-provider: anthropic        # anthropic | openrouter | ollama | vllm | bedrock | thaillm
+provider: anthropic        # anthropic | openai | gemini | groq | mistral | deepseek | xai | openrouter | ollama | vllm | bedrock | thaillm
 
 # 平台适配器 — 在 .env 中设置 token，在此处启用
 platforms:
@@ -254,6 +254,12 @@ nudge_interval: 5              # 每 N 轮提醒保存记忆（0 = 关闭）
 | 提供商 | `config.yaml` | `.env` |
 |--------|--------------|--------|
 | Anthropic | `provider: anthropic` | `ANTHROPIC_API_KEY` |
+| OpenAI | `provider: openai` | `OPENAI_API_KEY` |
+| Google Gemini | `provider: gemini` | `GEMINI_API_KEY` |
+| Groq | `provider: groq` | `GROQ_API_KEY` |
+| Mistral | `provider: mistral` | `MISTRAL_API_KEY` |
+| DeepSeek | `provider: deepseek` | `DEEPSEEK_API_KEY` |
+| xAI (Grok) | `provider: xai` | `XAI_API_KEY` |
 | OpenRouter | `provider: openrouter` *（默认）* | `OPENROUTER_API_KEY` |
 | AWS Bedrock | `provider: bedrock` | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` |
 | Ollama | `provider: ollama` + `base_url` | *（无需）* |

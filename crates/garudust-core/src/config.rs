@@ -141,7 +141,8 @@ pub struct AgentConfig {
     /// request, reducing context usage for small-context models.
     /// Available toolsets: web, files, terminal, memory, skills, agent,
     ///   browser, git, notes, json, mcp
-    /// Providers: anthropic, openrouter, vllm, ollama, bedrock, codex, thaillm
+    /// Providers: anthropic, openai, gemini, groq, mistral, deepseek, xai,
+    ///   openrouter, vllm, ollama, bedrock, codex, thaillm
     /// Example: `disabled_toolsets: [browser, git, notes, json, agent]`
     #[serde(default)]
     pub disabled_toolsets: Vec<String>,
@@ -594,8 +595,14 @@ impl AgentConfig {
         if yaml_authoritative {
             if config.api_key.is_none() {
                 config.api_key = match config.provider.as_str() {
-                    "vllm" => env_or_dotenv("VLLM_API_KEY", dotenv),
                     "anthropic" => env_or_dotenv("ANTHROPIC_API_KEY", dotenv),
+                    "openai" => env_or_dotenv("OPENAI_API_KEY", dotenv),
+                    "gemini" => env_or_dotenv("GEMINI_API_KEY", dotenv),
+                    "groq" => env_or_dotenv("GROQ_API_KEY", dotenv),
+                    "mistral" => env_or_dotenv("MISTRAL_API_KEY", dotenv),
+                    "deepseek" => env_or_dotenv("DEEPSEEK_API_KEY", dotenv),
+                    "xai" => env_or_dotenv("XAI_API_KEY", dotenv),
+                    "vllm" => env_or_dotenv("VLLM_API_KEY", dotenv),
                     "thaillm" => env_or_dotenv("THAILLM_API_KEY", dotenv),
                     "ollama" | "bedrock" | "codex" => None,
                     // openrouter and any unknown provider default to OpenRouter's key
@@ -607,6 +614,24 @@ impl AgentConfig {
             if let Some(k) = env_or_dotenv("ANTHROPIC_API_KEY", dotenv) {
                 config.api_key = Some(k);
                 config.provider = "anthropic".into();
+            } else if let Some(k) = env_or_dotenv("OPENAI_API_KEY", dotenv) {
+                config.api_key = Some(k);
+                config.provider = "openai".into();
+            } else if let Some(k) = env_or_dotenv("GEMINI_API_KEY", dotenv) {
+                config.api_key = Some(k);
+                config.provider = "gemini".into();
+            } else if let Some(k) = env_or_dotenv("GROQ_API_KEY", dotenv) {
+                config.api_key = Some(k);
+                config.provider = "groq".into();
+            } else if let Some(k) = env_or_dotenv("MISTRAL_API_KEY", dotenv) {
+                config.api_key = Some(k);
+                config.provider = "mistral".into();
+            } else if let Some(k) = env_or_dotenv("DEEPSEEK_API_KEY", dotenv) {
+                config.api_key = Some(k);
+                config.provider = "deepseek".into();
+            } else if let Some(k) = env_or_dotenv("XAI_API_KEY", dotenv) {
+                config.api_key = Some(k);
+                config.provider = "xai".into();
             } else if let Some(url) = env_or_dotenv("OLLAMA_BASE_URL", dotenv) {
                 config.provider = "ollama".into();
                 config.base_url = Some(url);

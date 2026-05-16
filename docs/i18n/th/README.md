@@ -36,7 +36,7 @@ AI agent runtime แบบ self-improving เขียนด้วย Rust — b
 - **Lifecycle hooks** — `AgentHooks` callback ทุก turn, compression, delegation และ session end
 - **รองรับ agentskills.io** — ติดตั้ง skill จาก hub หรือ GitHub repo ใดก็ได้ด้วยคำสั่งเดียว
 - **7 แพลตฟอร์มในกระบวนการเดียว** — Telegram, Discord, Slack, Matrix, LINE, WhatsApp, Webhook
-- **เปลี่ยน LLM ด้วย env var เดียว** — รองรับ Anthropic, OpenRouter, AWS Bedrock, Ollama, vLLM, ThaiLLM
+- **เปลี่ยน LLM ด้วย env var เดียว** — รองรับ Anthropic, OpenAI, Gemini, Groq, Mistral, DeepSeek, xAI, OpenRouter, AWS Bedrock, Ollama, vLLM, ThaiLLM
 - **ปลอดภัยตั้งแต่ต้น** — Docker sandbox, บล็อคคำสั่งอันตราย, ป้องกัน memory poisoning, redact secret อัตโนมัติ
 
 ---
@@ -180,7 +180,7 @@ GARUDUST_API_KEY=my-gateway-secret
 
 ```yaml
 model: anthropic/claude-sonnet-4-6
-provider: anthropic        # anthropic | openrouter | ollama | vllm | bedrock | thaillm
+provider: anthropic        # anthropic | openai | gemini | groq | mistral | deepseek | xai | openrouter | ollama | vllm | bedrock | thaillm
 
 # Platform adapters — ตั้ง token ใน .env แล้ว enable ที่นี่
 platforms:
@@ -254,6 +254,12 @@ nudge_interval: 5              # เตือนบันทึก memory ทุ
 | Provider | `config.yaml` | `.env` |
 |----------|--------------|--------|
 | Anthropic | `provider: anthropic` | `ANTHROPIC_API_KEY` |
+| OpenAI | `provider: openai` | `OPENAI_API_KEY` |
+| Google Gemini | `provider: gemini` | `GEMINI_API_KEY` |
+| Groq | `provider: groq` | `GROQ_API_KEY` |
+| Mistral | `provider: mistral` | `MISTRAL_API_KEY` |
+| DeepSeek | `provider: deepseek` | `DEEPSEEK_API_KEY` |
+| xAI (Grok) | `provider: xai` | `XAI_API_KEY` |
 | OpenRouter | `provider: openrouter` *(default)* | `OPENROUTER_API_KEY` |
 | AWS Bedrock | `provider: bedrock` | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` |
 | Ollama | `provider: ollama` + `base_url` | *(ไม่ต้องการ)* |

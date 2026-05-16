@@ -36,7 +36,7 @@ A self-improving AI agent runtime written in Rust — delivered as a single ~10 
 - **Lifecycle hooks** — `AgentHooks` callbacks for every turn, compression event, delegation, and session end
 - **agentskills.io compatible** — install community skills from the hub or any GitHub repo with one command
 - **7 platform adapters** — Telegram, Discord, Slack, Matrix, LINE, WhatsApp, Webhook — all in one process
-- **Swap providers with one env var** — Anthropic, OpenRouter, AWS Bedrock, Ollama, vLLM, ThaiLLM, or any OpenAI-compatible endpoint
+- **Swap providers with one env var** — Anthropic, OpenAI, Gemini, Groq, Mistral, DeepSeek, xAI, OpenRouter, AWS Bedrock, Ollama, vLLM, ThaiLLM, or any OpenAI-compatible endpoint
 - **Secure by design** — Docker sandbox, hardline command blocks, memory-poisoning protection, automatic secret redaction
 
 ---
@@ -254,6 +254,12 @@ All adapters run together in the same `garudust-server` process. Set the relevan
 | Provider | `config.yaml` | `.env` |
 |----------|--------------|--------|
 | Anthropic | `provider: anthropic` | `ANTHROPIC_API_KEY` |
+| OpenAI | `provider: openai` | `OPENAI_API_KEY` |
+| Google Gemini | `provider: gemini` | `GEMINI_API_KEY` |
+| Groq | `provider: groq` | `GROQ_API_KEY` |
+| Mistral | `provider: mistral` | `MISTRAL_API_KEY` |
+| DeepSeek | `provider: deepseek` | `DEEPSEEK_API_KEY` |
+| xAI (Grok) | `provider: xai` | `XAI_API_KEY` |
 | OpenRouter | `provider: openrouter` *(default)* | `OPENROUTER_API_KEY` |
 | AWS Bedrock | `provider: bedrock` | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` |
 | Ollama | `provider: ollama` + `base_url` | *(none)* |
