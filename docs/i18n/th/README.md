@@ -72,29 +72,29 @@ cd garudust-agent && cargo build --release
 ## เริ่มใช้งาน
 
 <table>
-<tr><td>
-<h3>01 — ติดตั้ง</h3>
-ดาวน์โหลด binary จาก <a href="https://github.com/garudust-org/garudust-agent/releases/latest">GitHub Releases</a>:
-<pre>curl -LO https://github.com/garudust-org/garudust-agent/releases/latest/download/garudust-linux-x64.tar.gz
+<tr><td bgcolor="#000000">
+<h3><font color="#4af626">01 — ติดตั้ง</font></h3>
+<font color="#cccccc">ดาวน์โหลด binary จาก <a href="https://github.com/garudust-org/garudust-agent/releases/latest">GitHub Releases</a>:</font><br>
+<pre><font color="#4af626">curl -LO https://github.com/garudust-org/garudust-agent/releases/latest/download/garudust-linux-x64.tar.gz
 tar -xzf garudust-*.tar.gz
-sudo mv garudust garudust-server /usr/local/bin/</pre>
-หรือ build จาก source (Rust 1.87+):
-<pre>git clone https://github.com/garudust-org/garudust-agent
-cd garudust-agent &amp;&amp; cargo build --release</pre>
+sudo mv garudust garudust-server /usr/local/bin/</font></pre>
+<font color="#cccccc">หรือ build จาก source (Rust 1.87+):</font><br>
+<pre><font color="#4af626">git clone https://github.com/garudust-org/garudust-agent
+cd garudust-agent &amp;&amp; cargo build --release</font></pre>
 </td></tr>
-<tr><td>
-<h3>02 — ตั้งค่า</h3>
-รัน wizard ครั้งแรก — เลือก provider ใส่ API key แล้วเขียน <code>~/.garudust/.env</code> ให้อัตโนมัติ:
-<pre>garudust setup</pre>
-หรือใส่ key ตรงใน <code>~/.garudust/.env</code> เอง ดู <a href="#การตั้งค่า">การตั้งค่า</a> สำหรับ <code>config.yaml</code> แบบเต็ม
+<tr><td bgcolor="#000000">
+<h3><font color="#4af626">02 — ตั้งค่า</font></h3>
+<font color="#cccccc">รัน wizard ครั้งแรก — เลือก provider ใส่ API key แล้วเขียน <code>~/.garudust/.env</code> ให้อัตโนมัติ:</font><br>
+<pre><font color="#4af626">garudust setup</font></pre>
+<font color="#cccccc">หรือใส่ key ตรงใน <code>~/.garudust/.env</code> เอง ดู <a href="#การตั้งค่า">การตั้งค่า</a> สำหรับ <code>config.yaml</code> แบบเต็ม</font>
 </td></tr>
-<tr><td>
-<h3>03 — รัน</h3>
-<pre>garudust                                  # interactive TUI
-garudust "สรุป git log"                   # one-shot task
-garudust --hint fast "ตรวจสอบโค้ดนี้"   # ใช้ model ที่ถูกกว่า
-garudust-server --port 3000               # headless server (REST + WS)
-docker compose up -d                      # Docker</pre>
+<tr><td bgcolor="#000000">
+<h3><font color="#4af626">03 — รัน</font></h3>
+<pre><font color="#4af626">garudust                                  <font color="#555555"># interactive TUI</font>
+garudust "สรุป git log"                   <font color="#555555"># one-shot task</font>
+garudust --hint fast "ตรวจสอบโค้ดนี้"   <font color="#555555"># ใช้ model ที่ถูกกว่า</font>
+garudust-server --port 3000               <font color="#555555"># headless server (REST + WS)</font>
+docker compose up -d                      <font color="#555555"># Docker</font></font></pre>
 </td></tr>
 </table>
 
