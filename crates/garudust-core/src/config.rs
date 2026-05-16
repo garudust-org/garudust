@@ -172,11 +172,12 @@ pub struct AgentConfig {
     /// Toolsets to disable. Removes all tools in the named toolset from every
     /// request, reducing context usage for small-context models.
     /// Available toolsets: web, files, terminal, memory, skills, agent,
-    ///   browser, git, notes, json, mcp
+    ///   browser, git, notes, json, mcp, rag
     /// Providers: anthropic, openai, gemini, groq, mistral, deepseek, xai,
     ///   openrouter, vllm, ollama, bedrock, codex, thaillm
     /// Example: `disabled_toolsets: [browser, git, notes, json, agent]`
-    #[serde(default)]
+    /// The `rag` toolset is disabled by default — remove it from this list to enable.
+    #[serde(default = "default_disabled_toolsets")]
     pub disabled_toolsets: Vec<String>,
     /// Individual tools to disable by exact name. Useful when only some tools
     /// in a toolset need to be removed (e.g. disable `image_read` without
@@ -444,6 +445,11 @@ fn default_server_port() -> u16 {
     3000
 }
 
+fn default_disabled_toolsets() -> Vec<String> {
+    // rag is opt-in: enable by removing it from this list in config.yaml
+    vec!["rag".to_string()]
+}
+
 /// Parse a comma-separated `"cron_expr=task"` env var into structured [`CronJob`]s.
 /// Mirrors `garudust_cron::parse_job_pairs` (kept inline to avoid a core→cron dep cycle).
 fn parse_cron_jobs_str(s: &str) -> Vec<CronJob> {
@@ -563,7 +569,7 @@ impl Default for AgentConfig {
             max_output_tokens: None,
             reasoning_effort: None,
             context_window: None,
-            disabled_toolsets: Vec::new(),
+            disabled_toolsets: default_disabled_toolsets(),
             disabled_tools: Vec::new(),
             show_usage_footer: false,
             platforms: WebhookPlatformsConfig {
