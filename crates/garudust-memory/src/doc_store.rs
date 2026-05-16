@@ -176,3 +176,78 @@ impl DocStore {
         Ok(true)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn open_temp() -> (TempDir, DocStore) {
+        let dir = TempDir::new().unwrap();
+        let store = DocStore::open(dir.path()).unwrap();
+        (dir, store)
+    }
+
+    #[test]
+    fn ingest_and_search() {
+        let (_dir, store) = open_temp();
+        let chunks = vec![
+            "ราคาสินค้า A คือ 100 บาท".to_string(),
+            "ราคาสินค้า B คือ 250 บาท".to_string(),
+            "โปรโมชัน ซื้อ 2 แถม 1 ทุกรายการ".to_string(),
+        ];
+        store.ingest("/tmp/test.txt", &chunks).unwrap();
+
+        let hits = store.search("สินค้า A", 5).unwrap();
+        assert!(!hits.is_empty(), "should find chunk about สินค้า A");
+        assert!(hits[0].content.contains("สินค้า A"));
+    }
+
+    #[test]
+    fn reingest_replaces_old_chunks() {
+        let (_dir, store) = open_temp();
+        store
+            .ingest("/tmp/doc.txt", &["เวอร์ชัน 1".to_string()])
+            .unwrap();
+        store
+            .ingest("/tmp/doc.txt", &["เวอร์ชัน 2".to_string()])
+            .unwrap();
+
+        let docs = store.list().unwrap();
+        assert_eq!(docs.len(), 1, "re-ingest must not duplicate source entry");
+        assert_eq!(docs[0].chunk_count, 1);
+
+        let hits = store.search("เวอร์ชัน", 5).unwrap();
+        assert_eq!(hits.len(), 1, "only the new chunk should exist");
+        assert!(hits[0].content.contains('2'), "old chunk must be gone");
+    }
+
+    #[test]
+    fn search_no_match_returns_empty() {
+        let (_dir, store) = open_temp();
+        store
+            .ingest("/tmp/a.txt", &["hello world".to_string()])
+            .unwrap();
+        let hits = store.search("ไม่มีคำนี้ในเอกสาร", 5).unwrap();
+        assert!(hits.is_empty());
+    }
+
+    #[test]
+    fn forget_removes_document() {
+        let (_dir, store) = open_temp();
+        store
+            .ingest("/tmp/b.txt", &["จะลบออก".to_string()])
+            .unwrap();
+        let removed = store.forget("/tmp/b.txt").unwrap();
+        assert!(removed);
+        assert!(store.list().unwrap().is_empty());
+        assert!(store.search("จะลบออก", 5).unwrap().is_empty());
+    }
+
+    #[test]
+    fn forget_missing_returns_false() {
+        let (_dir, store) = open_temp();
+        let removed = store.forget("/tmp/notexist.txt").unwrap();
+        assert!(!removed);
+    }
+}
