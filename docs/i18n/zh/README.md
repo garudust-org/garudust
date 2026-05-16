@@ -293,23 +293,6 @@ mcp_servers:
 
 ---
 
-## v0.4.0 新特性
-
-| 特性 | 说明 |
-|---|---|
-| 并行工具执行 | 基于 `parallelism_key` 分组 — 独立工具并发，冲突写入自动串行 |
-| 凭证轮换 | `LLM_FALLBACK_API_KEYS=key2,key3` — 鉴权失败时自动轮换，无需重启 |
-| 三区域上下文压缩 | 保留原始任务（头部）+ 最新轮次（尾部），仅摘要中间部分 |
-| `AgentHooks` trait | `on_turn_start`、`on_session_end`、`on_pre_compress`、`on_delegation` |
-| 扩展推理强度 | `Minimal`（512 tokens）→ `Low` → `Medium` → `High` → `XHigh`（32k tokens） |
-| 子智能体迭代预算 | `sub_agent_max_iterations` 独立于主智能体单独限制委派链深度 |
-| FTS5 trigram 搜索 | 子串会话搜索 — `"pythag"` 可匹配 `"Pythagorean"`，包含自动 DB 迁移 |
-| WAL 模式降级 | 在 NFS/SMB 文件系统上优雅降级，而非崩溃 |
-| 提供商路由 hint | `routing:` 将 hint 名称映射到 provider/model；`--hint <name>` 仅针对单个任务切换模型 |
-| 按工具配置模型 | `tools.<name>.model` 向工具子进程转发 `GARUDUST_MODEL`/`GARUDUST_FALLBACK_MODEL` |
-
----
-
 ## 平台适配器
 
 <div align="center">
@@ -440,9 +423,45 @@ Agent：已记录。
 
 ## 参与贡献
 
-添加工具、传输层或平台适配器通常只需修改一个 crate，代码量不超过 100 行。详见 [CONTRIBUTING.md](../../../CONTRIBUTING.md)。
+Welcome, garudian！Garudust 由一群相信 AI 智能体应该快速、私密、受用户掌控的人共同构建。每一份贡献——无论是修复拼写错误、添加新工具还是实现完整特性——都让它变得更好。
 
-发现问题或有疑问？[提交 issue](https://github.com/garudust-org/garudust-agent/issues) 或加入 [Discord 社区](https://discord.com/channels/1501414298449088745/1501414298893942877)。
+### 贡献方式
+
+| 方向 | 具体内容 | 难度 |
+|------|---------|------|
+| Bug 报告 | 提交 issue 并附上复现步骤 | 极低 |
+| 文档 | 修复错别字、改进示例、翻译 | 低 |
+| Hub 工具 | 向 [garudust-hub](https://github.com/garudust-org/garudust-hub) 添加脚本工具 | 低 |
+| 技能 | 编写可复用技能并分享到 [agentskills.io](https://agentskills.io) | 低 |
+| 平台适配器 | 在 `garudust-platforms` 中添加新聊天平台支持 | 中等 |
+| 传输提供商 | 在 `garudust-transport` 中添加新 LLM 提供商 | 中等 |
+| 核心功能 | 智能体循环、记忆、压缩、工具 | 较高 |
+
+### 快速开始
+
+```bash
+git clone https://github.com/garudust-org/garudust-agent
+cd garudust-agent
+cargo build                   # 构建所有 crate
+cargo test --workspace        # 运行完整测试套件
+cargo clippy --workspace      # lint 检查
+```
+
+**添加内置工具** — 在 `crates/garudust-tools/src/toolsets/` 中实现 `Tool` trait，并在 `ToolRegistry::new()` 中注册。通常只需一个文件，不超过 100 行。
+
+**添加 hub 工具** — 在 [garudust-hub](https://github.com/garudust-org/garudust-hub) 的 `tools/<name>/` 下放置 `tool.yaml` 和脚本，无需 Rust。
+
+**添加 LLM 提供商** — 在 `crates/garudust-transport/src/` 中实现 `ProviderTransport`（`chat` + `chat_stream`），并在 `registry.rs` 中接入。
+
+**添加平台适配器** — 在 `crates/garudust-platforms/src/` 中实现 `PlatformAdapter`（`send_message` + `start_listening`）。
+
+详细分步指南请参见 [CONTRIBUTING.md](../../../CONTRIBUTING.md)。
+
+### 社区
+
+- [Discord](https://discord.com/channels/1501414298449088745/1501414298893942877) — 交流、提问与分享想法
+- [Issues](https://github.com/garudust-org/garudust-agent/issues) — Bug 报告与功能请求
+- [Discussions](https://github.com/garudust-org/garudust-agent/discussions) — 长篇提案与深度讨论
 
 ---
 

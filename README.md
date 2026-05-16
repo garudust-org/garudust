@@ -293,23 +293,6 @@ mcp_servers:
 
 ---
 
-## What's New in v0.4.0
-
-| Feature | Detail |
-|---|---|
-| Parallel tool execution | Calls grouped by `parallelism_key` — independent tools run concurrently, conflicting writes serialize automatically |
-| Credential rotation | `LLM_FALLBACK_API_KEYS=key2,key3` — rotates on auth failure without restarting |
-| 3-region compression | Head (original task) + summarized middle + tail (recent turns) always preserved |
-| `AgentHooks` trait | `on_turn_start`, `on_session_end`, `on_pre_compress`, `on_delegation` |
-| Extended reasoning effort | `Minimal` (512 tokens) → `Low` → `Medium` → `High` → `XHigh` (32k tokens) |
-| Sub-agent iteration budget | `sub_agent_max_iterations` caps delegation chains independently of the main agent |
-| FTS5 trigram search | Substring session search — `"pythag"` matches `"Pythagorean"`, versioned DB migration included |
-| WAL mode fallback | Degrades gracefully on NFS/SMB filesystems instead of crashing |
-| Provider routing hints | `routing:` in config maps hint names to provider/model pairs; `--hint <name>` overrides the model for a single task only |
-| Per-tool model config | `tools.<name>.model` in config forwards `GARUDUST_MODEL`/`GARUDUST_FALLBACK_MODEL` to hub tool subprocesses |
-
----
-
 ## Platform Adapters
 
 <div align="center">
@@ -440,9 +423,45 @@ Agent: Got it — saving to memory.
 
 ## Contributing
 
-Adding a tool, transport, or platform adapter typically touches one crate and takes under 100 lines. See [CONTRIBUTING.md](CONTRIBUTING.md) for step-by-step guides.
+Welcome, garudian! Garudust is built by people who believe AI agents should be fast, private, and user-controlled. Every contribution — a typo fix, a new tool, or a full feature — makes it better for everyone.
 
-Found a bug or have a question? [Open an issue](https://github.com/garudust-org/garudust-agent/issues) or join the [Discord community](https://discord.com/channels/1501414298449088745/1501414298893942877).
+### Ways to contribute
+
+| Area | What it involves | Effort |
+|------|-----------------|--------|
+| Bug reports | Open an issue with steps to reproduce | Minimal |
+| Documentation | Fix typos, improve examples, add translations | Low |
+| Hub tools | Add a script tool to [garudust-hub](https://github.com/garudust-org/garudust-hub) | Low |
+| Skills | Write a reusable skill and share it on [agentskills.io](https://agentskills.io) | Low |
+| Platform adapters | Add support for a new chat platform in `garudust-platforms` | Medium |
+| Transport providers | Add a new LLM provider in `garudust-transport` | Medium |
+| Core features | Agent loop, memory, compression, tools | High |
+
+### Getting started
+
+```bash
+git clone https://github.com/garudust-org/garudust-agent
+cd garudust-agent
+cargo build                   # build all crates
+cargo test --workspace        # full test suite
+cargo clippy --workspace      # lint check
+```
+
+**Adding a built-in tool** — implement `Tool` in `crates/garudust-tools/src/toolsets/`, register it in `ToolRegistry::new()`. Typically one file, under 100 lines.
+
+**Adding a hub tool** — drop a `tool.yaml` + script into [garudust-hub](https://github.com/garudust-org/garudust-hub) under `tools/<name>/`. No Rust required.
+
+**Adding an LLM provider** — implement `ProviderTransport` (`chat` + `chat_stream`) in `crates/garudust-transport/src/`, wire it up in `registry.rs`.
+
+**Adding a platform adapter** — implement `PlatformAdapter` (`send_message` + `start_listening`) in `crates/garudust-platforms/src/`.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed step-by-step guides on each area.
+
+### Community
+
+- [Discord](https://discord.com/channels/1501414298449088745/1501414298893942877) — chat, questions, and ideas
+- [Issues](https://github.com/garudust-org/garudust-agent/issues) — bug reports and feature requests
+- [Discussions](https://github.com/garudust-org/garudust-agent/discussions) — longer-form proposals
 
 ---
 

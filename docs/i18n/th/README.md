@@ -293,23 +293,6 @@ mcp_servers:
 
 ---
 
-## ใหม่ใน v0.4.0
-
-| ฟีเจอร์ | รายละเอียด |
-|---|---|
-| รัน tool พร้อมกัน | จัดกลุ่มด้วย `parallelism_key` — ทำงานคู่ขนาน serialize เฉพาะที่ขัดแย้ง |
-| หมุนเวียน API key | `LLM_FALLBACK_API_KEYS=key2,key3` — สลับอัตโนมัติเมื่อ auth ล้มเหลว |
-| บีบอัด context 3 zone | เก็บ task ต้นทาง + tail ล่าสุด สรุปเฉพาะตรงกลาง |
-| `AgentHooks` trait | `on_turn_start`, `on_session_end`, `on_pre_compress`, `on_delegation` |
-| Reasoning effort ขยาย | `Minimal` (512 tokens) → `Low` → `Medium` → `High` → `XHigh` (32k tokens) |
-| งบ iteration ของ sub-agent | `sub_agent_max_iterations` แยกอิสระจาก agent หลัก |
-| FTS5 trigram search | ค้นหาแบบ substring — `"pythag"` เจอ `"Pythagorean"` พร้อม migration อัตโนมัติ |
-| WAL mode fallback | ลดระดับอัจฉริยะบน NFS/SMB แทนที่จะ crash |
-| Provider routing hints | `routing:` ใน config กำหนด hint → provider/model; `--hint <name>` เปลี่ยน model เฉพาะ task นั้น |
-| Per-tool model config | `tools.<name>.model` ใน config ส่ง `GARUDUST_MODEL`/`GARUDUST_FALLBACK_MODEL` ให้ subprocess ของ tool |
-
----
-
 ## แพลตฟอร์ม
 
 <div align="center">
@@ -440,9 +423,45 @@ Agent: รับทราบ — บันทึกไว้ใน memory แล
 
 ## ร่วมพัฒนา
 
-การเพิ่ม tool, transport หรือ platform adapter โดยทั่วไปแก้ไขเพียง crate เดียว ใช้โค้ดไม่ถึง 100 บรรทัด ดู [CONTRIBUTING.md](../../../CONTRIBUTING.md) สำหรับคำแนะนำ
+Welcome, garudian! Garudust สร้างขึ้นโดยคนที่เชื่อว่า AI agent ควรเร็ว ส่วนตัว และอยู่ภายใต้การควบคุมของผู้ใช้ ทุกการมีส่วนร่วม — แก้ typo, เพิ่ม tool ใหม่, หรือ feature เต็ม — ทำให้มันดีขึ้นสำหรับทุกคน
 
-พบบัก หรือมีคำถาม? [เปิด issue](https://github.com/garudust-org/garudust-agent/issues) หรือเข้าร่วม [ชุมชน Discord](https://discord.com/channels/1501414298449088745/1501414298893942877)
+### วิธีมีส่วนร่วม
+
+| ด้าน | สิ่งที่ต้องทำ | ความยาก |
+|------|--------------|---------|
+| รายงานบัก | เปิด issue พร้อมขั้นตอนที่ทำให้เกิดปัญหา | ต่ำมาก |
+| เอกสาร | แก้ typo, ปรับตัวอย่าง, แปลภาษา | ต่ำ |
+| Hub tools | เพิ่ม script tool ใน [garudust-hub](https://github.com/garudust-org/garudust-hub) | ต่ำ |
+| Skills | เขียน skill ที่ใช้ซ้ำได้และแชร์บน [agentskills.io](https://agentskills.io) | ต่ำ |
+| Platform adapters | เพิ่มรองรับแพลตฟอร์มแชทใหม่ใน `garudust-platforms` | ปานกลาง |
+| Transport providers | เพิ่ม LLM provider ใหม่ใน `garudust-transport` | ปานกลาง |
+| Core features | Agent loop, memory, compression, tools | สูง |
+
+### เริ่มต้น
+
+```bash
+git clone https://github.com/garudust-org/garudust-agent
+cd garudust-agent
+cargo build                   # build ทุก crate
+cargo test --workspace        # รัน test ทั้งหมด
+cargo clippy --workspace      # ตรวจ lint
+```
+
+**เพิ่ม built-in tool** — implement `Tool` ใน `crates/garudust-tools/src/toolsets/` แล้ว register ใน `ToolRegistry::new()` ปกติใช้ไฟล์เดียวไม่ถึง 100 บรรทัด
+
+**เพิ่ม hub tool** — วาง `tool.yaml` + script ลง [garudust-hub](https://github.com/garudust-org/garudust-hub) ใต้ `tools/<name>/` ไม่ต้องใช้ Rust
+
+**เพิ่ม LLM provider** — implement `ProviderTransport` (`chat` + `chat_stream`) ใน `crates/garudust-transport/src/` แล้วเชื่อมใน `registry.rs`
+
+**เพิ่ม platform adapter** — implement `PlatformAdapter` (`send_message` + `start_listening`) ใน `crates/garudust-platforms/src/`
+
+ดู [CONTRIBUTING.md](../../../CONTRIBUTING.md) สำหรับคู่มือละเอียดในแต่ละด้าน
+
+### ชุมชน
+
+- [Discord](https://discord.com/channels/1501414298449088745/1501414298893942877) — คุย ถามตอบ และแชร์ไอเดีย
+- [Issues](https://github.com/garudust-org/garudust-agent/issues) — รายงานบักและ feature requests
+- [Discussions](https://github.com/garudust-org/garudust-agent/discussions) — ไอเดียและข้อเสนอที่ต้องการถกเถียง
 
 ---
 
