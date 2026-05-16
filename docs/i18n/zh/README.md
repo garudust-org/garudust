@@ -71,15 +71,57 @@ cd garudust-agent && cargo build --release
 
 ## 快速开始
 
-```bash
-garudust setup   # 首次配置向导 — 选择提供商、保存 API 密钥
-```
+<table>
+<tr>
+<td width="33%" valign="top">
+<h3>01 — 安装</h3>
+从 <a href="https://github.com/garudust-org/garudust-agent/releases/latest">GitHub Releases</a> 下载预构建 binary：
+<pre>curl -LO https://github.com/garudust-org/garudust-agent/\
+releases/latest/download/garudust-linux-x64.tar.gz
 
-### 1 — 交互式 TUI
-
-```bash
+tar -xzf garudust-*.tar.gz
+sudo mv garudust garudust-server \
+  /usr/local/bin/</pre>
+或从源码构建（需 Rust 1.87+）：
+<pre>git clone https://github.com/garudust-org/garudust-agent
+cd garudust-agent
+cargo build --release</pre>
+</td>
+<td width="33%" valign="top">
+<h3>02 — 配置</h3>
+运行首次配置向导：
+<pre>garudust setup</pre>
+✓ 选择 LLM 提供商<br>
+✓ 输入 API 密钥<br>
+✓ 选择默认模型<br><br>
+或直接写入 <code>~/.garudust/.env</code>：
+<pre>ANTHROPIC_API_KEY=sk-ant-...
+# OPENAI_API_KEY=sk-...
+# GROQ_API_KEY=gsk_...
+# OPENROUTER_API_KEY=sk-or-...</pre>
+完整 <code>config.yaml</code> 参考见<a href="#配置">配置</a>章节。
+</td>
+<td width="33%" valign="top">
+<h3>03 — 运行</h3>
+<pre># 交互式 TUI
 garudust
-```
+
+# 单次任务
+garudust "整理 git log 为 changelog"
+
+# 使用更廉价的模型
+garudust --hint fast "这段代码正确吗？"
+
+# 无头服务器（REST + WS）
+garudust-server --port 3000
+
+# Docker
+docker compose up -d</pre>
+</td>
+</tr>
+</table>
+
+### TUI 快捷键
 
 <div align="center">
   <img src="../../../assets/demo-tui.png" alt="Garudust TUI" width="800"/>
@@ -93,44 +135,9 @@ garudust
 | `/model <name>` | 即时切换模型 |
 | `Ctrl+C` | 退出 |
 
-### 2 — 单次执行
+### 服务器 — API
 
-```bash
-garudust "将最近 7 天的 git log 整理成 changelog"
-garudust --hint fast "这个函数正确吗？"   # 仅针对该任务使用更廉价的模型
-```
-
-输出至 stdout，成功时退出码为 0，支持管道操作。
-
-### 3 — 服务器模式
-
-`garudust-server` 开放 `POST /chat`、`POST /chat/stream` 和 `ws://…/chat/ws`，并在同一进程中运行所有平台适配器。详细配置请参见[配置](#配置)章节。
-
-**直接运行 binary**
-
-```bash
-garudust-server --port 3000
-```
-
-**Docker**（同一 binary，容器化部署）
-
-```bash
-# 1. 创建 .env 文件（详见下方配置章节）
-cp .env.example .env   # 或手动创建
-# 2. 启动
-docker compose up -d
-# 3. 检查健康状态
-curl http://localhost:3000/health
-```
-
-数据持久化在 Docker volume `garudust-data`（容器内为 `/root/.garudust`）。如需使用自定义 `config.yaml`，可通过 bind-mount 挂载：
-
-```yaml
-# docker-compose.yml（添加到 volumes 块）
-- ./config.yaml:/root/.garudust/config.yaml:ro
-```
-
-**API 测试**
+`garudust-server` 开放 `POST /chat`、`POST /chat/stream` 和 `ws://…/chat/ws`，并在同一进程中运行所有平台适配器。
 
 ```bash
 curl -X POST http://localhost:3000/chat \
@@ -141,6 +148,21 @@ curl -X POST http://localhost:3000/chat \
 curl -X POST http://localhost:3000/chat/stream \
   -H "Content-Type: application/json" \
   -d '{"message": "用 3 句话解释 async/await"}'
+```
+
+### 服务器 — Docker
+
+```bash
+cp .env.example .env        # 填入你的密钥
+docker compose up -d
+curl http://localhost:3000/health
+```
+
+数据持久化在 volume `garudust-data`（容器内为 `/root/.garudust`），可 bind-mount 自定义配置：
+
+```yaml
+# docker-compose.yml — volumes 块
+- ./config.yaml:/root/.garudust/config.yaml:ro
 ```
 
 ---

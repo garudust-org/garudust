@@ -71,15 +71,57 @@ cd garudust-agent && cargo build --release
 
 ## เริ่มใช้งาน
 
-```bash
-garudust setup   # ตั้งค่าครั้งแรก — เลือก provider, บันทึก API key
-```
+<table>
+<tr>
+<td width="33%" valign="top">
+<h3>01 — ติดตั้ง</h3>
+ดาวน์โหลด binary จาก <a href="https://github.com/garudust-org/garudust-agent/releases/latest">GitHub Releases</a>:
+<pre>curl -LO https://github.com/garudust-org/garudust-agent/\
+releases/latest/download/garudust-linux-x64.tar.gz
 
-### 1 — Interactive TUI
-
-```bash
+tar -xzf garudust-*.tar.gz
+sudo mv garudust garudust-server \
+  /usr/local/bin/</pre>
+หรือ build จาก source (Rust 1.87+):
+<pre>git clone https://github.com/garudust-org/garudust-agent
+cd garudust-agent
+cargo build --release</pre>
+</td>
+<td width="33%" valign="top">
+<h3>02 — ตั้งค่า</h3>
+รัน wizard ครั้งแรก:
+<pre>garudust setup</pre>
+✓ เลือก LLM provider<br>
+✓ ใส่ API key<br>
+✓ เลือก model<br><br>
+หรือตั้งตรงใน <code>~/.garudust/.env</code>:
+<pre>ANTHROPIC_API_KEY=sk-ant-...
+# OPENAI_API_KEY=sk-...
+# GROQ_API_KEY=gsk_...
+# OPENROUTER_API_KEY=sk-or-...</pre>
+ดู <a href="#การตั้งค่า">การตั้งค่า</a> สำหรับ <code>config.yaml</code> แบบเต็ม
+</td>
+<td width="33%" valign="top">
+<h3>03 — รัน</h3>
+<pre># interactive TUI
 garudust
-```
+
+# one-shot task
+garudust "สรุป git log"
+
+# ใช้ model ที่ถูกกว่า
+garudust --hint fast "ตรวจสอบโค้ดนี้"
+
+# headless server (REST + WS)
+garudust-server --port 3000
+
+# Docker
+docker compose up -d</pre>
+</td>
+</tr>
+</table>
+
+### ปุ่มลัด TUI
 
 <div align="center">
   <img src="../../../assets/demo-tui.png" alt="Garudust TUI" width="800"/>
@@ -93,44 +135,9 @@ garudust
 | `/model <name>` | เปลี่ยน model ทันที |
 | `Ctrl+C` | ออกจากโปรแกรม |
 
-### 2 — One-shot
+### Server — API
 
-```bash
-garudust "สรุป git log 7 วันล่าสุดเป็น changelog"
-garudust --hint fast "ฟังก์ชันนี้ถูกต้องไหม?"   # ใช้ model ถูกกว่าสำหรับ task นี้
-```
-
-output ออก stdout รหัสออก 0 เมื่อสำเร็จ ใช้ pipe ได้เลย
-
-### 3 — Server
-
-`garudust-server` เปิด `POST /chat`, `POST /chat/stream` และ `ws://…/chat/ws` พร้อมรัน platform adapter ทุกตัวในกระบวนการเดียว ดูตัวอย่าง `.env` และ `config.yaml` ได้ที่หัวข้อ [การตั้งค่า](#การตั้งค่า)
-
-**Binary**
-
-```bash
-garudust-server --port 3000
-```
-
-**Docker** (binary เดียวกัน ใส่ container)
-
-```bash
-# 1. สร้างไฟล์ .env (ดูตัวอย่างได้ที่หัวข้อการตั้งค่า)
-cp .env.example .env   # หรือสร้างเอง
-# 2. เริ่มต้น
-docker compose up -d
-# 3. ตรวจสอบ
-curl http://localhost:3000/health
-```
-
-ข้อมูลถูกเก็บใน Docker volume `garudust-data` (`/root/.garudust` ใน container) หากต้องการใช้ `config.yaml` เอง ให้ bind-mount:
-
-```yaml
-# docker-compose.yml (เพิ่มใน volumes block)
-- ./config.yaml:/root/.garudust/config.yaml:ro
-```
-
-**ทดสอบ API**
+`garudust-server` เปิด `POST /chat`, `POST /chat/stream` และ `ws://…/chat/ws` พร้อมรัน platform adapter ทุกตัวในกระบวนการเดียว
 
 ```bash
 curl -X POST http://localhost:3000/chat \
@@ -141,6 +148,21 @@ curl -X POST http://localhost:3000/chat \
 curl -X POST http://localhost:3000/chat/stream \
   -H "Content-Type: application/json" \
   -d '{"message": "อธิบาย async/await ใน 3 ประโยค"}'
+```
+
+### Server — Docker
+
+```bash
+cp .env.example .env        # ใส่ secret ของคุณ
+docker compose up -d
+curl http://localhost:3000/health
+```
+
+ข้อมูลเก็บใน volume `garudust-data` (`/root/.garudust` ใน container) bind-mount config เองได้:
+
+```yaml
+# docker-compose.yml — volumes block
+- ./config.yaml:/root/.garudust/config.yaml:ro
 ```
 
 ---

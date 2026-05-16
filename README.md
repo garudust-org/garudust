@@ -71,15 +71,57 @@ cd garudust-agent && cargo build --release
 
 ## Quick Start
 
-```bash
-garudust setup   # first-time wizard — pick provider, save API key
-```
+<table>
+<tr>
+<td width="33%" valign="top">
+<h3>01 — Install</h3>
+Download a pre-built binary from <a href="https://github.com/garudust-org/garudust-agent/releases/latest">GitHub Releases</a>:
+<pre>curl -LO https://github.com/garudust-org/garudust-agent/\
+releases/latest/download/garudust-linux-x64.tar.gz
 
-### 1 — Interactive TUI
-
-```bash
+tar -xzf garudust-*.tar.gz
+sudo mv garudust garudust-server \
+  /usr/local/bin/</pre>
+Or build from source (Rust 1.87+):
+<pre>git clone https://github.com/garudust-org/garudust-agent
+cd garudust-agent
+cargo build --release</pre>
+</td>
+<td width="33%" valign="top">
+<h3>02 — Configure</h3>
+Run the interactive wizard:
+<pre>garudust setup</pre>
+✓ Pick your LLM provider<br>
+✓ Enter your API key<br>
+✓ Choose a default model<br><br>
+Or set directly in <code>~/.garudust/.env</code>:
+<pre>ANTHROPIC_API_KEY=sk-ant-...
+# OPENAI_API_KEY=sk-...
+# GROQ_API_KEY=gsk_...
+# OPENROUTER_API_KEY=sk-or-...</pre>
+See <a href="#configuration">Configuration</a> for the full <code>config.yaml</code> reference.
+</td>
+<td width="33%" valign="top">
+<h3>03 — Run</h3>
+<pre># interactive TUI
 garudust
-```
+
+# one-shot task
+garudust "summarise git log"
+
+# route task to cheaper model
+garudust --hint fast "is this correct?"
+
+# headless server (REST + WS)
+garudust-server --port 3000
+
+# Docker
+docker compose up -d</pre>
+</td>
+</tr>
+</table>
+
+### TUI keyboard shortcuts
 
 <div align="center">
   <img src="assets/demo-tui.png" alt="Garudust TUI" width="800"/>
@@ -93,44 +135,9 @@ garudust
 | `/model <name>` | Switch model on the fly |
 | `Ctrl+C` | Quit |
 
-### 2 — One-shot
+### Server — API
 
-```bash
-garudust "summarise the git log from the last 7 days into a changelog"
-garudust --hint fast "is this function correct?"   # use a cheaper model for this task
-```
-
-Output goes to stdout. Exit code is 0 on success. Pipe-friendly.
-
-### 3 — Server
-
-`garudust-server` exposes `POST /chat`, `POST /chat/stream`, and `ws://…/chat/ws`, and runs all platform adapters in the same process. See [Configuration](#configuration) for `.env` and `config.yaml` setup.
-
-**Binary**
-
-```bash
-garudust-server --port 3000
-```
-
-**Docker** (same binary, containerised)
-
-```bash
-# 1. Create a .env file with your secrets (see Configuration below)
-cp .env.example .env   # or write it manually
-# 2. Start
-docker compose up -d
-# 3. Check health
-curl http://localhost:3000/health
-```
-
-Data is persisted in the `garudust-data` Docker volume (`/root/.garudust` inside the container). To use a custom `config.yaml`, bind-mount it:
-
-```yaml
-# docker-compose.yml (add to volumes block)
-- ./config.yaml:/root/.garudust/config.yaml:ro
-```
-
-**API test**
+`garudust-server` exposes `POST /chat`, `POST /chat/stream`, and `ws://…/chat/ws`, and runs all platform adapters in the same process.
 
 ```bash
 curl -X POST http://localhost:3000/chat \
@@ -141,6 +148,21 @@ curl -X POST http://localhost:3000/chat \
 curl -X POST http://localhost:3000/chat/stream \
   -H "Content-Type: application/json" \
   -d '{"message": "explain async/await in 3 sentences"}'
+```
+
+### Server — Docker
+
+```bash
+cp .env.example .env        # add your secrets
+docker compose up -d
+curl http://localhost:3000/health
+```
+
+Data persists in the `garudust-data` volume (`/root/.garudust` inside the container). Bind-mount a custom config:
+
+```yaml
+# docker-compose.yml — volumes block
+- ./config.yaml:/root/.garudust/config.yaml:ro
 ```
 
 ---
