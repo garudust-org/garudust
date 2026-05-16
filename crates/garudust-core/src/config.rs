@@ -539,6 +539,68 @@ impl Default for AgentConfig {
     }
 }
 
+/// Map a provider name to its API-key env var and return the value.
+/// Used when config.yaml is authoritative (provider is already known).
+pub(crate) fn resolve_key_for_provider(
+    provider: &str,
+    dotenv: &HashMap<String, String>,
+) -> Option<String> {
+    match provider {
+        "anthropic" => env_or_dotenv("ANTHROPIC_API_KEY", dotenv),
+        "openai" => env_or_dotenv("OPENAI_API_KEY", dotenv),
+        "gemini" => env_or_dotenv("GEMINI_API_KEY", dotenv),
+        "groq" => env_or_dotenv("GROQ_API_KEY", dotenv),
+        "mistral" => env_or_dotenv("MISTRAL_API_KEY", dotenv),
+        "deepseek" => env_or_dotenv("DEEPSEEK_API_KEY", dotenv),
+        "xai" => env_or_dotenv("XAI_API_KEY", dotenv),
+        "vllm" => env_or_dotenv("VLLM_API_KEY", dotenv),
+        "thaillm" => env_or_dotenv("THAILLM_API_KEY", dotenv),
+        "ollama" | "bedrock" | "codex" => None,
+        _ => env_or_dotenv("OPENROUTER_API_KEY", dotenv),
+    }
+}
+
+/// Detect provider and API key from environment when no config.yaml exists.
+/// Priority: anthropic → openai → gemini → groq → mistral → deepseek → xai
+///           → ollama → vllm → thaillm → openrouter.
+pub(crate) fn detect_provider_from_env(config: &mut AgentConfig, dotenv: &HashMap<String, String>) {
+    if let Some(k) = env_or_dotenv("ANTHROPIC_API_KEY", dotenv) {
+        config.api_key = Some(k);
+        config.provider = "anthropic".into();
+    } else if let Some(k) = env_or_dotenv("OPENAI_API_KEY", dotenv) {
+        config.api_key = Some(k);
+        config.provider = "openai".into();
+    } else if let Some(k) = env_or_dotenv("GEMINI_API_KEY", dotenv) {
+        config.api_key = Some(k);
+        config.provider = "gemini".into();
+    } else if let Some(k) = env_or_dotenv("GROQ_API_KEY", dotenv) {
+        config.api_key = Some(k);
+        config.provider = "groq".into();
+    } else if let Some(k) = env_or_dotenv("MISTRAL_API_KEY", dotenv) {
+        config.api_key = Some(k);
+        config.provider = "mistral".into();
+    } else if let Some(k) = env_or_dotenv("DEEPSEEK_API_KEY", dotenv) {
+        config.api_key = Some(k);
+        config.provider = "deepseek".into();
+    } else if let Some(k) = env_or_dotenv("XAI_API_KEY", dotenv) {
+        config.api_key = Some(k);
+        config.provider = "xai".into();
+    } else if let Some(url) = env_or_dotenv("OLLAMA_BASE_URL", dotenv) {
+        config.provider = "ollama".into();
+        config.base_url = Some(url);
+    } else if let Some(url) = env_or_dotenv("VLLM_BASE_URL", dotenv) {
+        config.provider = "vllm".into();
+        config.base_url = Some(url);
+        config.api_key = env_or_dotenv("VLLM_API_KEY", dotenv);
+    } else if let Some(k) = env_or_dotenv("THAILLM_API_KEY", dotenv) {
+        config.api_key = Some(k);
+        config.provider = "thaillm".into();
+    } else if let Some(k) = env_or_dotenv("OPENROUTER_API_KEY", dotenv) {
+        config.api_key = Some(k);
+        config.provider = "openrouter".into();
+    }
+}
+
 impl AgentConfig {
     /// Canonical ~/.garudust directory.
     pub fn garudust_dir() -> PathBuf {
@@ -594,58 +656,10 @@ impl AgentConfig {
 
         if yaml_authoritative {
             if config.api_key.is_none() {
-                config.api_key = match config.provider.as_str() {
-                    "anthropic" => env_or_dotenv("ANTHROPIC_API_KEY", dotenv),
-                    "openai" => env_or_dotenv("OPENAI_API_KEY", dotenv),
-                    "gemini" => env_or_dotenv("GEMINI_API_KEY", dotenv),
-                    "groq" => env_or_dotenv("GROQ_API_KEY", dotenv),
-                    "mistral" => env_or_dotenv("MISTRAL_API_KEY", dotenv),
-                    "deepseek" => env_or_dotenv("DEEPSEEK_API_KEY", dotenv),
-                    "xai" => env_or_dotenv("XAI_API_KEY", dotenv),
-                    "vllm" => env_or_dotenv("VLLM_API_KEY", dotenv),
-                    "thaillm" => env_or_dotenv("THAILLM_API_KEY", dotenv),
-                    "ollama" | "bedrock" | "codex" => None,
-                    // openrouter and any unknown provider default to OpenRouter's key
-                    _ => env_or_dotenv("OPENROUTER_API_KEY", dotenv),
-                };
+                config.api_key = resolve_key_for_provider(&config.provider, dotenv);
             }
         } else {
-            // Auto-detect provider from env when no yaml is present.
-            if let Some(k) = env_or_dotenv("ANTHROPIC_API_KEY", dotenv) {
-                config.api_key = Some(k);
-                config.provider = "anthropic".into();
-            } else if let Some(k) = env_or_dotenv("OPENAI_API_KEY", dotenv) {
-                config.api_key = Some(k);
-                config.provider = "openai".into();
-            } else if let Some(k) = env_or_dotenv("GEMINI_API_KEY", dotenv) {
-                config.api_key = Some(k);
-                config.provider = "gemini".into();
-            } else if let Some(k) = env_or_dotenv("GROQ_API_KEY", dotenv) {
-                config.api_key = Some(k);
-                config.provider = "groq".into();
-            } else if let Some(k) = env_or_dotenv("MISTRAL_API_KEY", dotenv) {
-                config.api_key = Some(k);
-                config.provider = "mistral".into();
-            } else if let Some(k) = env_or_dotenv("DEEPSEEK_API_KEY", dotenv) {
-                config.api_key = Some(k);
-                config.provider = "deepseek".into();
-            } else if let Some(k) = env_or_dotenv("XAI_API_KEY", dotenv) {
-                config.api_key = Some(k);
-                config.provider = "xai".into();
-            } else if let Some(url) = env_or_dotenv("OLLAMA_BASE_URL", dotenv) {
-                config.provider = "ollama".into();
-                config.base_url = Some(url);
-            } else if let Some(url) = env_or_dotenv("VLLM_BASE_URL", dotenv) {
-                config.provider = "vllm".into();
-                config.base_url = Some(url);
-                config.api_key = env_or_dotenv("VLLM_API_KEY", dotenv);
-            } else if let Some(k) = env_or_dotenv("THAILLM_API_KEY", dotenv) {
-                config.api_key = Some(k);
-                config.provider = "thaillm".into();
-            } else if let Some(k) = env_or_dotenv("OPENROUTER_API_KEY", dotenv) {
-                config.api_key = Some(k);
-                config.provider = "openrouter".into();
-            }
+            detect_provider_from_env(&mut config, dotenv);
         }
         if let Some(m) = env_or_dotenv("GARUDUST_MODEL", dotenv) {
             config.model = m;
@@ -756,4 +770,186 @@ impl Default for CompressionConfig {
 pub struct NetworkConfig {
     pub force_ipv4: bool,
     pub proxy: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use super::{detect_provider_from_env, resolve_key_for_provider, AgentConfig};
+
+    fn dotenv(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+            .collect()
+    }
+
+    // ── resolve_key_for_provider ──────────────────────────────────────────────
+
+    #[test]
+    fn resolve_openai_key() {
+        let map = dotenv(&[("OPENAI_API_KEY", "sk-test-openai")]);
+        assert_eq!(
+            resolve_key_for_provider("openai", &map),
+            Some("sk-test-openai".into())
+        );
+    }
+
+    #[test]
+    fn resolve_gemini_key() {
+        let map = dotenv(&[("GEMINI_API_KEY", "AIza-test")]);
+        assert_eq!(
+            resolve_key_for_provider("gemini", &map),
+            Some("AIza-test".into())
+        );
+    }
+
+    #[test]
+    fn resolve_groq_key() {
+        let map = dotenv(&[("GROQ_API_KEY", "gsk-test")]);
+        assert_eq!(
+            resolve_key_for_provider("groq", &map),
+            Some("gsk-test".into())
+        );
+    }
+
+    #[test]
+    fn resolve_mistral_key() {
+        let map = dotenv(&[("MISTRAL_API_KEY", "ms-test")]);
+        assert_eq!(
+            resolve_key_for_provider("mistral", &map),
+            Some("ms-test".into())
+        );
+    }
+
+    #[test]
+    fn resolve_deepseek_key() {
+        let map = dotenv(&[("DEEPSEEK_API_KEY", "ds-test")]);
+        assert_eq!(
+            resolve_key_for_provider("deepseek", &map),
+            Some("ds-test".into())
+        );
+    }
+
+    #[test]
+    fn resolve_xai_key() {
+        let map = dotenv(&[("XAI_API_KEY", "xai-test")]);
+        assert_eq!(
+            resolve_key_for_provider("xai", &map),
+            Some("xai-test".into())
+        );
+    }
+
+    #[test]
+    fn resolve_ollama_returns_none() {
+        let map = dotenv(&[("OPENROUTER_API_KEY", "or-test")]);
+        assert_eq!(resolve_key_for_provider("ollama", &map), None);
+    }
+
+    #[test]
+    fn resolve_unknown_provider_falls_back_to_openrouter() {
+        let map = dotenv(&[("OPENROUTER_API_KEY", "or-test")]);
+        assert_eq!(
+            resolve_key_for_provider("custom-provider", &map),
+            Some("or-test".into())
+        );
+    }
+
+    // ── detect_provider_from_env ──────────────────────────────────────────────
+
+    fn detect(pairs: &[(&str, &str)]) -> AgentConfig {
+        let mut cfg = AgentConfig::default();
+        detect_provider_from_env(&mut cfg, &dotenv(pairs));
+        cfg
+    }
+
+    #[test]
+    fn detect_openai_only() {
+        let cfg = detect(&[("OPENAI_API_KEY", "sk-test-openai")]);
+        assert_eq!(cfg.provider, "openai");
+        assert_eq!(cfg.api_key.as_deref(), Some("sk-test-openai"));
+    }
+
+    #[test]
+    fn detect_gemini_only() {
+        let cfg = detect(&[("GEMINI_API_KEY", "AIza-test")]);
+        assert_eq!(cfg.provider, "gemini");
+        assert_eq!(cfg.api_key.as_deref(), Some("AIza-test"));
+    }
+
+    #[test]
+    fn detect_groq_only() {
+        let cfg = detect(&[("GROQ_API_KEY", "gsk-test")]);
+        assert_eq!(cfg.provider, "groq");
+        assert_eq!(cfg.api_key.as_deref(), Some("gsk-test"));
+    }
+
+    #[test]
+    fn detect_mistral_only() {
+        let cfg = detect(&[("MISTRAL_API_KEY", "ms-test")]);
+        assert_eq!(cfg.provider, "mistral");
+        assert_eq!(cfg.api_key.as_deref(), Some("ms-test"));
+    }
+
+    #[test]
+    fn detect_deepseek_only() {
+        let cfg = detect(&[("DEEPSEEK_API_KEY", "ds-test")]);
+        assert_eq!(cfg.provider, "deepseek");
+        assert_eq!(cfg.api_key.as_deref(), Some("ds-test"));
+    }
+
+    #[test]
+    fn detect_xai_only() {
+        let cfg = detect(&[("XAI_API_KEY", "xai-test")]);
+        assert_eq!(cfg.provider, "xai");
+        assert_eq!(cfg.api_key.as_deref(), Some("xai-test"));
+    }
+
+    #[test]
+    fn detect_openrouter_only() {
+        let cfg = detect(&[("OPENROUTER_API_KEY", "or-test")]);
+        assert_eq!(cfg.provider, "openrouter");
+        assert_eq!(cfg.api_key.as_deref(), Some("or-test"));
+    }
+
+    #[test]
+    fn detect_ollama_sets_base_url_not_key() {
+        let cfg = detect(&[("OLLAMA_BASE_URL", "http://localhost:11434")]);
+        assert_eq!(cfg.provider, "ollama");
+        assert_eq!(cfg.base_url.as_deref(), Some("http://localhost:11434"));
+        assert!(cfg.api_key.is_none());
+    }
+
+    #[test]
+    fn detect_vllm_sets_base_url_and_key() {
+        let cfg = detect(&[
+            ("VLLM_BASE_URL", "http://localhost:8000/v1"),
+            ("VLLM_API_KEY", "vllm-test"),
+        ]);
+        assert_eq!(cfg.provider, "vllm");
+        assert_eq!(cfg.base_url.as_deref(), Some("http://localhost:8000/v1"));
+        assert_eq!(cfg.api_key.as_deref(), Some("vllm-test"));
+    }
+
+    #[test]
+    fn detect_empty_env_leaves_defaults() {
+        let cfg = detect(&[]);
+        assert_eq!(cfg.provider, "openrouter");
+        assert!(cfg.api_key.is_none());
+    }
+
+    // Priority: openai loses to anthropic when both are present in the dotenv
+    // map and neither is in the real process environment.
+    // (This test assumes ANTHROPIC_API_KEY is not set in the test runner's env.)
+    #[test]
+    fn detect_anthropic_wins_over_openai_in_dotenv() {
+        let cfg = detect(&[
+            ("ANTHROPIC_API_KEY", "sk-ant-test"),
+            ("OPENAI_API_KEY", "sk-oai-test"),
+        ]);
+        // anthropic is first in the priority chain, so it wins
+        assert_eq!(cfg.provider, "anthropic");
+        assert_eq!(cfg.api_key.as_deref(), Some("sk-ant-test"));
+    }
 }
