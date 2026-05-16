@@ -37,6 +37,8 @@ A self-improving AI agent runtime written in Rust — delivered as a single ~10 
 - **agentskills.io compatible** — install community skills from the hub or any GitHub repo with one command
 - **7 platform adapters** — Telegram, Discord, Slack, Matrix, LINE, WhatsApp, Webhook — all in one process
 - **Swap providers with one env var** — Anthropic, OpenAI, Gemini, Groq, Mistral, DeepSeek, xAI, OpenRouter, AWS Bedrock, Ollama, vLLM, ThaiLLM, or any OpenAI-compatible endpoint
+- **Provider routing hints** — map hint names to provider/model pairs in config; pass `--hint fast` to route a single task to a cheaper model without changing the default
+- **Per-tool model config** — override the model (and fallback) used by each hub tool or skill script via `tools.<name>.model` in `config.yaml`
 - **Secure by design** — Docker sandbox, hardline command blocks, memory-poisoning protection, automatic secret redaction
 
 ---
@@ -95,6 +97,7 @@ garudust
 
 ```bash
 garudust "summarise the git log from the last 7 days into a changelog"
+garudust --hint fast "is this function correct?"   # use a cheaper model for this task
 ```
 
 Output goes to stdout. Exit code is 0 on success. Pipe-friendly.
@@ -185,41 +188,107 @@ GARUDUST_API_KEY=my-gateway-secret
 ### `~/.garudust/config.yaml`
 
 ```yaml
+# ── LLM ─────────────────────────────────────────────────────────────────────
+provider: openrouter        # anthropic | openai | gemini | groq | mistral
+                            # deepseek | xai | openrouter | ollama | vllm | thaillm | bedrock
 model: anthropic/claude-sonnet-4-6
-provider: anthropic        # anthropic | openai | gemini | groq | mistral | deepseek | xai | openrouter | ollama | vllm | bedrock | thaillm
+max_iterations: 90
+max_output_tokens: 8192
+context_window: 128000      # lower for small-context models (e.g. 32768)
+reasoning_effort: ~         # low | medium | high  (Claude extended thinking / OpenAI o-series)
+show_usage_footer: false
 
-# Platform adapters — set tokens in .env, enable here
+# ── Timeouts & retries ───────────────────────────────────────────────────────
+llm_timeout_secs: 120
+tool_timeout_secs: 60
+llm_max_retries: 3
+
+# ── Provider routing hints (per-task model override) ────────────────────────
+# Pass --hint <name> at the CLI, or hint: "name" in the API payload, to swap
+# provider/model for that single task without changing the default.
+routing:
+  fast:   groq/llama-3.1-8b-instant
+  vision: openrouter/google/gemini-flash-1.5
+  smart:  anthropic/claude-opus-4-7
+
+# ── Per-tool model override ──────────────────────────────────────────────────
+# Forwarded as GARUDUST_MODEL / GARUDUST_FALLBACK_MODEL to the tool subprocess.
+# Tools that don't read these vars are unaffected (full backward compat).
+tools:
+  view_image:
+    model: openrouter/google/gemini-flash-1.5
+    fallback_model: google/gemini-1.5-flash
+
+# ── Disable tools / toolsets ────────────────────────────────────────────────
+# disabled_toolsets: [browser, git, notes]
+# disabled_tools: [image_read, pdf_read]
+
+# ── Security ─────────────────────────────────────────────────────────────────
+security:
+  approval_mode: smart        # auto | smart | deny
+  terminal_sandbox: none      # none | docker
+  rate_limit_rpm: ~           # per-IP limit (~ = unlimited)
+  allowed_read_paths: []      # defaults to cwd + home
+  allowed_write_paths: []     # defaults to cwd
+
+# ── Memory expiry ────────────────────────────────────────────────────────────
+memory_expiry:
+  fact_days: 90               # null = never expires
+  project_days: 30
+  other_days: 60
+  preference_days: ~
+nudge_interval: 5             # remind save_memory every N tool rounds (0 = off)
+auto_skill_threshold: 5       # auto-write skill after N iterations (0 = off)
+
+# ── Platform / group-chat controls ───────────────────────────────────────────
+platform:
+  require_mention: false      # true = only respond when @mentioned in groups
+  bot_username: ""
+  session_per_user: true
+
+# ── Webhook platforms ────────────────────────────────────────────────────────
 platforms:
-  telegram:
+  webhook:
     enabled: true
-  discord:
-    enabled: true
-  slack:
-    enabled: true
+    port: 3001
+    webhook_path: /webhook
   line:
-    enabled: true
+    enabled: false
     port: 3002
-    webhook_path: /line        # LINE console webhook → https://your-host:3002/line
+    webhook_path: /line
   whatsapp:
-    enabled: true
+    enabled: false
     port: 3003
     webhook_path: /whatsapp
 
-security:
-  terminal_sandbox: docker     # none | docker — isolate shell commands
-  approval_mode: smart         # smart | auto | deny
+# ── HTTP gateway ──────────────────────────────────────────────────────────────
+server:
+  port: 3000
 
-# Scheduled tasks
+# ── Cron jobs ────────────────────────────────────────────────────────────────
 cron:
-  jobs:
-    - schedule: "0 9 * * *"
-      task: "Write a morning briefing and save to ~/briefing.md"
   memory_consolidation: "0 3 * * *"   # nightly memory housekeeping
-  memory_expiry: "0 4 * * *"          # prune stale memory entries
+  memory_expiry: "0 4 * * 0"          # weekly expiry sweep
+  jobs:
+    - schedule: "0 9 * * 1-5"
+      task: "Generate a morning briefing and save to ~/briefing.md"
 
-# Context and performance
-context_window: 128000         # adjust for your model
-nudge_interval: 5              # memory-save reminder every N turns (0 = off)
+# ── Context compression ───────────────────────────────────────────────────────
+compression:
+  enabled: true
+  threshold_fraction: 0.8     # compress when 80% of context window is used
+  model: ~                    # separate model for compression (defaults to main model)
+
+# ── Network ───────────────────────────────────────────────────────────────────
+network:
+  force_ipv4: false
+  proxy: ~                    # http://proxy:8080
+
+# ── MCP servers ───────────────────────────────────────────────────────────────
+mcp_servers:
+  - name: filesystem
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
 ```
 
 ---
@@ -236,6 +305,8 @@ nudge_interval: 5              # memory-save reminder every N turns (0 = off)
 | Sub-agent iteration budget | `sub_agent_max_iterations` caps delegation chains independently of the main agent |
 | FTS5 trigram search | Substring session search — `"pythag"` matches `"Pythagorean"`, versioned DB migration included |
 | WAL mode fallback | Degrades gracefully on NFS/SMB filesystems instead of crashing |
+| Provider routing hints | `routing:` in config maps hint names to provider/model pairs; `--hint <name>` overrides the model for a single task only |
+| Per-tool model config | `tools.<name>.model` in config forwards `GARUDUST_MODEL`/`GARUDUST_FALLBACK_MODEL` to hub tool subprocesses |
 
 ---
 
@@ -307,6 +378,16 @@ schema:
     city: { type: string }
   required: [city]
 command: "curl -s wttr.in/{city}?format=3"
+# env_required: [MY_API_KEY]   # forward specific secrets from ~/.garudust/.env
+```
+
+Override the model used by a tool in `config.yaml` — the values are forwarded as `GARUDUST_MODEL` / `GARUDUST_FALLBACK_MODEL` env vars to the script:
+
+```yaml
+tools:
+  get_weather:
+    model: groq/llama-3.1-8b-instant
+    fallback_model: openrouter/meta-llama/llama-3.1-8b-instruct
 ```
 
 **MCP** — connect any [Model Context Protocol](https://modelcontextprotocol.io) server in `config.yaml`:

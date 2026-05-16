@@ -37,6 +37,8 @@ AI agent runtime แบบ self-improving เขียนด้วย Rust — b
 - **รองรับ agentskills.io** — ติดตั้ง skill จาก hub หรือ GitHub repo ใดก็ได้ด้วยคำสั่งเดียว
 - **7 แพลตฟอร์มในกระบวนการเดียว** — Telegram, Discord, Slack, Matrix, LINE, WhatsApp, Webhook
 - **เปลี่ยน LLM ด้วย env var เดียว** — รองรับ Anthropic, OpenAI, Gemini, Groq, Mistral, DeepSeek, xAI, OpenRouter, AWS Bedrock, Ollama, vLLM, ThaiLLM
+- **Provider routing hints** — กำหนด hint name → provider/model ใน config แล้วส่ง `--hint fast` เพื่อเปลี่ยน model เฉพาะ task นั้นโดยไม่กระทบ default
+- **กำหนด model ต่อ tool** — override model (และ fallback) ที่แต่ละ hub tool ใช้ผ่าน `tools.<name>.model` ใน `config.yaml`
 - **ปลอดภัยตั้งแต่ต้น** — Docker sandbox, บล็อคคำสั่งอันตราย, ป้องกัน memory poisoning, redact secret อัตโนมัติ
 
 ---
@@ -95,6 +97,7 @@ garudust
 
 ```bash
 garudust "สรุป git log 7 วันล่าสุดเป็น changelog"
+garudust --hint fast "ฟังก์ชันนี้ถูกต้องไหม?"   # ใช้ model ถูกกว่าสำหรับ task นี้
 ```
 
 output ออก stdout รหัสออก 0 เมื่อสำเร็จ ใช้ pipe ได้เลย
@@ -185,41 +188,107 @@ GARUDUST_API_KEY=my-gateway-secret
 ### `~/.garudust/config.yaml`
 
 ```yaml
+# ── LLM ─────────────────────────────────────────────────────────────────────
+provider: openrouter        # anthropic | openai | gemini | groq | mistral
+                            # deepseek | xai | openrouter | ollama | vllm | thaillm | bedrock
 model: anthropic/claude-sonnet-4-6
-provider: anthropic        # anthropic | openai | gemini | groq | mistral | deepseek | xai | openrouter | ollama | vllm | bedrock | thaillm
+max_iterations: 90
+max_output_tokens: 8192
+context_window: 128000      # ลดลงสำหรับ model ที่ context เล็ก เช่น 32768
+reasoning_effort: ~         # low | medium | high  (Claude extended thinking / OpenAI o-series)
+show_usage_footer: false
 
-# Platform adapters — ตั้ง token ใน .env แล้ว enable ที่นี่
+# ── Timeout & retry ──────────────────────────────────────────────────────────
+llm_timeout_secs: 120
+tool_timeout_secs: 60
+llm_max_retries: 3
+
+# ── Provider routing hints (เปลี่ยน model ต่อ task) ─────────────────────────
+# ส่ง --hint <name> ที่ CLI หรือ hint: "name" ใน API payload
+# เพื่อเปลี่ยน provider/model เฉพาะ task นั้นโดยไม่กระทบ default
+routing:
+  fast:   groq/llama-3.1-8b-instant
+  vision: openrouter/google/gemini-flash-1.5
+  smart:  anthropic/claude-opus-4-7
+
+# ── กำหนด model ต่อ tool ─────────────────────────────────────────────────────
+# ส่งเป็น GARUDUST_MODEL / GARUDUST_FALLBACK_MODEL ให้ subprocess ของ tool
+# tool ที่ไม่อ่าน env var นี้ไม่ได้รับผลกระทบ (backward compat เต็ม)
+tools:
+  view_image:
+    model: openrouter/google/gemini-flash-1.5
+    fallback_model: google/gemini-1.5-flash
+
+# ── ปิด tool / toolset ───────────────────────────────────────────────────────
+# disabled_toolsets: [browser, git, notes]
+# disabled_tools: [image_read, pdf_read]
+
+# ── Security ──────────────────────────────────────────────────────────────────
+security:
+  approval_mode: smart        # auto | smart | deny
+  terminal_sandbox: none      # none | docker
+  rate_limit_rpm: ~           # จำกัด request ต่อ IP ต่อนาที (~ = ไม่จำกัด)
+  allowed_read_paths: []      # default: cwd + home
+  allowed_write_paths: []     # default: cwd
+
+# ── Memory expiry ─────────────────────────────────────────────────────────────
+memory_expiry:
+  fact_days: 90               # null = ไม่หมดอายุ
+  project_days: 30
+  other_days: 60
+  preference_days: ~
+nudge_interval: 5             # เตือนบันทึก memory ทุก N tool rounds (0 = ปิด)
+auto_skill_threshold: 5       # เขียน skill อัตโนมัติหลัง N iterations (0 = ปิด)
+
+# ── Platform / กลุ่มแชท ──────────────────────────────────────────────────────
+platform:
+  require_mention: false      # true = ตอบเฉพาะเมื่อถูก @mention ในกลุ่ม
+  bot_username: ""
+  session_per_user: true
+
+# ── Webhook platforms ────────────────────────────────────────────────────────
 platforms:
-  telegram:
+  webhook:
     enabled: true
-  discord:
-    enabled: true
-  slack:
-    enabled: true
+    port: 3001
+    webhook_path: /webhook
   line:
-    enabled: true
+    enabled: false
     port: 3002
-    webhook_path: /line        # LINE console webhook → https://your-host:3002/line
+    webhook_path: /line
   whatsapp:
-    enabled: true
+    enabled: false
     port: 3003
     webhook_path: /whatsapp
 
-security:
-  terminal_sandbox: docker     # none | docker — รัน shell ใน container แยก
-  approval_mode: smart         # smart | auto | deny
+# ── HTTP gateway ──────────────────────────────────────────────────────────────
+server:
+  port: 3000
 
-# งานตามกำหนดเวลา
+# ── Cron jobs ─────────────────────────────────────────────────────────────────
 cron:
-  jobs:
-    - schedule: "0 9 * * *"
-      task: "เขียน morning briefing และบันทึกที่ ~/briefing.md"
   memory_consolidation: "0 3 * * *"   # housekeeping memory ทุกคืน
-  memory_expiry: "0 4 * * *"          # ลบ memory ที่หมดอายุ
+  memory_expiry: "0 4 * * 0"          # ลบ memory ที่หมดอายุรายสัปดาห์
+  jobs:
+    - schedule: "0 9 * * 1-5"
+      task: "เขียน morning briefing และบันทึกที่ ~/briefing.md"
 
-# Context และประสิทธิภาพ
-context_window: 128000         # ปรับตาม model ที่ใช้
-nudge_interval: 5              # เตือนบันทึก memory ทุก N turns (0 = ปิด)
+# ── Context compression ───────────────────────────────────────────────────────
+compression:
+  enabled: true
+  threshold_fraction: 0.8     # บีบเมื่อใช้ context ครบ 80%
+  model: ~                    # model แยกสำหรับ compression (default: model หลัก)
+
+# ── Network ───────────────────────────────────────────────────────────────────
+network:
+  force_ipv4: false
+  proxy: ~                    # http://proxy:8080
+
+# ── MCP servers ───────────────────────────────────────────────────────────────
+mcp_servers:
+  - name: filesystem
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
 ```
 
 ---
@@ -236,6 +305,8 @@ nudge_interval: 5              # เตือนบันทึก memory ทุ
 | งบ iteration ของ sub-agent | `sub_agent_max_iterations` แยกอิสระจาก agent หลัก |
 | FTS5 trigram search | ค้นหาแบบ substring — `"pythag"` เจอ `"Pythagorean"` พร้อม migration อัตโนมัติ |
 | WAL mode fallback | ลดระดับอัจฉริยะบน NFS/SMB แทนที่จะ crash |
+| Provider routing hints | `routing:` ใน config กำหนด hint → provider/model; `--hint <name>` เปลี่ยน model เฉพาะ task นั้น |
+| Per-tool model config | `tools.<name>.model` ใน config ส่ง `GARUDUST_MODEL`/`GARUDUST_FALLBACK_MODEL` ให้ subprocess ของ tool |
 
 ---
 
@@ -307,6 +378,16 @@ schema:
     city: { type: string }
   required: [city]
 command: "curl -s wttr.in/{city}?format=3"
+# env_required: [MY_API_KEY]   # ส่ง secret เฉพาะที่ระบุจาก ~/.garudust/.env
+```
+
+กำหนด model สำหรับแต่ละ tool ใน `config.yaml` — ค่าจะถูกส่งเป็น env var `GARUDUST_MODEL` / `GARUDUST_FALLBACK_MODEL` ให้ script:
+
+```yaml
+tools:
+  get_weather:
+    model: groq/llama-3.1-8b-instant
+    fallback_model: openrouter/meta-llama/llama-3.1-8b-instruct
 ```
 
 **MCP** — เชื่อมต่อ [Model Context Protocol](https://modelcontextprotocol.io) server ใดก็ได้ใน `config.yaml`:

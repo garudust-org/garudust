@@ -37,6 +37,8 @@
 - **兼容 agentskills.io** — 一条命令从社区 hub 或任意 GitHub 仓库安装技能
 - **7 大平台适配器** — Telegram、Discord、Slack、Matrix、LINE、WhatsApp、Webhook，同进程运行
 - **一个环境变量切换提供商** — 支持 Anthropic、OpenAI、Gemini、Groq、Mistral、DeepSeek、xAI、OpenRouter、AWS Bedrock、Ollama、vLLM、ThaiLLM
+- **提供商路由 hint** — 在 config 中将 hint 名称映射到 provider/model 对；传入 `--hint fast` 即可仅针对该任务切换到更廉价的模型，不影响默认配置
+- **按工具配置模型** — 通过 `config.yaml` 中的 `tools.<name>.model` 为每个 hub 工具或技能脚本指定模型（及备用模型）
 - **安全优先设计** — Docker 沙箱、硬性命令拦截、内存投毒防护、工具输出自动脱敏
 
 ---
@@ -95,6 +97,7 @@ garudust
 
 ```bash
 garudust "将最近 7 天的 git log 整理成 changelog"
+garudust --hint fast "这个函数正确吗？"   # 仅针对该任务使用更廉价的模型
 ```
 
 输出至 stdout，成功时退出码为 0，支持管道操作。
@@ -185,41 +188,107 @@ GARUDUST_API_KEY=my-gateway-secret
 ### `~/.garudust/config.yaml`
 
 ```yaml
+# ── LLM ─────────────────────────────────────────────────────────────────────
+provider: openrouter        # anthropic | openai | gemini | groq | mistral
+                            # deepseek | xai | openrouter | ollama | vllm | thaillm | bedrock
 model: anthropic/claude-sonnet-4-6
-provider: anthropic        # anthropic | openai | gemini | groq | mistral | deepseek | xai | openrouter | ollama | vllm | bedrock | thaillm
+max_iterations: 90
+max_output_tokens: 8192
+context_window: 128000      # 小上下文模型请调低（如 32768）
+reasoning_effort: ~         # low | medium | high（Claude 扩展思考 / OpenAI o-series）
+show_usage_footer: false
 
-# 平台适配器 — 在 .env 中设置 token，在此处启用
+# ── 超时与重试 ────────────────────────────────────────────────────────────────
+llm_timeout_secs: 120
+tool_timeout_secs: 60
+llm_max_retries: 3
+
+# ── 提供商路由 hint（按任务切换模型）────────────────────────────────────────
+# 在 CLI 传入 --hint <name>，或在 API payload 中设置 hint: "name"，
+# 仅针对该任务切换 provider/model，不影响默认配置。
+routing:
+  fast:   groq/llama-3.1-8b-instant
+  vision: openrouter/google/gemini-flash-1.5
+  smart:  anthropic/claude-opus-4-7
+
+# ── 按工具配置模型 ────────────────────────────────────────────────────────────
+# 以 GARUDUST_MODEL / GARUDUST_FALLBACK_MODEL 环境变量形式传递给工具子进程。
+# 不读取这些变量的工具不受影响（完全向后兼容）。
+tools:
+  view_image:
+    model: openrouter/google/gemini-flash-1.5
+    fallback_model: google/gemini-1.5-flash
+
+# ── 禁用工具 / 工具集 ─────────────────────────────────────────────────────────
+# disabled_toolsets: [browser, git, notes]
+# disabled_tools: [image_read, pdf_read]
+
+# ── 安全 ──────────────────────────────────────────────────────────────────────
+security:
+  approval_mode: smart        # auto | smart | deny
+  terminal_sandbox: none      # none | docker
+  rate_limit_rpm: ~           # 每 IP 每分钟请求限制（~ = 不限）
+  allowed_read_paths: []      # 默认：cwd + home
+  allowed_write_paths: []     # 默认：cwd
+
+# ── 记忆过期 ──────────────────────────────────────────────────────────────────
+memory_expiry:
+  fact_days: 90               # null = 永不过期
+  project_days: 30
+  other_days: 60
+  preference_days: ~
+nudge_interval: 5             # 每 N 轮工具调用后提醒保存记忆（0 = 关闭）
+auto_skill_threshold: 5       # 达到 N 次迭代后自动写入技能（0 = 关闭）
+
+# ── 平台 / 群聊控制 ───────────────────────────────────────────────────────────
+platform:
+  require_mention: false      # true = 仅在群组中被 @提及时才响应
+  bot_username: ""
+  session_per_user: true
+
+# ── Webhook 平台 ──────────────────────────────────────────────────────────────
 platforms:
-  telegram:
+  webhook:
     enabled: true
-  discord:
-    enabled: true
-  slack:
-    enabled: true
+    port: 3001
+    webhook_path: /webhook
   line:
-    enabled: true
+    enabled: false
     port: 3002
-    webhook_path: /line        # LINE 控制台 webhook → https://your-host:3002/line
+    webhook_path: /line
   whatsapp:
-    enabled: true
+    enabled: false
     port: 3003
     webhook_path: /whatsapp
 
-security:
-  terminal_sandbox: docker     # none | docker — 在隔离容器中运行 shell 命令
-  approval_mode: smart         # smart | auto | deny
+# ── HTTP 网关 ─────────────────────────────────────────────────────────────────
+server:
+  port: 3000
 
-# 定时任务
+# ── 定时任务 ──────────────────────────────────────────────────────────────────
 cron:
-  jobs:
-    - schedule: "0 9 * * *"
-      task: "生成每日简报并保存到 ~/briefing.md"
   memory_consolidation: "0 3 * * *"   # 每晚自动整理记忆
-  memory_expiry: "0 4 * * *"          # 清理过期记忆条目
+  memory_expiry: "0 4 * * 0"          # 每周清理过期记忆
+  jobs:
+    - schedule: "0 9 * * 1-5"
+      task: "生成每日简报并保存到 ~/briefing.md"
 
-# 上下文与性能
-context_window: 128000         # 根据使用的模型调整
-nudge_interval: 5              # 每 N 轮提醒保存记忆（0 = 关闭）
+# ── 上下文压缩 ────────────────────────────────────────────────────────────────
+compression:
+  enabled: true
+  threshold_fraction: 0.8     # 上下文窗口使用达 80% 时触发压缩
+  model: ~                    # 独立压缩模型（默认使用主模型）
+
+# ── 网络 ──────────────────────────────────────────────────────────────────────
+network:
+  force_ipv4: false
+  proxy: ~                    # http://proxy:8080
+
+# ── MCP 服务器 ────────────────────────────────────────────────────────────────
+mcp_servers:
+  - name: filesystem
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
 ```
 
 ---
@@ -236,6 +305,8 @@ nudge_interval: 5              # 每 N 轮提醒保存记忆（0 = 关闭）
 | 子智能体迭代预算 | `sub_agent_max_iterations` 独立于主智能体单独限制委派链深度 |
 | FTS5 trigram 搜索 | 子串会话搜索 — `"pythag"` 可匹配 `"Pythagorean"`，包含自动 DB 迁移 |
 | WAL 模式降级 | 在 NFS/SMB 文件系统上优雅降级，而非崩溃 |
+| 提供商路由 hint | `routing:` 将 hint 名称映射到 provider/model；`--hint <name>` 仅针对单个任务切换模型 |
+| 按工具配置模型 | `tools.<name>.model` 向工具子进程转发 `GARUDUST_MODEL`/`GARUDUST_FALLBACK_MODEL` |
 
 ---
 
@@ -307,6 +378,16 @@ schema:
     city: { type: string }
   required: [city]
 command: "curl -s wttr.in/{city}?format=3"
+# env_required: [MY_API_KEY]   # 仅将指定密钥从 ~/.garudust/.env 转发给脚本
+```
+
+通过 `config.yaml` 为每个工具指定模型 — 以 `GARUDUST_MODEL` / `GARUDUST_FALLBACK_MODEL` 环境变量形式传递给脚本：
+
+```yaml
+tools:
+  get_weather:
+    model: groq/llama-3.1-8b-instant
+    fallback_model: openrouter/meta-llama/llama-3.1-8b-instruct
 ```
 
 **MCP** — 在 `config.yaml` 中接入任意 [Model Context Protocol](https://modelcontextprotocol.io) 服务器：
