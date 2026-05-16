@@ -71,32 +71,42 @@ cd garudust-agent && cargo build --release
 
 ## Quick Start
 
-<table>
-<tr><td bgcolor="#000000">
-<h3><font color="#4af626">01 — Install</font></h3>
-<font color="#cccccc">Download a pre-built binary from <a href="https://github.com/garudust-org/garudust-agent/releases/latest">GitHub Releases</a>:</font><br>
-<pre><font color="#4af626">curl -LO https://github.com/garudust-org/garudust-agent/releases/latest/download/garudust-linux-x64.tar.gz
+**01 — Install**
+
+Download a pre-built binary from [GitHub Releases](https://github.com/garudust-org/garudust-agent/releases/latest):
+
+```bash
+curl -LO https://github.com/garudust-org/garudust-agent/releases/latest/download/garudust-linux-x64.tar.gz
 tar -xzf garudust-*.tar.gz
-sudo mv garudust garudust-server /usr/local/bin/</font></pre>
-<font color="#cccccc">Or build from source (Rust 1.87+):</font><br>
-<pre><font color="#4af626">git clone https://github.com/garudust-org/garudust-agent
-cd garudust-agent &amp;&amp; cargo build --release</font></pre>
-</td></tr>
-<tr><td bgcolor="#000000">
-<h3><font color="#4af626">02 — Configure</font></h3>
-<font color="#cccccc">Run the interactive wizard — it picks a provider, asks for an API key, and writes <code>~/.garudust/.env</code>:</font><br>
-<pre><font color="#4af626">garudust setup</font></pre>
-<font color="#cccccc">Or drop your key directly into <code>~/.garudust/.env</code>. See <a href="#configuration">Configuration</a> for the full <code>config.yaml</code> reference.</font>
-</td></tr>
-<tr><td bgcolor="#000000">
-<h3><font color="#4af626">03 — Run</font></h3>
-<pre><font color="#4af626">garudust                                  <font color="#555555"># interactive TUI</font>
-garudust "summarise git log"              <font color="#555555"># one-shot task</font>
-garudust --hint fast "is this correct?"   <font color="#555555"># route to cheaper model</font>
-garudust-server --port 3000               <font color="#555555"># headless server (REST + WS)</font>
-docker compose up -d                      <font color="#555555"># Docker</font></font></pre>
-</td></tr>
-</table>
+sudo mv garudust garudust-server /usr/local/bin/
+```
+
+Or build from source (Rust 1.87+):
+
+```bash
+git clone https://github.com/garudust-org/garudust-agent
+cd garudust-agent && cargo build --release
+```
+
+**02 — Configure**
+
+Run the interactive wizard — it picks a provider, asks for an API key, and writes `~/.garudust/.env`:
+
+```bash
+garudust setup
+```
+
+Or drop your key directly into `~/.garudust/.env`. See [Configuration](#configuration) for the full `config.yaml` reference.
+
+**03 — Run**
+
+```bash
+garudust                                  # interactive TUI
+garudust "summarise git log"              # one-shot task
+garudust --hint fast "is this correct?"   # route to cheaper model
+garudust-server --port 3000               # headless server (REST + WS)
+docker compose up -d                      # Docker
+```
 
 ### TUI keyboard shortcuts
 

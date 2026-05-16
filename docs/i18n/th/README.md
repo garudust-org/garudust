@@ -71,32 +71,42 @@ cd garudust-agent && cargo build --release
 
 ## เริ่มใช้งาน
 
-<table>
-<tr><td bgcolor="#000000">
-<h3><font color="#4af626">01 — ติดตั้ง</font></h3>
-<font color="#cccccc">ดาวน์โหลด binary จาก <a href="https://github.com/garudust-org/garudust-agent/releases/latest">GitHub Releases</a>:</font><br>
-<pre><font color="#4af626">curl -LO https://github.com/garudust-org/garudust-agent/releases/latest/download/garudust-linux-x64.tar.gz
+**01 — ติดตั้ง**
+
+ดาวน์โหลด binary จาก [GitHub Releases](https://github.com/garudust-org/garudust-agent/releases/latest):
+
+```bash
+curl -LO https://github.com/garudust-org/garudust-agent/releases/latest/download/garudust-linux-x64.tar.gz
 tar -xzf garudust-*.tar.gz
-sudo mv garudust garudust-server /usr/local/bin/</font></pre>
-<font color="#cccccc">หรือ build จาก source (Rust 1.87+):</font><br>
-<pre><font color="#4af626">git clone https://github.com/garudust-org/garudust-agent
-cd garudust-agent &amp;&amp; cargo build --release</font></pre>
-</td></tr>
-<tr><td bgcolor="#000000">
-<h3><font color="#4af626">02 — ตั้งค่า</font></h3>
-<font color="#cccccc">รัน wizard ครั้งแรก — เลือก provider ใส่ API key แล้วเขียน <code>~/.garudust/.env</code> ให้อัตโนมัติ:</font><br>
-<pre><font color="#4af626">garudust setup</font></pre>
-<font color="#cccccc">หรือใส่ key ตรงใน <code>~/.garudust/.env</code> เอง ดู <a href="#การตั้งค่า">การตั้งค่า</a> สำหรับ <code>config.yaml</code> แบบเต็ม</font>
-</td></tr>
-<tr><td bgcolor="#000000">
-<h3><font color="#4af626">03 — รัน</font></h3>
-<pre><font color="#4af626">garudust                                  <font color="#555555"># interactive TUI</font>
-garudust "สรุป git log"                   <font color="#555555"># one-shot task</font>
-garudust --hint fast "ตรวจสอบโค้ดนี้"   <font color="#555555"># ใช้ model ที่ถูกกว่า</font>
-garudust-server --port 3000               <font color="#555555"># headless server (REST + WS)</font>
-docker compose up -d                      <font color="#555555"># Docker</font></font></pre>
-</td></tr>
-</table>
+sudo mv garudust garudust-server /usr/local/bin/
+```
+
+หรือ build จาก source (Rust 1.87+):
+
+```bash
+git clone https://github.com/garudust-org/garudust-agent
+cd garudust-agent && cargo build --release
+```
+
+**02 — ตั้งค่า**
+
+รัน wizard ครั้งแรก — เลือก provider ใส่ API key แล้วเขียน `~/.garudust/.env` ให้อัตโนมัติ:
+
+```bash
+garudust setup
+```
+
+หรือใส่ key ตรงใน `~/.garudust/.env` เอง ดู [การตั้งค่า](#การตั้งค่า) สำหรับ `config.yaml` แบบเต็ม
+
+**03 — รัน**
+
+```bash
+garudust                                  # interactive TUI
+garudust "สรุป git log"                   # one-shot task
+garudust --hint fast "ตรวจสอบโค้ดนี้"   # ใช้ model ที่ถูกกว่า
+garudust-server --port 3000               # headless server (REST + WS)
+docker compose up -d                      # Docker
+```
 
 ### ปุ่มลัด TUI
 
