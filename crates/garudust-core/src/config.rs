@@ -175,8 +175,7 @@ pub struct AgentConfig {
     ///   browser, git, notes, json, mcp, rag
     /// Providers: anthropic, openai, gemini, groq, mistral, deepseek, xai,
     ///   openrouter, vllm, ollama, bedrock, codex, thaillm
-    /// Example: `disabled_toolsets: [browser, git, notes, json, agent]`
-    /// The `rag` toolset is disabled by default — remove it from this list to enable.
+    /// Example: `disabled_toolsets: [browser, git, notes, json, agent, rag]`
     #[serde(default = "default_disabled_toolsets")]
     pub disabled_toolsets: Vec<String>,
     /// Individual tools to disable by exact name. Useful when only some tools
@@ -446,8 +445,7 @@ fn default_server_port() -> u16 {
 }
 
 fn default_disabled_toolsets() -> Vec<String> {
-    // rag is opt-in: enable by removing it from this list in config.yaml
-    vec!["rag".to_string()]
+    vec![]
 }
 
 /// Parse a comma-separated `"cron_expr=task"` env var into structured [`CronJob`]s.
