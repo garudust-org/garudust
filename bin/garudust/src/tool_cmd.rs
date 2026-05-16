@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use anyhow::Result;
+use garudust_core::config::AgentConfig;
 use garudust_tools::hub;
 
 pub async fn list(tools_dir: &Path, offline: bool) -> Result<()> {
@@ -81,6 +82,33 @@ pub async fn install(tool_name: &str, tools_dir: &Path, hub: &str) -> Result<()>
     if requires != "—" && !hub::runtime_in_path(requires) {
         eprintln!("Warning: this tool requires '{requires}' which was not found on PATH.");
     }
+
+    // Write default model config from tool.yaml into config.yaml (only if not already set).
+    let (model, fallback_model) = hub::read_tool_model_defaults(tools_dir, tool_name).await;
+    if !model.is_empty() || !fallback_model.is_empty() {
+        let mut cfg = AgentConfig::load();
+        let entry = cfg.tools.entry(tool_name.to_string()).or_default();
+        let mut updated = false;
+        if entry.model.is_empty() && !model.is_empty() {
+            entry.model.clone_from(&model);
+            updated = true;
+        }
+        if entry.fallback_model.is_empty() && !fallback_model.is_empty() {
+            entry.fallback_model.clone_from(&fallback_model);
+            updated = true;
+        }
+        if updated && cfg.save_yaml().is_ok() {
+            println!("Configured default model for '{tool_name}':");
+            if !model.is_empty() {
+                println!("  model:          {model}");
+            }
+            if !fallback_model.is_empty() {
+                println!("  fallback_model: {fallback_model}");
+            }
+            println!("  (override: garudust config set tools.{tool_name}.model <model>)");
+        }
+    }
+
     Ok(())
 }
 

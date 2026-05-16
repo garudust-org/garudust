@@ -71,6 +71,27 @@ pub async fn fetch_index(repo: &str) -> Result<HubIndex> {
     serde_yaml::from_str(&text).context("parse hub index.yaml")
 }
 
+// ── Tool YAML model defaults ──────────────────────────────────────────────────
+
+/// Read the `model` and `fallback_model` fields from an installed tool's `tool.yaml`.
+/// Returns `(model, fallback_model)` — both empty when the fields are absent.
+pub async fn read_tool_model_defaults(tools_dir: &Path, tool_name: &str) -> (String, String) {
+    #[derive(serde::Deserialize, Default)]
+    struct ModelFields {
+        #[serde(default)]
+        model: String,
+        #[serde(default)]
+        fallback_model: String,
+    }
+
+    let path = tools_dir.join(tool_name).join("tool.yaml");
+    let Ok(text) = tokio::fs::read_to_string(&path).await else {
+        return (String::new(), String::new());
+    };
+    let fields: ModelFields = serde_yaml::from_str(&text).unwrap_or_default();
+    (fields.model, fields.fallback_model)
+}
+
 // ── Install ───────────────────────────────────────────────────────────────────
 
 /// Returns true if `runtime` is found on PATH (unix: `which`; otherwise assumes available).
