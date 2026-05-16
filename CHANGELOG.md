@@ -7,12 +7,100 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased]
+## [0.5.0] — 2026-05-16
 
 ### Added
-- **`required_tools` enforcement** — SKILL.md frontmatter can now declare `required_tools: [tool_name, ...]`; the agent re-prompts once if the session ends without calling them, preventing model hallucination of required tool calls
-- **`context_window` config** — `AgentConfig.context_window` lets users set the actual model context limit so the compressor triggers correctly on small-context models (e.g. `context_window: 27168` for Qwen3-14B-AWQ)
-- **`generate_image` overlay_text** — optional `overlay_text` parameter burns a caption bar directly onto the generated image via Pillow, eliminating the separate `run_command` step in skill workflows
+- **6 new provider integrations** — OpenAI, Gemini (native), Groq, Mistral, DeepSeek, and xAI (Grok) added to the transport layer; all discovered via env-key auto-detection
+- **Provider routing hints** — `provider_routing` field lets skills and inline annotations steer individual requests to a specific model/provider without changing global config
+- **Per-tool and per-skill model override** — `config.yaml` `tools.<name>.model` / `tools.<name>.fallback_model` (and `skills.<name>.*`) run each tool on a dedicated model
+- **Hub auto-config on install** — `garudust tool install <tool>` reads `model` / `fallback_model` from the tool's `tool.yaml` and writes them into config automatically; skipped when the user has already set a value (idempotent)
+- `GARUDUST_MODEL` / `GARUDUST_FALLBACK_MODEL` env vars forwarded to script-tool subprocesses (e.g. `view_image` reads these instead of hard-coding model names)
+- Timestamp label included in gateway image history entries
+- Unit tests for agent run-loop tool dispatch, context compressor, and prompt builder
+- Unit tests for provider auto-detection and API-key resolution
+
+### Changed
+- Default model/provider values deduplicated into shared consts
+- Workspace version bumped to `0.5.0`
+
+### Fixed
+- Stale doctest in `garudust-agent::run()` signature corrected
+
+---
+
+## [0.4.0] — 2026-05-16
+
+### Added
+- **`AgentHooks` trait** — lifecycle callbacks (`on_turn_start`, `on_session_end`, `on_pre_compress`, `on_delegation`) for library embedders
+- **Minimal and XHigh reasoning effort levels** — two new `reasoning_effort` variants alongside the existing Low/Medium/High
+- **`sub_agent_max_iterations` config** — cap the iteration budget for `delegate_tasks` sub-agents independently of the parent agent
+- **FTS5 trigram tokenizer** — SQLite memory/session search now uses FTS5 `trigram` tokenizer for sub-word and partial-string matching
+- **`CredentialRotationTransport`** — automatically rotates to a secondary API key when the primary receives a 401/403 auth failure
+- **Silent image analysis pipeline** — LINE, Telegram, and Discord adapters extract image attachments and forward them to `view_image` without user intervention
+- **Conflict-aware parallel tool execution** (`parallelism_key`) — tools that share a key are serialized; unrelated tools still run concurrently
+
+### Fixed
+- **Context compression** now protects the first user turn from being trimmed (prevents empty first-message loops)
+- **WAL journal mode** degrades gracefully on NFS/SMB filesystems instead of failing at startup
+- **Config watcher** only reloads on content-change filesystem events, not `Access` events (prevents reload loop on Linux/macOS)
+- **`view_image` PATH** — `~/.local/bin` prepended so `uv` is found on typical Linux installs
+- **Secrets map** — `dotenvy` removed from server; secrets loaded via in-memory map so subprocesses always see current values after hot-reload
+- **Provider→env binding** tightened with an explicit tool-env allowlist (prevents env-var leakage across tool calls)
+- Pedantic Clippy lints in Telegram and Discord adapters resolved
+
+---
+
+## [0.3.2] — 2026-05-15
+
+### Added
+- **Conversation history persistence** — agent saves the sliding-window conversation to `~/.garudust/history/` and restores it on restart (Hermes-style)
+- **Per-session history for all platform adapters** — LINE, Telegram, Discord, WhatsApp each maintain independent history files keyed by chat/user ID
+- **TUI cursor navigation** — Left/Right/Ctrl+Left/Ctrl+Right/Home/End keys supported in the input box; click-to-position via mouse
+- **TUI drag-to-copy** — mouse capture removed so the terminal's native text-selection works again
+- `/clear` as an alias for `/new` in TUI and gateway
+
+### Fixed
+- TUI double-cursor eliminated (`set_cursor_position` removed; terminal cursor hidden correctly)
+- Gateway: `@mention` prefix stripped before routing so `/clear` and task commands work in LINE group chats
+
+---
+
+## [0.3.1] — 2026-05-14
+
+### Added
+- **LINE mention detection** — structured mention parsing; bot responds only when explicitly `@mention`ed in group chats; profile lookup scoped per mention
+- **`show_usage_footer` config flag** — set `false` to suppress the per-response `[N iter | X tok | ~$cost]` footer
+- **`config set` extended** — now accepts `server.*`, `cron.*`, and `platforms.*` key paths (e.g. `garudust config set server.port 9090`)
+- `server.port` and all `cron.*` settings moved from env vars to `config.yaml`
+- Webhook adapter settings moved to `platforms.*` in `config.yaml`
+- `garudust config show` displays the effective resolved `base_url` per provider
+
+### Fixed
+- Release CI skips already-published crate versions instead of failing the whole workflow
+- Server no longer logs duplicate sandbox-unavailable warnings on config hot-reload
+- `VLLM_BASE_URL` and `OLLAMA_BASE_URL` correctly routed to `config.yaml` `base_url` field
+- `garudust setup --reconfigure` correctly overwrites existing config values
+
+---
+
+## [0.3.0] — 2026-05-13
+
+### Added
+- **`config.yaml` model / provider / base_url** — top-level fields replace env-var-only model configuration; `garudust setup` writes them automatically
+- **ThaiLLM provider** — first-class support for the Thai LLM API; auto-detected via `THAILLM_API_KEY`; added to setup wizard
+- **`context_window` config** — override the model's advertised context window so the compressor triggers correctly on small-context models (e.g. `context_window: 27168` for Qwen3-14B-AWQ)
+- **`disabled_toolsets`** — block entire toolsets from loading to reduce system-prompt token usage
+- **`disabled_tools`** — disable individual tools without uninstalling them
+- **`required_tools` enforcement** — session frontmatter can declare `required_tools: [name, ...]`; agent re-prompts once if the session ends without calling them
+- Context overflow retry — on a 400 "context too large" error the agent automatically reduces `max_tokens` to `ctx/8` and retries
+
+### Fixed
+- `<untrusted_memory>` tags echoed back by weak models are now stripped before the next LLM call
+- Token estimation uses `bytes / 3` instead of `chars / 4` for correct handling of Thai/CJK scripts
+- `web_fetch` response body capped at 50 KB (down from 512 KB) to reduce context flooding
+- Safe `max_tokens` computed from actual context limit to prevent 400 overflow on first request
+- `usize`→`u32` casts replaced with `try_from` to satisfy Clippy on 32-bit targets
+- `required_tools` counter only increments on successful (non-error) tool calls
 
 ---
 
@@ -202,7 +290,12 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Pre-built binaries for `x86_64-musl` and `aarch64-apple-darwin` via release workflow
 - MIT license
 
-[Unreleased]: https://github.com/garudust-org/garudust-agent/compare/v0.2.7...HEAD
+[0.5.0]: https://github.com/garudust-org/garudust-agent/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/garudust-org/garudust-agent/compare/v0.3.2...v0.4.0
+[0.3.2]: https://github.com/garudust-org/garudust-agent/compare/v0.3.1...v0.3.2
+[0.3.1]: https://github.com/garudust-org/garudust-agent/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/garudust-org/garudust-agent/compare/v0.2.8...v0.3.0
+[0.2.8]: https://github.com/garudust-org/garudust-agent/compare/v0.2.7...v0.2.8
 [0.2.7]: https://github.com/garudust-org/garudust-agent/compare/v0.2.6...v0.2.7
 [0.2.6]: https://github.com/garudust-org/garudust-agent/compare/v0.2.5...v0.2.6
 [0.2.5]: https://github.com/garudust-org/garudust-agent/compare/v0.2.4...v0.2.5
