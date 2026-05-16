@@ -71,46 +71,31 @@ cd garudust-agent && cargo build --release
 
 ## 快速开始
 
-### 01 — 安装
-
-从 [GitHub Releases](https://github.com/garudust-org/garudust-agent/releases/latest) 下载预构建 binary：
-
-```bash
-curl -LO https://github.com/garudust-org/garudust-agent/releases/latest/download/garudust-linux-x64.tar.gz
+<table>
+<tr><td>
+<h3>01 — 安装</h3>
+从 <a href="https://github.com/garudust-org/garudust-agent/releases/latest">GitHub Releases</a> 下载预构建 binary：
+<pre>curl -LO https://github.com/garudust-org/garudust-agent/releases/latest/download/garudust-linux-x64.tar.gz
 tar -xzf garudust-*.tar.gz
-sudo mv garudust garudust-server /usr/local/bin/
-```
-
+sudo mv garudust garudust-server /usr/local/bin/</pre>
 或从源码构建（需 Rust 1.87+）：
-
-```bash
-git clone https://github.com/garudust-org/garudust-agent
-cd garudust-agent && cargo build --release
-```
-
-### 02 — 配置
-
+<pre>git clone https://github.com/garudust-org/garudust-agent
+cd garudust-agent && cargo build --release</pre>
+</td></tr>
+<tr><td>
+<h3>02 — 配置</h3>
 运行首次配置向导：
-
-```bash
-garudust setup   # 选择提供商 → 输入 API 密钥 → 选择模型
-```
-
-或直接写入 `~/.garudust/.env`：
-
-```bash
-ANTHROPIC_API_KEY=sk-ant-...
+<pre>garudust setup   # 选择提供商 → 输入 API 密钥 → 选择模型</pre>
+或直接写入 <code>~/.garudust/.env</code>：
+<pre>ANTHROPIC_API_KEY=sk-ant-...
 # OPENAI_API_KEY=sk-...
 # GROQ_API_KEY=gsk_...
-# OPENROUTER_API_KEY=sk-or-...
-```
-
-完整 `config.yaml` 参考见[配置](#配置)章节。
-
-### 03 — 运行
-
-```bash
-# 交互式 TUI
+# OPENROUTER_API_KEY=sk-or-...</pre>
+完整 <code>config.yaml</code> 参考见<a href="#配置">配置</a>章节。
+</td></tr>
+<tr><td>
+<h3>03 — 运行</h3>
+<pre># 交互式 TUI
 garudust
 
 # 单次任务
@@ -123,8 +108,9 @@ garudust --hint fast "这段代码正确吗？"
 garudust-server --port 3000
 
 # Docker
-docker compose up -d
-```
+docker compose up -d</pre>
+</td></tr>
+</table>
 
 ### TUI 快捷键
 

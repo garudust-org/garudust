@@ -71,46 +71,31 @@ cd garudust-agent && cargo build --release
 
 ## Quick Start
 
-### 01 — Install
-
-Download a pre-built binary from [GitHub Releases](https://github.com/garudust-org/garudust-agent/releases/latest):
-
-```bash
-curl -LO https://github.com/garudust-org/garudust-agent/releases/latest/download/garudust-linux-x64.tar.gz
+<table>
+<tr><td>
+<h3>01 — Install</h3>
+Download a pre-built binary from <a href="https://github.com/garudust-org/garudust-agent/releases/latest">GitHub Releases</a>:
+<pre>curl -LO https://github.com/garudust-org/garudust-agent/releases/latest/download/garudust-linux-x64.tar.gz
 tar -xzf garudust-*.tar.gz
-sudo mv garudust garudust-server /usr/local/bin/
-```
-
+sudo mv garudust garudust-server /usr/local/bin/</pre>
 Or build from source (Rust 1.87+):
-
-```bash
-git clone https://github.com/garudust-org/garudust-agent
-cd garudust-agent && cargo build --release
-```
-
-### 02 — Configure
-
+<pre>git clone https://github.com/garudust-org/garudust-agent
+cd garudust-agent && cargo build --release</pre>
+</td></tr>
+<tr><td>
+<h3>02 — Configure</h3>
 Run the interactive wizard:
-
-```bash
-garudust setup   # pick provider → enter API key → choose model
-```
-
-Or set directly in `~/.garudust/.env`:
-
-```bash
-ANTHROPIC_API_KEY=sk-ant-...
+<pre>garudust setup   # pick provider → enter API key → choose model</pre>
+Or set directly in <code>~/.garudust/.env</code>:
+<pre>ANTHROPIC_API_KEY=sk-ant-...
 # OPENAI_API_KEY=sk-...
 # GROQ_API_KEY=gsk_...
-# OPENROUTER_API_KEY=sk-or-...
-```
-
-See [Configuration](#configuration) for the full `config.yaml` reference.
-
-### 03 — Run
-
-```bash
-# interactive TUI
+# OPENROUTER_API_KEY=sk-or-...</pre>
+See <a href="#configuration">Configuration</a> for the full <code>config.yaml</code> reference.
+</td></tr>
+<tr><td>
+<h3>03 — Run</h3>
+<pre># interactive TUI
 garudust
 
 # one-shot task
@@ -123,8 +108,9 @@ garudust --hint fast "is this correct?"
 garudust-server --port 3000
 
 # Docker
-docker compose up -d
-```
+docker compose up -d</pre>
+</td></tr>
+</table>
 
 ### TUI keyboard shortcuts
 
