@@ -72,43 +72,29 @@ cd garudust-agent && cargo build --release
 ## เริ่มใช้งาน
 
 <table>
-<tr><td bgcolor="#000000">
-<h3><font color="#4af626">01 — ติดตั้ง</font></h3>
-<font color="#cccccc">ดาวน์โหลด binary จาก <a href="https://github.com/garudust-org/garudust-agent/releases/latest">GitHub Releases</a>:</font><br><br>
+<tr><td>
+<h3>01 — ติดตั้ง</h3>
+ดาวน์โหลด binary จาก <a href="https://github.com/garudust-org/garudust-agent/releases/latest">GitHub Releases</a>:
 <pre>curl -LO https://github.com/garudust-org/garudust-agent/releases/latest/download/garudust-linux-x64.tar.gz
 tar -xzf garudust-*.tar.gz
 sudo mv garudust garudust-server /usr/local/bin/</pre>
-<font color="#cccccc">หรือ build จาก source (Rust 1.87+):</font><br><br>
+หรือ build จาก source (Rust 1.87+):
 <pre>git clone https://github.com/garudust-org/garudust-agent
 cd garudust-agent &amp;&amp; cargo build --release</pre>
 </td></tr>
-<tr><td bgcolor="#000000">
-<h3><font color="#4af626">02 — ตั้งค่า</font></h3>
-<font color="#cccccc">รัน wizard ครั้งแรก:</font><br><br>
-<pre>garudust setup   # เลือก provider → ใส่ API key → เลือก model</pre>
-<font color="#cccccc">หรือตั้งตรงใน <code>~/.garudust/.env</code>:</font><br><br>
-<pre>ANTHROPIC_API_KEY=sk-ant-...
-# OPENAI_API_KEY=sk-...
-# GROQ_API_KEY=gsk_...
-# OPENROUTER_API_KEY=sk-or-...</pre>
-<font color="#cccccc">ดู <a href="#การตั้งค่า">การตั้งค่า</a> สำหรับ <code>config.yaml</code> แบบเต็ม</font>
+<tr><td>
+<h3>02 — ตั้งค่า</h3>
+รัน wizard ครั้งแรก — เลือก provider ใส่ API key แล้วเขียน <code>~/.garudust/.env</code> ให้อัตโนมัติ:
+<pre>garudust setup</pre>
+หรือใส่ key ตรงใน <code>~/.garudust/.env</code> เอง ดู <a href="#การตั้งค่า">การตั้งค่า</a> สำหรับ <code>config.yaml</code> แบบเต็ม
 </td></tr>
-<tr><td bgcolor="#000000">
-<h3><font color="#4af626">03 — รัน</font></h3>
-<pre># interactive TUI
-garudust
-
-# one-shot task
-garudust "สรุป git log"
-
-# ใช้ model ที่ถูกกว่าสำหรับ task นี้
-garudust --hint fast "ตรวจสอบโค้ดนี้"
-
-# headless server (REST + WS)
-garudust-server --port 3000
-
-# Docker
-docker compose up -d</pre>
+<tr><td>
+<h3>03 — รัน</h3>
+<pre>garudust                                  # interactive TUI
+garudust "สรุป git log"                   # one-shot task
+garudust --hint fast "ตรวจสอบโค้ดนี้"   # ใช้ model ที่ถูกกว่า
+garudust-server --port 3000               # headless server (REST + WS)
+docker compose up -d                      # Docker</pre>
 </td></tr>
 </table>
 

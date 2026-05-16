@@ -72,43 +72,29 @@ cd garudust-agent && cargo build --release
 ## Quick Start
 
 <table>
-<tr><td bgcolor="#000000">
-<h3><font color="#4af626">01 — Install</font></h3>
-<font color="#cccccc">Download a pre-built binary from <a href="https://github.com/garudust-org/garudust-agent/releases/latest">GitHub Releases</a>:</font><br><br>
+<tr><td>
+<h3>01 — Install</h3>
+Download a pre-built binary from <a href="https://github.com/garudust-org/garudust-agent/releases/latest">GitHub Releases</a>:
 <pre>curl -LO https://github.com/garudust-org/garudust-agent/releases/latest/download/garudust-linux-x64.tar.gz
 tar -xzf garudust-*.tar.gz
 sudo mv garudust garudust-server /usr/local/bin/</pre>
-<font color="#cccccc">Or build from source (Rust 1.87+):</font><br><br>
+Or build from source (Rust 1.87+):
 <pre>git clone https://github.com/garudust-org/garudust-agent
 cd garudust-agent &amp;&amp; cargo build --release</pre>
 </td></tr>
-<tr><td bgcolor="#000000">
-<h3><font color="#4af626">02 — Configure</font></h3>
-<font color="#cccccc">Run the interactive wizard:</font><br><br>
-<pre>garudust setup   # pick provider → enter API key → choose model</pre>
-<font color="#cccccc">Or set directly in <code>~/.garudust/.env</code>:</font><br><br>
-<pre>ANTHROPIC_API_KEY=sk-ant-...
-# OPENAI_API_KEY=sk-...
-# GROQ_API_KEY=gsk_...
-# OPENROUTER_API_KEY=sk-or-...</pre>
-<font color="#cccccc">See <a href="#configuration">Configuration</a> for the full <code>config.yaml</code> reference.</font>
+<tr><td>
+<h3>02 — Configure</h3>
+Run the interactive wizard — it picks a provider, asks for an API key, and writes <code>~/.garudust/.env</code>:
+<pre>garudust setup</pre>
+Or drop your key directly into <code>~/.garudust/.env</code>. See <a href="#configuration">Configuration</a> for the full <code>config.yaml</code> reference.
 </td></tr>
-<tr><td bgcolor="#000000">
-<h3><font color="#4af626">03 — Run</font></h3>
-<pre># interactive TUI
-garudust
-
-# one-shot task
-garudust "summarise git log"
-
-# route task to cheaper model
-garudust --hint fast "is this correct?"
-
-# headless server (REST + WS)
-garudust-server --port 3000
-
-# Docker
-docker compose up -d</pre>
+<tr><td>
+<h3>03 — Run</h3>
+<pre>garudust                                  # interactive TUI
+garudust "summarise git log"              # one-shot task
+garudust --hint fast "is this correct?"   # route to cheaper model
+garudust-server --port 3000               # headless server (REST + WS)
+docker compose up -d                      # Docker</pre>
 </td></tr>
 </table>
 
