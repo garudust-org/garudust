@@ -90,13 +90,19 @@ impl DocStore {
         tx.execute(
             "INSERT INTO doc_sources (id, path, file_name, ingested_at, chunk_count) \
              VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![source_id, source_path, file_name, now, chunks.len() as i64],
+            params![
+                source_id,
+                source_path,
+                file_name,
+                now,
+                i64::try_from(chunks.len()).unwrap_or(i64::MAX)
+            ],
         )?;
 
         for (i, chunk) in chunks.iter().enumerate() {
             tx.execute(
                 "INSERT INTO doc_chunks (source_id, chunk_idx, content) VALUES (?1, ?2, ?3)",
-                params![source_id, i as i64, chunk],
+                params![source_id, i64::try_from(i).unwrap_or(0), chunk],
             )?;
         }
 
@@ -117,7 +123,7 @@ impl DocStore {
              LIMIT ?2",
         )?;
         let results = stmt
-            .query_map(params![query, limit as i64], |row| {
+            .query_map(params![query, i64::try_from(limit).unwrap_or(20)], |row| {
                 Ok(SearchResult {
                     file_name: row.get(0)?,
                     path: row.get(1)?,
