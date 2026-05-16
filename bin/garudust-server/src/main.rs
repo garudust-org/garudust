@@ -400,7 +400,8 @@ async fn main() -> Result<()> {
     );
     let db = Arc::new(SessionDb::open(&config.home_dir)?);
     let doc_store = DocStore::open(&config.home_dir).ok().map(Arc::new);
-    let (agent_inner, mcp_handles) = build_agent(config.clone(), db.clone(), doc_store.clone()).await;
+    let (agent_inner, mcp_handles) =
+        build_agent(config.clone(), db.clone(), doc_store.clone()).await;
     let agent = Arc::new(ArcSwap::from(agent_inner));
     let mcp_handles = Arc::new(tokio::sync::Mutex::new(mcp_handles));
     let sessions = SessionRegistry::new();
@@ -415,7 +416,13 @@ async fn main() -> Result<()> {
 
     // ── Hot-reload watcher ────────────────────────────────────────────────────
     let config_file = config.home_dir.join("config.yaml");
-    spawn_config_watcher(config_file, agent.clone(), db.clone(), doc_store, mcp_handles.clone());
+    spawn_config_watcher(
+        config_file,
+        agent.clone(),
+        db.clone(),
+        doc_store,
+        mcp_handles.clone(),
+    );
 
     // ── Platform adapters ─────────────────────────────────────────────────────
     // For each adapter, the CLI flag takes precedence; otherwise the secret is

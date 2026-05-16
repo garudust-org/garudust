@@ -238,7 +238,15 @@ impl Tool for DocSearch {
         let output = results
             .iter()
             .enumerate()
-            .map(|(i, r)| format!("[{}] {} (chunk {})\n{}", i + 1, r.file_name, r.chunk_idx, r.content))
+            .map(|(i, r)| {
+                format!(
+                    "[{}] {} (chunk {})\n{}",
+                    i + 1,
+                    r.file_name,
+                    r.chunk_idx,
+                    r.content
+                )
+            })
             .collect::<Vec<_>>()
             .join("\n\n");
 
@@ -290,7 +298,10 @@ impl Tool for DocList {
                 let ts = chrono::DateTime::from_timestamp(d.ingested_at as i64, 0)
                     .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
                     .unwrap_or_else(|| d.ingested_at.to_string());
-                format!("- {} ({} chunks, ingested {})", d.file_name, d.chunk_count, ts)
+                format!(
+                    "- {} ({} chunks, ingested {})",
+                    d.file_name, d.chunk_count, ts
+                )
             })
             .collect::<Vec<_>>()
             .join("\n");
