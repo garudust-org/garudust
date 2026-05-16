@@ -102,13 +102,13 @@ impl MessageHandler for GatewayHandler {
             return Ok(());
         }
 
-        // Per-user session isolation — must run BEFORE both the image-only and
-        // image+text branches so the silent image description is injected into
-        // the same session bucket the agent will later read from. Otherwise an
-        // image-only event gets stored under `line:{chat_id}` while a follow-up
-        // text mention from the same user is rewritten to
-        // `line:{chat_id}:{user_id}` and the agent sees no image.
-        if pcfg.session_per_user && msg.channel.platform != "webhook" {
+        // Per-user session isolation — only for non-group (DM) chats.
+        // In group chats every member shares one session so that images sent by
+        // any member are visible to everyone who later asks about them.
+        // Applying per-user keys in groups would mean image events land in the
+        // sender's session bucket while a different member's follow-up text query
+        // reads from their own bucket and sees nothing.
+        if pcfg.session_per_user && !msg.is_group && msg.channel.platform != "webhook" {
             msg.session_key = format!(
                 "{}:{}:{}",
                 msg.channel.platform, msg.channel.chat_id, msg.user_id

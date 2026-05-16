@@ -43,7 +43,14 @@ impl PlatformAdapter for TelegramAdapter {
                     let user_name = msg
                         .from
                         .as_ref()
-                        .and_then(|u| u.username.clone())
+                        .map(|u| {
+                            let mut name = u.first_name.clone();
+                            if let Some(last) = &u.last_name {
+                                name.push(' ');
+                                name.push_str(last);
+                            }
+                            name
+                        })
                         .unwrap_or_default();
                     let chat_id = msg.chat.id;
 
