@@ -71,55 +71,60 @@ cd garudust-agent && cargo build --release
 
 ## เริ่มใช้งาน
 
-<table>
-<tr>
-<td width="33%" valign="top">
-<h3>01 — ติดตั้ง</h3>
-ดาวน์โหลด binary จาก <a href="https://github.com/garudust-org/garudust-agent/releases/latest">GitHub Releases</a>:
-<pre>curl -LO https://github.com/garudust-org/garudust-agent/\
-releases/latest/download/garudust-linux-x64.tar.gz
+### 01 — ติดตั้ง
 
+ดาวน์โหลด binary จาก [GitHub Releases](https://github.com/garudust-org/garudust-agent/releases/latest):
+
+```bash
+curl -LO https://github.com/garudust-org/garudust-agent/releases/latest/download/garudust-linux-x64.tar.gz
 tar -xzf garudust-*.tar.gz
-sudo mv garudust garudust-server \
-  /usr/local/bin/</pre>
+sudo mv garudust garudust-server /usr/local/bin/
+```
+
 หรือ build จาก source (Rust 1.87+):
-<pre>git clone https://github.com/garudust-org/garudust-agent
-cd garudust-agent
-cargo build --release</pre>
-</td>
-<td width="33%" valign="top">
-<h3>02 — ตั้งค่า</h3>
+
+```bash
+git clone https://github.com/garudust-org/garudust-agent
+cd garudust-agent && cargo build --release
+```
+
+### 02 — ตั้งค่า
+
 รัน wizard ครั้งแรก:
-<pre>garudust setup</pre>
-✓ เลือก LLM provider<br>
-✓ ใส่ API key<br>
-✓ เลือก model<br><br>
-หรือตั้งตรงใน <code>~/.garudust/.env</code>:
-<pre>ANTHROPIC_API_KEY=sk-ant-...
+
+```bash
+garudust setup   # เลือก provider → ใส่ API key → เลือก model
+```
+
+หรือตั้งตรงใน `~/.garudust/.env`:
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-...
 # OPENAI_API_KEY=sk-...
 # GROQ_API_KEY=gsk_...
-# OPENROUTER_API_KEY=sk-or-...</pre>
-ดู <a href="#การตั้งค่า">การตั้งค่า</a> สำหรับ <code>config.yaml</code> แบบเต็ม
-</td>
-<td width="33%" valign="top">
-<h3>03 — รัน</h3>
-<pre># interactive TUI
+# OPENROUTER_API_KEY=sk-or-...
+```
+
+ดู [การตั้งค่า](#การตั้งค่า) สำหรับ `config.yaml` แบบเต็ม
+
+### 03 — รัน
+
+```bash
+# interactive TUI
 garudust
 
 # one-shot task
 garudust "สรุป git log"
 
-# ใช้ model ที่ถูกกว่า
+# ใช้ model ที่ถูกกว่าสำหรับ task นี้
 garudust --hint fast "ตรวจสอบโค้ดนี้"
 
 # headless server (REST + WS)
 garudust-server --port 3000
 
 # Docker
-docker compose up -d</pre>
-</td>
-</tr>
-</table>
+docker compose up -d
+```
 
 ### ปุ่มลัด TUI
 
