@@ -285,10 +285,18 @@ mod tests {
         // Use completely disjoint content so trigram overlap cannot cause
         // cross-session hits.
         store
-            .ingest(SESSION_A, "/tmp/alpha.txt", &["XYZALPHA unique token".to_string()])
+            .ingest(
+                SESSION_A,
+                "/tmp/alpha.txt",
+                &["XYZALPHA unique token".to_string()],
+            )
             .unwrap();
         store
-            .ingest(SESSION_B, "/tmp/beta.txt", &["QRSTBETA unique token".to_string()])
+            .ingest(
+                SESSION_B,
+                "/tmp/beta.txt",
+                &["QRSTBETA unique token".to_string()],
+            )
             .unwrap();
 
         // Session B must not find Session A's exclusive term
@@ -312,10 +320,18 @@ mod tests {
     fn same_path_different_sessions_coexist() {
         let (_dir, store) = open_temp();
         store
-            .ingest(SESSION_A, "/tmp/shared_name.txt", &["เนื้อหาของ A".to_string()])
+            .ingest(
+                SESSION_A,
+                "/tmp/shared_name.txt",
+                &["เนื้อหาของ A".to_string()],
+            )
             .unwrap();
         store
-            .ingest(SESSION_B, "/tmp/shared_name.txt", &["เนื้อหาของ B".to_string()])
+            .ingest(
+                SESSION_B,
+                "/tmp/shared_name.txt",
+                &["เนื้อหาของ B".to_string()],
+            )
             .unwrap();
 
         let hits_a = store.search(SESSION_A, "เนื้อหา", 5).unwrap();

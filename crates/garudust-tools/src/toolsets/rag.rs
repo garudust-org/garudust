@@ -233,10 +233,11 @@ impl Tool for DocSearch {
         let session_key = ctx.conv_key.clone();
 
         let store = self.store.clone();
-        let results = tokio::task::spawn_blocking(move || store.search(&session_key, &query, limit))
-            .await
-            .map_err(|e| ToolError::Execution(e.to_string()))?
-            .map_err(|e| ToolError::Execution(e.to_string()))?;
+        let results =
+            tokio::task::spawn_blocking(move || store.search(&session_key, &query, limit))
+                .await
+                .map_err(|e| ToolError::Execution(e.to_string()))?
+                .map_err(|e| ToolError::Execution(e.to_string()))?;
 
         if results.is_empty() {
             return Ok(ToolResult::ok("", "No matching chunks found."));
@@ -371,11 +372,10 @@ impl Tool for DocForget {
 
         // Clear all documents for this session
         if params["all"].as_bool().unwrap_or(false) {
-            let count =
-                tokio::task::spawn_blocking(move || store.forget_all(&session_key))
-                    .await
-                    .map_err(|e| ToolError::Execution(e.to_string()))?
-                    .map_err(|e| ToolError::Execution(e.to_string()))?;
+            let count = tokio::task::spawn_blocking(move || store.forget_all(&session_key))
+                .await
+                .map_err(|e| ToolError::Execution(e.to_string()))?
+                .map_err(|e| ToolError::Execution(e.to_string()))?;
             return Ok(ToolResult::ok(
                 "",
                 format!("Removed {count} document(s) from index."),
@@ -400,11 +400,10 @@ impl Tool for DocForget {
         // Remove by exact path
         if let Some(path) = params["path"].as_str() {
             let path = path.to_string();
-            let removed =
-                tokio::task::spawn_blocking(move || store.forget(&session_key, &path))
-                    .await
-                    .map_err(|e| ToolError::Execution(e.to_string()))?
-                    .map_err(|e| ToolError::Execution(e.to_string()))?;
+            let removed = tokio::task::spawn_blocking(move || store.forget(&session_key, &path))
+                .await
+                .map_err(|e| ToolError::Execution(e.to_string()))?
+                .map_err(|e| ToolError::Execution(e.to_string()))?;
             return if removed {
                 Ok(ToolResult::ok("", "Document removed from index."))
             } else {

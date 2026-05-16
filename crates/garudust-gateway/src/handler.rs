@@ -119,10 +119,7 @@ impl GatewayHandler {
             // Record the file in history so the agent can find the path when
             // the user confirms.  Do NOT delete the file yet.
             let note = if rag_enabled {
-                format!(
-                    "[ไฟล์บันทึกชั่วคราวที่ {} — รอการยืนยันจากผู้ใช้]",
-                    att.path
-                )
+                format!("[ไฟล์บันทึกชั่วคราวที่ {} — รอการยืนยันจากผู้ใช้]", att.path)
             } else {
                 "[RAG ยังไม่ได้เปิดใช้งาน — ลบ 'rag' ออกจาก disabled_toolsets ใน config.yaml]"
                     .to_string()
@@ -296,10 +293,7 @@ impl MessageHandler for GatewayHandler {
                 } else {
                     format!("[@{} ส่งไฟล์ {} เวลา {ts}]", msg.user_name, att.file_name)
                 };
-                let note = format!(
-                    "[ไฟล์บันทึกชั่วคราวที่ {} — รอการยืนยันจากผู้ใช้]",
-                    att.path
-                );
+                let note = format!("[ไฟล์บันทึกชั่วคราวที่ {} — รอการยืนยันจากผู้ใช้]", att.path);
                 self.agent
                     .inject_history(&msg.session_key, &user_label, &note);
             }

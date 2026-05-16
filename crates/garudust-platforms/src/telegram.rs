@@ -109,8 +109,7 @@ impl PlatformAdapter for TelegramAdapter {
                             .unwrap_or("bin");
                         let supported = matches!(
                             ext.to_lowercase().as_str(),
-                            "pdf" | "txt" | "csv" | "md" | "json" | "docx" | "doc" | "xlsx"
-                                | "xls"
+                            "pdf" | "txt" | "csv" | "md" | "json" | "docx" | "doc" | "xlsx" | "xls"
                         );
                         if supported {
                             let file_id = doc.file.id.to_string();
@@ -119,8 +118,10 @@ impl PlatformAdapter for TelegramAdapter {
                                 Ok(tg_file) => match tokio::fs::File::create(&dest).await {
                                     Ok(mut writer) => {
                                         match bot.download_file(&tg_file.path, &mut writer).await {
-                                            Ok(()) => doc_attachments
-                                                .push(DocAttachment { path: dest, file_name }),
+                                            Ok(()) => doc_attachments.push(DocAttachment {
+                                                path: dest,
+                                                file_name,
+                                            }),
                                             Err(e) => tracing::warn!(
                                                 file_id,
                                                 error = %e,

@@ -43,9 +43,13 @@ impl EventHandler for DiscordHandler {
                                 tracing::warn!(att_id = %att.id, error = %e, "Discord: write img failed");
                             }
                         },
-                        Err(e) => tracing::warn!(att_id = %att.id, error = %e, "Discord: read img bytes failed"),
+                        Err(e) => {
+                            tracing::warn!(att_id = %att.id, error = %e, "Discord: read img bytes failed")
+                        }
                     },
-                    Err(e) => tracing::warn!(att_id = %att.id, error = %e, "Discord: download img failed"),
+                    Err(e) => {
+                        tracing::warn!(att_id = %att.id, error = %e, "Discord: download img failed")
+                    }
                 }
             } else {
                 let ext = std::path::Path::new(&att.filename)
@@ -65,11 +69,17 @@ impl EventHandler for DiscordHandler {
                                     path: dest,
                                     file_name: att.filename.clone(),
                                 }),
-                                Err(e) => tracing::warn!(att_id = %att.id, error = %e, "Discord: write doc failed"),
+                                Err(e) => {
+                                    tracing::warn!(att_id = %att.id, error = %e, "Discord: write doc failed")
+                                }
                             },
-                            Err(e) => tracing::warn!(att_id = %att.id, error = %e, "Discord: read doc bytes failed"),
+                            Err(e) => {
+                                tracing::warn!(att_id = %att.id, error = %e, "Discord: read doc bytes failed")
+                            }
                         },
-                        Err(e) => tracing::warn!(att_id = %att.id, error = %e, "Discord: download doc failed"),
+                        Err(e) => {
+                            tracing::warn!(att_id = %att.id, error = %e, "Discord: download doc failed")
+                        }
                     }
                 }
             }
