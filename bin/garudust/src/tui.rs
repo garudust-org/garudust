@@ -19,8 +19,6 @@ use tokio::sync::mpsc;
 
 #[derive(Debug, Clone)]
 pub enum AgentEvent {
-    #[allow(dead_code)]
-    Output(String),
     OutputChunk(String),
     Thinking,
     Done {
@@ -318,12 +316,6 @@ impl Tui {
 
     fn handle_agent_event(&mut self, ev: AgentEvent) {
         match ev {
-            AgentEvent::Output(text) => {
-                self.streaming = false;
-                self.messages.push((Role::Assistant, text));
-                self.status = "Ready".into();
-                self.scroll = u16::MAX;
-            }
             AgentEvent::OutputChunk(delta) => {
                 if self.streaming {
                     if let Some((Role::Assistant, buf)) = self.messages.last_mut() {

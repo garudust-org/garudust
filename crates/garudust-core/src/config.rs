@@ -106,10 +106,6 @@ pub struct AgentConfig {
     /// to the tool's subprocess. Tools that do not read these vars are unaffected.
     #[serde(default)]
     pub tools: std::collections::HashMap<String, ToolOverrideConfig>,
-    /// Per-skill configuration overrides, keyed by skill name.
-    /// Same structure as `tools`; reserved for future skill-level overrides.
-    #[serde(default)]
-    pub skills: std::collections::HashMap<String, ToolOverrideConfig>,
     #[serde(skip)]
     pub api_key: Option<String>,
     /// Fallback API keys tried in order when the primary key returns 401/403.
@@ -118,8 +114,6 @@ pub struct AgentConfig {
     pub fallback_api_keys: Vec<String>,
     #[serde(default)]
     pub compression: CompressionConfig,
-    #[serde(default)]
-    pub network: NetworkConfig,
     #[serde(default)]
     pub mcp_servers: Vec<McpServerConfig>,
     #[serde(default)]
@@ -305,7 +299,7 @@ pub enum TerminalSandbox {
     Docker,
 }
 
-/// Security-related settings grouped together (mirrors CompressionConfig / NetworkConfig pattern).
+/// Security-related settings grouped together (mirrors CompressionConfig pattern).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecurityConfig {
     /// Bearer token required on /chat* endpoints. None = open (warn at startup).
@@ -541,11 +535,9 @@ impl Default for AgentConfig {
             base_url: None,
             routing: std::collections::HashMap::new(),
             tools: std::collections::HashMap::new(),
-            skills: std::collections::HashMap::new(),
             api_key: None,
             fallback_api_keys: Vec::new(),
             compression: CompressionConfig::default(),
-            network: NetworkConfig::default(),
             mcp_servers: Vec::new(),
             max_concurrent_requests: None,
             security: SecurityConfig {
@@ -810,12 +802,6 @@ impl Default for CompressionConfig {
             model: None,
         }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct NetworkConfig {
-    pub force_ipv4: bool,
-    pub proxy: Option<String>,
 }
 
 #[cfg(test)]

@@ -4,16 +4,10 @@ use thiserror::Error;
 pub enum AgentError {
     #[error("budget exhausted after {0} iterations")]
     BudgetExhausted(u32),
-    #[error("token budget exhausted: {0} tokens used")]
-    TokenBudgetExhausted(u32),
     #[error("transport error: {0}")]
     Transport(#[from] TransportError),
     #[error("tool error: {0}")]
     Tool(#[from] ToolError),
-    #[error("context compression failed: {0}")]
-    Compression(String),
-    #[error("interrupted")]
-    Interrupted,
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }
@@ -28,10 +22,6 @@ pub enum TransportError {
     Network(String),
     #[error("authentication failed")]
     Auth,
-    #[error("model not found: {0}")]
-    ModelNotFound(String),
-    #[error("context length exceeded")]
-    ContextLengthExceeded,
     #[error("stream error: {0}")]
     Stream(String),
     #[error("LLM call timed out after {0}s")]
