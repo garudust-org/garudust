@@ -72,43 +72,41 @@ cd garudust-agent && cargo build --release
 ## เริ่มใช้งาน
 
 <table>
-<tr><td>
-<h3>01 — ติดตั้ง</h3>
-ดาวน์โหลด binary จาก <a href="https://github.com/garudust-org/garudust-agent/releases/latest">GitHub Releases</a>:
-<pre>curl -LO https://github.com/garudust-org/garudust-agent/releases/latest/download/garudust-linux-x64.tar.gz
-tar -xzf garudust-*.tar.gz
-sudo mv garudust garudust-server /usr/local/bin/</pre>
-หรือ build จาก source (Rust 1.87+):
-<pre>git clone https://github.com/garudust-org/garudust-agent
-cd garudust-agent && cargo build --release</pre>
+<tr><td bgcolor="#000000">
+<h3><font color="#4af626">01 — ติดตั้ง</font></h3>
+<font color="#cccccc">ดาวน์โหลด binary จาก <a href="https://github.com/garudust-org/garudust-agent/releases/latest">GitHub Releases</a>:</font><br><br>
+<font color="#4af626" face="monospace">curl -LO https://github.com/garudust-org/garudust-agent/releases/latest/download/garudust-linux-x64.tar.gz<br>
+tar -xzf garudust-*.tar.gz<br>
+sudo mv garudust garudust-server /usr/local/bin/</font><br><br>
+<font color="#cccccc">หรือ build จาก source (Rust 1.87+):</font><br><br>
+<font color="#4af626" face="monospace">git clone https://github.com/garudust-org/garudust-agent<br>
+cd garudust-agent &amp;&amp; cargo build --release</font>
 </td></tr>
-<tr><td>
-<h3>02 — ตั้งค่า</h3>
-รัน wizard ครั้งแรก:
-<pre>garudust setup   # เลือก provider → ใส่ API key → เลือก model</pre>
-หรือตั้งตรงใน <code>~/.garudust/.env</code>:
-<pre>ANTHROPIC_API_KEY=sk-ant-...
-# OPENAI_API_KEY=sk-...
-# GROQ_API_KEY=gsk_...
-# OPENROUTER_API_KEY=sk-or-...</pre>
-ดู <a href="#การตั้งค่า">การตั้งค่า</a> สำหรับ <code>config.yaml</code> แบบเต็ม
+<tr><td bgcolor="#000000">
+<h3><font color="#4af626">02 — ตั้งค่า</font></h3>
+<font color="#cccccc">รัน wizard ครั้งแรก:</font><br><br>
+<font color="#4af626" face="monospace">garudust setup &nbsp;<font color="#555555"># เลือก provider → ใส่ API key → เลือก model</font></font><br><br>
+<font color="#cccccc">หรือตั้งตรงใน <code>~/.garudust/.env</code>:</font><br><br>
+<font color="#4af626" face="monospace">ANTHROPIC_API_KEY=sk-ant-...<br>
+<font color="#555555"># OPENAI_API_KEY=sk-...<br>
+# GROQ_API_KEY=gsk_...<br>
+# OPENROUTER_API_KEY=sk-or-...</font></font><br><br>
+<font color="#cccccc">ดู <a href="#การตั้งค่า">การตั้งค่า</a> สำหรับ <code>config.yaml</code> แบบเต็ม</font>
 </td></tr>
-<tr><td>
-<h3>03 — รัน</h3>
-<pre># interactive TUI
-garudust
-
-# one-shot task
-garudust "สรุป git log"
-
-# ใช้ model ที่ถูกกว่าสำหรับ task นี้
-garudust --hint fast "ตรวจสอบโค้ดนี้"
-
-# headless server (REST + WS)
-garudust-server --port 3000
-
-# Docker
-docker compose up -d</pre>
+<tr><td bgcolor="#000000">
+<h3><font color="#4af626">03 — รัน</font></h3>
+<font color="#4af626" face="monospace">
+<font color="#555555"># interactive TUI</font><br>
+garudust<br><br>
+<font color="#555555"># one-shot task</font><br>
+garudust "สรุป git log"<br><br>
+<font color="#555555"># ใช้ model ที่ถูกกว่าสำหรับ task นี้</font><br>
+garudust --hint fast "ตรวจสอบโค้ดนี้"<br><br>
+<font color="#555555"># headless server (REST + WS)</font><br>
+garudust-server --port 3000<br><br>
+<font color="#555555"># Docker</font><br>
+docker compose up -d
+</font>
 </td></tr>
 </table>
 

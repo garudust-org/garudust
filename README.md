@@ -72,43 +72,41 @@ cd garudust-agent && cargo build --release
 ## Quick Start
 
 <table>
-<tr><td>
-<h3>01 — Install</h3>
-Download a pre-built binary from <a href="https://github.com/garudust-org/garudust-agent/releases/latest">GitHub Releases</a>:
-<pre>curl -LO https://github.com/garudust-org/garudust-agent/releases/latest/download/garudust-linux-x64.tar.gz
-tar -xzf garudust-*.tar.gz
-sudo mv garudust garudust-server /usr/local/bin/</pre>
-Or build from source (Rust 1.87+):
-<pre>git clone https://github.com/garudust-org/garudust-agent
-cd garudust-agent && cargo build --release</pre>
+<tr><td bgcolor="#000000">
+<h3><font color="#4af626">01 — Install</font></h3>
+<font color="#cccccc">Download a pre-built binary from <a href="https://github.com/garudust-org/garudust-agent/releases/latest">GitHub Releases</a>:</font><br><br>
+<font color="#4af626" face="monospace">curl -LO https://github.com/garudust-org/garudust-agent/releases/latest/download/garudust-linux-x64.tar.gz<br>
+tar -xzf garudust-*.tar.gz<br>
+sudo mv garudust garudust-server /usr/local/bin/</font><br><br>
+<font color="#cccccc">Or build from source (Rust 1.87+):</font><br><br>
+<font color="#4af626" face="monospace">git clone https://github.com/garudust-org/garudust-agent<br>
+cd garudust-agent &amp;&amp; cargo build --release</font>
 </td></tr>
-<tr><td>
-<h3>02 — Configure</h3>
-Run the interactive wizard:
-<pre>garudust setup   # pick provider → enter API key → choose model</pre>
-Or set directly in <code>~/.garudust/.env</code>:
-<pre>ANTHROPIC_API_KEY=sk-ant-...
-# OPENAI_API_KEY=sk-...
-# GROQ_API_KEY=gsk_...
-# OPENROUTER_API_KEY=sk-or-...</pre>
-See <a href="#configuration">Configuration</a> for the full <code>config.yaml</code> reference.
+<tr><td bgcolor="#000000">
+<h3><font color="#4af626">02 — Configure</font></h3>
+<font color="#cccccc">Run the interactive wizard:</font><br><br>
+<font color="#4af626" face="monospace">garudust setup &nbsp;<font color="#555555"># pick provider → enter API key → choose model</font></font><br><br>
+<font color="#cccccc">Or set directly in <code>~/.garudust/.env</code>:</font><br><br>
+<font color="#4af626" face="monospace">ANTHROPIC_API_KEY=sk-ant-...<br>
+<font color="#555555"># OPENAI_API_KEY=sk-...<br>
+# GROQ_API_KEY=gsk_...<br>
+# OPENROUTER_API_KEY=sk-or-...</font></font><br><br>
+<font color="#cccccc">See <a href="#configuration">Configuration</a> for the full <code>config.yaml</code> reference.</font>
 </td></tr>
-<tr><td>
-<h3>03 — Run</h3>
-<pre># interactive TUI
-garudust
-
-# one-shot task
-garudust "summarise git log"
-
-# route task to cheaper model
-garudust --hint fast "is this correct?"
-
-# headless server (REST + WS)
-garudust-server --port 3000
-
-# Docker
-docker compose up -d</pre>
+<tr><td bgcolor="#000000">
+<h3><font color="#4af626">03 — Run</font></h3>
+<font color="#4af626" face="monospace">
+<font color="#555555"># interactive TUI</font><br>
+garudust<br><br>
+<font color="#555555"># one-shot task</font><br>
+garudust "summarise git log"<br><br>
+<font color="#555555"># route task to cheaper model</font><br>
+garudust --hint fast "is this correct?"<br><br>
+<font color="#555555"># headless server (REST + WS)</font><br>
+garudust-server --port 3000<br><br>
+<font color="#555555"># Docker</font><br>
+docker compose up -d
+</font>
 </td></tr>
 </table>
 
