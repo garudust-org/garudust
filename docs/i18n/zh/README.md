@@ -55,18 +55,6 @@
 | Linux ARM64 | `garudust-*-aarch64-unknown-linux-musl.tar.gz` |
 | Windows | `garudust-*-x86_64-pc-windows-msvc.zip` |
 
-```bash
-tar -xzf garudust-*.tar.gz
-sudo mv garudust garudust-server /usr/local/bin/
-```
-
-或从源码构建（需 Rust 1.87+）：
-
-```bash
-git clone https://github.com/garudust-org/garudust-agent
-cd garudust-agent && cargo build --release
-```
-
 ---
 
 ## 快速开始

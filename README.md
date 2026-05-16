@@ -55,18 +55,6 @@ Download a pre-built binary from [**GitHub Releases**](https://github.com/garudu
 | Linux ARM64 | `garudust-*-aarch64-unknown-linux-musl.tar.gz` |
 | Windows | `garudust-*-x86_64-pc-windows-msvc.zip` |
 
-```bash
-tar -xzf garudust-*.tar.gz
-sudo mv garudust garudust-server /usr/local/bin/
-```
-
-Or build from source (requires Rust 1.87+):
-
-```bash
-git clone https://github.com/garudust-org/garudust-agent
-cd garudust-agent && cargo build --release
-```
-
 ---
 
 ## Quick Start
