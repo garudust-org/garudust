@@ -428,6 +428,7 @@ mod tests {
         config.security.allowed_read_paths = vec![workspace_root];
         ToolContext {
             session_id: "s".into(),
+            conv_key: String::new(),
             agent_id: "a".into(),
             iteration: 0,
             budget: Arc::new(IterationBudget::new(10)),
@@ -511,6 +512,7 @@ mod tests {
         config.security.allowed_read_paths = vec![tmp.path().parent().unwrap().to_path_buf()];
         let ctx = ToolContext {
             session_id: "s".into(),
+            conv_key: String::new(),
             agent_id: "a".into(),
             iteration: 0,
             budget: Arc::new(IterationBudget::new(10)),
@@ -549,6 +551,7 @@ mod tests {
         config.security.allowed_read_paths = vec![tmp.path().parent().unwrap().to_path_buf()];
         let ctx = ToolContext {
             session_id: "s".into(),
+            conv_key: String::new(),
             agent_id: "a".into(),
             iteration: 0,
             budget: Arc::new(IterationBudget::new(10)),

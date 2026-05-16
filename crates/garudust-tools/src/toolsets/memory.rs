@@ -269,6 +269,7 @@ mod tests {
     fn make_ctx(memory: Arc<dyn MemoryStore>) -> ToolContext {
         ToolContext {
             session_id: "test".into(),
+            conv_key: String::new(),
             agent_id: "test".into(),
             iteration: 1,
             budget: Arc::new(IterationBudget::new(100)),

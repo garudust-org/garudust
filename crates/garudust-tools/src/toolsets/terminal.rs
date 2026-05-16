@@ -486,6 +486,7 @@ mod tests {
         };
         ToolContext {
             session_id: "test".into(),
+            conv_key: String::new(),
             agent_id: "test".into(),
             iteration: 0,
             budget: Arc::new(IterationBudget::new(10)),

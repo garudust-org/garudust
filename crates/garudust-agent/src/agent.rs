@@ -377,6 +377,7 @@ impl Agent {
     pub async fn run_tool(&self, name: &str, args: serde_json::Value) -> String {
         let ctx = ToolContext {
             session_id: uuid::Uuid::new_v4().to_string(),
+            conv_key: String::new(),
             agent_id: "gateway".to_string(),
             iteration: 1,
             budget: Arc::new(IterationBudget::new(1)),
@@ -433,6 +434,8 @@ impl Agent {
         session_key: Option<&str>,
     ) -> Result<AgentResult, AgentError> {
         let session_id = Uuid::new_v4().to_string();
+        // Stable key for scoping persistent tool storage (e.g. RAG doc store).
+        let conv_key = session_key.unwrap_or(platform).to_string();
         #[allow(clippy::cast_precision_loss)]
         let started_at = Utc::now().timestamp_millis() as f64 / 1000.0;
         // Read memory once — shared by system-prompt serialization and prefetch injection.
@@ -797,6 +800,7 @@ impl Agent {
             let sub_agent: Arc<dyn SubAgentRunner> = Arc::new(self.spawn_child());
             let ctx = Arc::new(ToolContext {
                 session_id: session_id.clone(),
+                conv_key: conv_key.clone(),
                 agent_id: self.id.clone(),
                 iteration: iters,
                 // Tool calls themselves (web_fetch, terminal, etc.) count against
@@ -1143,6 +1147,7 @@ async fn reflect_and_save_skill(
         }
         let ctx = ToolContext {
             session_id: Uuid::new_v4().to_string(),
+            conv_key: String::new(),
             agent_id: "skill-reflection".to_string(),
             iteration: 1,
             budget: Arc::new(garudust_core::budget::IterationBudget::new(

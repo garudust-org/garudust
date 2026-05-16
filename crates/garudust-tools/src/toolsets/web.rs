@@ -638,6 +638,7 @@ mod tests {
     fn make_ctx() -> ToolContext {
         ToolContext {
             session_id: "s".into(),
+            conv_key: String::new(),
             agent_id: "a".into(),
             iteration: 0,
             budget: Arc::new(IterationBudget::new(10)),

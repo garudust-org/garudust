@@ -526,6 +526,7 @@ command: "curl -s wttr.in/{city}?format=3"
 
         garudust_core::tool::ToolContext {
             session_id: "test".into(),
+            conv_key: String::new(),
             agent_id: "test".into(),
             iteration: 0,
             budget: Arc::new(IterationBudget::new(10)),

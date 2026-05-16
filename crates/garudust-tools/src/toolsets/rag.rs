@@ -158,7 +158,7 @@ impl Tool for DocIngest {
         let preview = chunks[0].chars().take(200).collect::<String>();
         let store = self.store.clone();
         let path_owned = path.to_string();
-        let session_key = ctx.session_id.clone();
+        let session_key = ctx.conv_key.clone();
 
         tokio::task::spawn_blocking(move || store.ingest(&session_key, &path_owned, &chunks))
             .await
@@ -230,7 +230,7 @@ impl Tool for DocSearch {
             .ok_or_else(|| ToolError::InvalidArgs("'query' required".into()))?
             .to_string();
         let limit = params["limit"].as_u64().unwrap_or(5).min(20) as usize;
-        let session_key = ctx.session_id.clone();
+        let session_key = ctx.conv_key.clone();
 
         let store = self.store.clone();
         let results = tokio::task::spawn_blocking(move || store.search(&session_key, &query, limit))
@@ -289,7 +289,7 @@ impl Tool for DocList {
     }
 
     async fn execute(&self, _params: Value, ctx: &ToolContext) -> Result<ToolResult, ToolError> {
-        let session_key = ctx.session_id.clone();
+        let session_key = ctx.conv_key.clone();
         let store = self.store.clone();
         let docs = tokio::task::spawn_blocking(move || store.list(&session_key))
             .await
@@ -361,7 +361,7 @@ impl Tool for DocForget {
             .as_str()
             .ok_or_else(|| ToolError::InvalidArgs("'path' required".into()))?
             .to_string();
-        let session_key = ctx.session_id.clone();
+        let session_key = ctx.conv_key.clone();
 
         let store = self.store.clone();
         let removed = tokio::task::spawn_blocking(move || store.forget(&session_key, &path))

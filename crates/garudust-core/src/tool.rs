@@ -94,7 +94,13 @@ pub trait SubAgentRunner: Send + Sync + 'static {
 }
 
 pub struct ToolContext {
+    /// Unique ID for this specific agent run (UUID). Used for logging and
+    /// sub-agent delegation — NOT suitable as a stable storage key.
     pub session_id: String,
+    /// Stable conversation key shared across all turns of the same chat
+    /// (e.g. "line:Cxxxxxxx", "cli", "webhook:room1"). This is what tools
+    /// should use when scoping persistent storage like the RAG doc store.
+    pub conv_key: String,
     pub agent_id: String,
     pub iteration: u32,
     pub budget: Arc<IterationBudget>,
