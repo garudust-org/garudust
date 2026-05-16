@@ -222,7 +222,7 @@ impl MessageHandler for GatewayHandler {
 
         tokio::spawn(async move {
             match agent
-                .run(&task, approver, &platform_name, Some(&session_key))
+                .run(&task, approver, &platform_name, None, Some(&session_key))
                 .await
             {
                 Ok(result) => {

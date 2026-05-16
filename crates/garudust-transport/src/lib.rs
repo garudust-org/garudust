@@ -40,5 +40,5 @@ pub mod ollama;
 pub mod registry;
 pub mod retry;
 
-pub use registry::build_transport;
+pub use registry::{build_transport, resolve_hint};
 pub use retry::{CredentialRotationTransport, RetryTransport};

@@ -82,6 +82,9 @@ async fn metrics(State(state): State<AppState>) -> Response {
 #[derive(Deserialize)]
 struct ChatRequest {
     message: String,
+    /// Optional routing hint — selects an alternative provider/model from the
+    /// `routing` table in config.yaml (e.g. `"cheap"`, `"reason"`).
+    hint: Option<String>,
     /// Optional session key for conversation continuity across HTTP calls.
     session_key: Option<String>,
 }
@@ -104,7 +107,13 @@ async fn chat(
     let result = state
         .agent
         .load_full()
-        .run(&req.message, approver, "http", req.session_key.as_deref())
+        .run(
+            &req.message,
+            approver,
+            "http",
+            req.hint.as_deref(),
+            req.session_key.as_deref(),
+        )
         .await;
     state.metrics.dec_active();
     result
@@ -142,6 +151,7 @@ async fn chat_stream(
                 approver,
                 "http-sse",
                 chunk_tx,
+                req.hint.as_deref(),
                 req.session_key.as_deref(),
             )
             .await;
@@ -170,6 +180,9 @@ async fn handle_ws(mut socket: WebSocket, state: AppState) {
     let ws_session_key = parsed
         .as_ref()
         .and_then(|v| v["session_key"].as_str().map(String::from));
+    let ws_hint = parsed
+        .as_ref()
+        .and_then(|v| v["hint"].as_str().map(String::from));
 
     state.metrics.inc_request();
     let (chunk_tx, mut chunk_rx) = mpsc::unbounded_channel::<String>();
@@ -185,6 +198,7 @@ async fn handle_ws(mut socket: WebSocket, state: AppState) {
                 approver2,
                 "ws",
                 chunk_tx,
+                ws_hint.as_deref(),
                 ws_session_key.as_deref(),
             )
             .await;

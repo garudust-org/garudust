@@ -98,6 +98,55 @@ fn build_base_transport(
     }
 }
 
+const KNOWN_PROVIDERS: &[&str] = &[
+    "anthropic",
+    "openai",
+    "gemini",
+    "groq",
+    "mistral",
+    "deepseek",
+    "xai",
+    "openrouter",
+    "vllm",
+    "thaillm",
+    "ollama",
+    "bedrock",
+    "codex",
+];
+
+fn api_key_for_provider(provider: &str) -> String {
+    let var = match provider {
+        "anthropic" => "ANTHROPIC_API_KEY",
+        "openai" => "OPENAI_API_KEY",
+        "gemini" => "GEMINI_API_KEY",
+        "groq" => "GROQ_API_KEY",
+        "mistral" => "MISTRAL_API_KEY",
+        "deepseek" => "DEEPSEEK_API_KEY",
+        "xai" => "XAI_API_KEY",
+        "thaillm" => "THAILLM_API_KEY",
+        "vllm" => "VLLM_API_KEY",
+        _ => "OPENROUTER_API_KEY",
+    };
+    garudust_core::config::get_secret(var).unwrap_or_default()
+}
+
+/// Resolve a routing target string into a `(transport, model)` pair.
+///
+/// Format: `"<provider>/<model>"` — the part before the first `/` selects the
+/// provider and its endpoint; everything after is the model name sent to the API.
+///
+/// Returns `None` when the prefix is not a recognized provider (caller should
+/// use the default transport and treat the whole string as the model name).
+pub fn resolve_hint(target: &str) -> Option<(Arc<dyn ProviderTransport>, String)> {
+    let (provider, model) = target.split_once('/')?;
+    if !KNOWN_PROVIDERS.contains(&provider) {
+        return None;
+    }
+    let api_key = api_key_for_provider(provider);
+    let transport = build_base_transport(provider, None, api_key);
+    Some((transport, model.to_string()))
+}
+
 pub fn build_transport(config: &AgentConfig) -> Arc<dyn ProviderTransport> {
     let base_url = config.base_url.clone();
     let primary_key = config.api_key.clone().unwrap_or_default();

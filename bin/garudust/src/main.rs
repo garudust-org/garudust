@@ -158,6 +158,11 @@ struct Cli {
     /// Override base URL (env: GARUDUST_BASE_URL)
     #[arg(long, env = "GARUDUST_BASE_URL")]
     base_url: Option<String>,
+
+    /// Routing hint — selects an alternative provider/model from the `routing`
+    /// table in config.yaml (e.g. `--hint cheap` or `--hint reason`)
+    #[arg(long)]
+    hint: Option<String>,
 }
 
 fn build_config(cli: &Cli) -> Arc<AgentConfig> {
@@ -344,7 +349,9 @@ async fn main() -> Result<()> {
         // Keep handles alive for the duration of the run; drop at block exit.
         let _handles = mcp_handles;
         let approver = Arc::new(AutoApprover);
-        let result = agent.run(task, approver, "cli", None).await?;
+        let result = agent
+            .run(task, approver, "cli", cli.hint.as_deref(), None)
+            .await?;
         println!("{}", result.output);
         eprintln!(
             "[{} iter | {}in {}out tokens]",
@@ -415,6 +422,7 @@ async fn main() -> Result<()> {
                                 approver2.clone(),
                                 "cli",
                                 chunk_tx,
+                                None,
                                 Some("cli:tui"),
                             )
                             .await

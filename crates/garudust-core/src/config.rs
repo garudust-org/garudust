@@ -72,6 +72,12 @@ pub struct AgentConfig {
     #[serde(default = "default_provider")]
     pub provider: String,
     pub base_url: Option<String>,
+    /// Provider routing table: hint name → "provider/model" string.
+    /// Example: `cheap: groq/llama-3.1-8b-instant`
+    /// When a hint is passed to agent.run(), the agent looks up the target here,
+    /// builds an appropriate transport, and overrides the model for that task only.
+    #[serde(default)]
+    pub routing: std::collections::HashMap<String, String>,
     #[serde(skip)]
     pub api_key: Option<String>,
     /// Fallback API keys tried in order when the primary key returns 401/403.
@@ -496,6 +502,7 @@ impl Default for AgentConfig {
             tool_delay_ms: 0,
             provider: "openrouter".into(),
             base_url: None,
+            routing: std::collections::HashMap::new(),
             api_key: None,
             fallback_api_keys: Vec::new(),
             compression: CompressionConfig::default(),

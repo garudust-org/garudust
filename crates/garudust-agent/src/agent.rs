@@ -239,7 +239,7 @@ impl SubAgentRunner for Agent {
     async fn run_task(&self, task: &str, session_id: &str) -> Result<String, AgentError> {
         self.hooks.on_delegation(task, session_id).await;
         let approver = Arc::new(crate::approver::AutoApprover);
-        let result = self.run(task, approver, session_id, None).await?;
+        let result = self.run(task, approver, session_id, None, None).await?;
         Ok(result.output)
     }
 }
@@ -357,9 +357,10 @@ impl Agent {
         task: &str,
         approver: Arc<dyn garudust_core::tool::CommandApprover>,
         platform: &str,
+        hint: Option<&str>,
         session_key: Option<&str>,
     ) -> Result<AgentResult, AgentError> {
-        self.run_inner(task, approver, platform, None, session_key)
+        self.run_inner(task, approver, platform, None, hint, session_key)
             .await
     }
 
@@ -369,9 +370,10 @@ impl Agent {
         approver: Arc<dyn garudust_core::tool::CommandApprover>,
         platform: &str,
         chunk_tx: mpsc::UnboundedSender<String>,
+        hint: Option<&str>,
         session_key: Option<&str>,
     ) -> Result<AgentResult, AgentError> {
-        self.run_inner(task, approver, platform, Some(chunk_tx), session_key)
+        self.run_inner(task, approver, platform, Some(chunk_tx), hint, session_key)
             .await
     }
 
@@ -381,6 +383,7 @@ impl Agent {
         approver: Arc<dyn garudust_core::tool::CommandApprover>,
         platform: &str,
         chunk_tx: Option<mpsc::UnboundedSender<String>>,
+        hint: Option<&str>,
         session_key: Option<&str>,
     ) -> Result<AgentResult, AgentError> {
         let session_id = Uuid::new_v4().to_string();
@@ -407,8 +410,20 @@ impl Agent {
             .ok();
         let system_prompt =
             build_system_prompt(&self.config, mem.as_ref(), profile.as_deref(), platform).await;
+        // Resolve routing hint → (transport, model) to use for this task.
+        // Falls back to the agent's default transport and model when no hint is given
+        // or the hint name is not in the routing table.
+        let (effective_transport, effective_model): (Arc<dyn ProviderTransport>, String) =
+            hint.and_then(|h| self.config.routing.get(h)).map_or_else(
+                || (self.transport.clone(), self.config.model.clone()),
+                |target| {
+                    garudust_transport::resolve_hint(target)
+                        .unwrap_or_else(|| (self.transport.clone(), target.clone()))
+                },
+            );
+
         let inf_config = InferenceConfig {
-            model: self.config.model.clone(),
+            model: effective_model.clone(),
             max_tokens: self.config.max_output_tokens,
             context_limit: self
                 .config
@@ -529,7 +544,13 @@ impl Agent {
 
             let secs = self.config.llm_timeout_secs;
             let resp = if let Some(tx) = &chunk_tx {
-                let fut = stream_turn(self.transport.as_ref(), &history, &inf_config, &schemas, tx);
+                let fut = stream_turn(
+                    effective_transport.as_ref(),
+                    &history,
+                    &inf_config,
+                    &schemas,
+                    tx,
+                );
                 if secs > 0 {
                     timeout(Duration::from_secs(secs), fut)
                         .await
@@ -543,7 +564,7 @@ impl Agent {
                 }
             } else {
                 let fut = async {
-                    self.transport
+                    effective_transport
                         .chat(&history, &inf_config, &schemas)
                         .await
                         .map_err(AgentError::from)
@@ -573,7 +594,7 @@ impl Agent {
                     );
                     self.hooks.on_session_end(&budget_msg, &session_id).await;
                     let output = if self.config.show_usage_footer {
-                        let footer = usage_footer(&self.config.model, iters, total_in, total_out);
+                        let footer = usage_footer(&effective_model, iters, total_in, total_out);
                         format!("{budget_msg}\n\n{footer}")
                     } else {
                         budget_msg
@@ -588,7 +609,14 @@ impl Agent {
                         iterations: iters,
                         session_id: session_id.clone(),
                     };
-                    self.persist_session(&session_id, platform, started_at, &history, &result);
+                    self.persist_session(
+                        &session_id,
+                        platform,
+                        &effective_model,
+                        started_at,
+                        &history,
+                        &result,
+                    );
                     return Ok(result);
                 }
             }
@@ -655,7 +683,7 @@ impl Agent {
                 }
 
                 let output = if self.config.show_usage_footer {
-                    let footer = usage_footer(&self.config.model, iters, total_in, total_out);
+                    let footer = usage_footer(&effective_model, iters, total_in, total_out);
                     format!("{raw_output}\n\n{footer}")
                 } else {
                     raw_output
@@ -672,7 +700,14 @@ impl Agent {
                     session_id: session_id.clone(),
                 };
 
-                self.persist_session(&session_id, platform, started_at, &history, &result);
+                self.persist_session(
+                    &session_id,
+                    platform,
+                    &effective_model,
+                    started_at,
+                    &history,
+                    &result,
+                );
 
                 let threshold = self.config.auto_skill_threshold;
                 if threshold > 0 && iters >= threshold {
@@ -850,6 +885,7 @@ impl Agent {
         &self,
         session_id: &str,
         source: &str,
+        model: &str,
         started_at: f64,
         history: &[Message],
         result: &AgentResult,
@@ -868,7 +904,7 @@ impl Agent {
         if let Err(e) = db.save_session(
             session_id,
             source,
-            &self.config.model,
+            model,
             started_at,
             ended_at,
             result.usage.input_tokens,

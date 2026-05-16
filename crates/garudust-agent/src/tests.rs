@@ -135,7 +135,7 @@ fn spawn_child_has_independent_budget() {
 async fn run_returns_reply() {
     let agent = make_agent("Hello, world!");
     let result = agent
-        .run("say hi", Arc::new(AutoApprove), "test", None)
+        .run("say hi", Arc::new(AutoApprove), "test", None, None)
         .await
         .unwrap();
     assert!(
@@ -151,7 +151,14 @@ async fn run_streaming_emits_chunks() {
     let agent = make_agent("streamed response");
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
     let result = agent
-        .run_streaming("say something", Arc::new(AutoApprove), "test", tx, None)
+        .run_streaming(
+            "say something",
+            Arc::new(AutoApprove),
+            "test",
+            tx,
+            None,
+            None,
+        )
         .await
         .unwrap();
 
