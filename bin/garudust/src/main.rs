@@ -12,7 +12,7 @@ use clap::{Parser, Subcommand};
 use garudust_agent::{Agent, AutoApprover};
 use garudust_core::config::AgentConfig;
 use garudust_core::config::McpServerConfig;
-use garudust_memory::{FileMemoryStore, SessionDb};
+use garudust_memory::{DocStore, FileMemoryStore, SessionDb};
 use garudust_tools::{
     load_script_tools, register_standard_tools, security::docker_available,
     toolsets::mcp::connect_mcp_server, ToolRegistry,
@@ -202,9 +202,10 @@ async fn build_agent(config: Arc<AgentConfig>) -> (Arc<Agent>, McpHandles) {
     }
 
     let db = SessionDb::open(&config.home_dir).ok().map(Arc::new);
+    let doc_store = DocStore::open(&config.home_dir).ok().map(Arc::new);
 
     let mut registry = ToolRegistry::new();
-    register_standard_tools(&mut registry, db.clone());
+    register_standard_tools(&mut registry, db.clone(), doc_store);
 
     let mcp_handles = attach_mcp_servers(&mut registry, &config.mcp_servers).await;
 

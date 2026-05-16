@@ -32,6 +32,7 @@ globset         = { workspace = true }
 lopdf           = { workspace = true }
 pdf-extract     = { workspace = true }
 base64          = { workspace = true }
+chrono          = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

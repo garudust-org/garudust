@@ -18,6 +18,7 @@
 //! | `mcp` | Dynamically proxied tools from connected MCP servers |
 //! | `pdf` | `read_pdf` — extract text from PDF files |
 //! | `search` | `search_files`, `search_code` — glob and content search |
+//! | `rag` | `doc_ingest`, `doc_search`, `doc_list`, `doc_forget` — document RAG via FTS5 |
 //! | `delegate` | `delegate_task` — spawn a sub-agent for a sub-task |
 
 pub mod hub;
@@ -37,6 +38,7 @@ pub use toolsets::script::load_script_tools;
 pub fn register_standard_tools(
     registry: &mut ToolRegistry,
     db: Option<std::sync::Arc<garudust_memory::SessionDb>>,
+    doc_store: Option<std::sync::Arc<garudust_memory::DocStore>>,
 ) {
     use toolsets::{
         browser::BrowserTool,
@@ -48,6 +50,7 @@ pub fn register_standard_tools(
         memory::{MemoryTool, UserProfileTool},
         notes::{ListNotes, ReadNote, WriteNote},
         pdf::PdfRead,
+        rag::{DocForget, DocIngest, DocList, DocSearch},
         search::SessionSearch,
         skills::{SkillView, SkillsList, WriteSkill},
         terminal::Terminal,
@@ -66,6 +69,12 @@ pub fn register_standard_tools(
     registry.register(UserProfileTool);
     if let Some(db) = db {
         registry.register(SessionSearch::new(db));
+    }
+    if let Some(store) = doc_store {
+        registry.register(DocIngest::new(store.clone()));
+        registry.register(DocSearch::new(store.clone()));
+        registry.register(DocList::new(store.clone()));
+        registry.register(DocForget::new(store));
     }
     registry.register(SkillsList);
     registry.register(SkillView);

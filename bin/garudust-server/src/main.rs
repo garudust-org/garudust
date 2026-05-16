@@ -8,7 +8,7 @@ use garudust_core::config::{get_secret, McpServerConfig, WebhookPlatformConfig};
 use garudust_core::{config::AgentConfig, platform::PlatformAdapter, tool::CommandApprover};
 use garudust_cron::CronScheduler;
 use garudust_gateway::{create_router, AppState, GatewayHandler, Metrics, SessionRegistry};
-use garudust_memory::{FileMemoryStore, SessionDb};
+use garudust_memory::{DocStore, FileMemoryStore, SessionDb};
 use garudust_platforms::{
     discord::DiscordAdapter, line::LineAdapter, matrix::MatrixAdapter, slack::SlackAdapter,
     telegram::TelegramAdapter, webhook::WebhookAdapter, whatsapp::WhatsAppAdapter,
@@ -144,7 +144,11 @@ fn build_config(cli: &Cli) -> Arc<AgentConfig> {
 static WARN_SANDBOX_NONE: OnceLock<()> = OnceLock::new();
 static WARN_DOCKER_MISSING: OnceLock<()> = OnceLock::new();
 
-async fn build_agent(config: Arc<AgentConfig>, db: Arc<SessionDb>) -> (Arc<Agent>, McpHandles) {
+async fn build_agent(
+    config: Arc<AgentConfig>,
+    db: Arc<SessionDb>,
+    doc_store: Option<Arc<DocStore>>,
+) -> (Arc<Agent>, McpHandles) {
     let memory = Arc::new(FileMemoryStore::new(&config.home_dir));
     let transport = build_transport(&config);
 
@@ -169,7 +173,7 @@ async fn build_agent(config: Arc<AgentConfig>, db: Arc<SessionDb>) -> (Arc<Agent
     }
 
     let mut registry = ToolRegistry::new();
-    register_standard_tools(&mut registry, Some(db.clone()));
+    register_standard_tools(&mut registry, Some(db.clone()), doc_store);
 
     let mcp_handles = attach_mcp_servers(&mut registry, &config.mcp_servers).await;
 
@@ -253,6 +257,7 @@ fn spawn_config_watcher(
     config_path: std::path::PathBuf,
     agent_swap: Arc<ArcSwap<Agent>>,
     db: Arc<SessionDb>,
+    doc_store: Option<Arc<DocStore>>,
     handles_lock: Arc<tokio::sync::Mutex<McpHandles>>,
 ) {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<()>();
@@ -320,7 +325,8 @@ fn spawn_config_watcher(
 
             tracing::info!("config changed — reloading agent");
             let new_config = Arc::new(AgentConfig::load());
-            let (new_agent, new_handles) = build_agent(new_config, db.clone()).await;
+            let (new_agent, new_handles) =
+                build_agent(new_config, db.clone(), doc_store.clone()).await;
             // Swap agent first so new requests immediately use the new config, then
             // drop old handles. This narrows (but does not eliminate) the window where
             // in-flight MCP tool calls from the old agent hit terminated child processes;
@@ -393,7 +399,8 @@ async fn main() -> Result<()> {
         port,
     );
     let db = Arc::new(SessionDb::open(&config.home_dir)?);
-    let (agent_inner, mcp_handles) = build_agent(config.clone(), db.clone()).await;
+    let doc_store = DocStore::open(&config.home_dir).ok().map(Arc::new);
+    let (agent_inner, mcp_handles) = build_agent(config.clone(), db.clone(), doc_store.clone()).await;
     let agent = Arc::new(ArcSwap::from(agent_inner));
     let mcp_handles = Arc::new(tokio::sync::Mutex::new(mcp_handles));
     let sessions = SessionRegistry::new();
@@ -408,7 +415,7 @@ async fn main() -> Result<()> {
 
     // ── Hot-reload watcher ────────────────────────────────────────────────────
     let config_file = config.home_dir.join("config.yaml");
-    spawn_config_watcher(config_file, agent.clone(), db.clone(), mcp_handles.clone());
+    spawn_config_watcher(config_file, agent.clone(), db.clone(), doc_store, mcp_handles.clone());
 
     // ── Platform adapters ─────────────────────────────────────────────────────
     // For each adapter, the CLI flag takes precedence; otherwise the secret is
