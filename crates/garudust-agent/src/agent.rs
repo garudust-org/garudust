@@ -356,6 +356,20 @@ impl Agent {
         save_conv_to_disk(&home_dir, &key, &entry);
     }
 
+    /// Update the assistant content of the most recently injected history pair.
+    /// Used to replace a placeholder description with the actual view_image result
+    /// after the (potentially slow) tool call completes.
+    pub fn update_last_history(&self, session_key: &str, new_assistant: &str) {
+        let home_dir = self.config.home_dir.clone();
+        let key = session_key.to_string();
+        if let Some(mut entry) = self.conversation_history.get_mut(&key) {
+            if let Some(last) = entry.back_mut() {
+                last.1 = new_assistant.to_string();
+                save_conv_to_disk(&home_dir, &key, &entry);
+            }
+        }
+    }
+
     /// Call a single registered tool by name and return its output as a plain
     /// string. Intended for server-side preprocessing (e.g. gateway image
     /// pipeline) where the result must be available before the agent loop runs.

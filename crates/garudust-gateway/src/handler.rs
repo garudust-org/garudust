@@ -50,8 +50,28 @@ impl GatewayHandler {
 
         for (i, att) in attachments.iter().enumerate() {
             let seq = seq_start + i + 1;
-            let description = if view_image_installed {
-                self.agent
+            let ts = chrono::Local::now().format("%d/%m/%Y %H:%M");
+            let user_label = if user_name.is_empty() {
+                format!("[รูปที่ {seq} เวลา {ts}]")
+            } else {
+                format!("[@{user_name} ส่งรูปที่ {seq} เวลา {ts}]")
+            };
+
+            // Inject label immediately so the sender is visible in history
+            // even if view_image takes several seconds to complete.
+            let placeholder = if view_image_installed {
+                "[กำลังวิเคราะห์ภาพ...]".to_string()
+            } else {
+                "[รูปภาพ — ติดตั้ง view_image tool เพื่อให้วิเคราะห์ได้: garudust tool install view_image]"
+                    .to_string()
+            };
+            self.agent
+                .inject_history(session_key, &user_label, &placeholder);
+
+            // Run view_image and replace the placeholder once done.
+            if view_image_installed {
+                let description = self
+                    .agent
                     .run_tool(
                         "view_image",
                         serde_json::json!({
@@ -59,20 +79,9 @@ impl GatewayHandler {
                             "question": "อธิบายรูปนี้โดยละเอียด"
                         }),
                     )
-                    .await
-            } else {
-                "[รูปภาพ — ติดตั้ง view_image tool เพื่อให้วิเคราะห์ได้: garudust tool install view_image]"
-                    .to_string()
-            };
-
-            let ts = chrono::Local::now().format("%d/%m/%Y %H:%M");
-            let user_label = if user_name.is_empty() {
-                format!("[รูปที่ {seq} เวลา {ts}]")
-            } else {
-                format!("[@{user_name} ส่งรูปที่ {seq} เวลา {ts}]")
-            };
-            self.agent
-                .inject_history(session_key, &user_label, &description);
+                    .await;
+                self.agent.update_last_history(session_key, &description);
+            }
 
             // Clean up temp file
             if att.path.starts_with("/tmp/") {
