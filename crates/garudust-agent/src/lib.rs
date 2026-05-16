@@ -22,7 +22,7 @@
 //!     let memory    = Arc::new(FileMemoryStore::new(&PathBuf::from("/tmp")));
 //!     let agent     = Agent::new(transport, tools, memory, config);
 //!     let approver  = Arc::new(AutoApprover);
-//!     let result    = agent.run("List files here", approver, "cli").await?;
+//!     let result    = agent.run("List files here", approver, "cli", None, None).await?;
 //!     println!("{}", result.output);
 //!     Ok(())
 //! }
