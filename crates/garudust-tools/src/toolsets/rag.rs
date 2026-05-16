@@ -295,9 +295,11 @@ impl Tool for DocList {
         let output = docs
             .iter()
             .map(|d| {
-                let ts = chrono::DateTime::from_timestamp(d.ingested_at as i64, 0)
-                    .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
-                    .unwrap_or_else(|| d.ingested_at.to_string());
+                #[allow(clippy::cast_possible_truncation)]
+                let ts = chrono::DateTime::from_timestamp(d.ingested_at as i64, 0).map_or_else(
+                    || d.ingested_at.to_string(),
+                    |dt| dt.format("%Y-%m-%d %H:%M").to_string(),
+                );
                 format!(
                     "- {} ({} chunks, ingested {})",
                     d.file_name, d.chunk_count, ts
