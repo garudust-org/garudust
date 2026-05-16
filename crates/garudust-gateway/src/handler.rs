@@ -118,7 +118,8 @@ impl GatewayHandler {
                     .to_string()
             };
 
-            let user_label = format!("[รูปที่ {seq}]");
+            let ts = chrono::Local::now().format("%d/%m/%Y %H:%M");
+            let user_label = format!("[รูปที่ {seq} — {ts}]");
             self.agent
                 .inject_history(session_key, &user_label, &description);
 
