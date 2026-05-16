@@ -11,7 +11,7 @@ use axum::{
     Router,
 };
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
-use dashmap::{DashMap, DashSet};
+use dashmap::DashMap;
 use futures::{Stream, StreamExt};
 use hmac::{Hmac, KeyInit, Mac};
 use serde::Deserialize;
@@ -122,8 +122,6 @@ struct Inner {
     last_sender: DashMap<String, String>,
     /// user_id → display name (fetched lazily from profile API)
     name_cache: DashMap<String, String>,
-    /// user_ids currently being fetched — prevents redundant profile API calls
-    fetching: DashSet<String>,
     /// Bot's own LINE userId, fetched once at start via `/v2/bot/info`.
     /// Used to detect mentions of the bot from `event.message.mention.mentionees`.
     /// Empty when the fetch failed — gateway will fall back to text-contains matching.
@@ -201,42 +199,28 @@ async fn handle_webhook(
             .last_sender
             .insert(chat_id.clone(), user_id.clone());
 
-        // Deduplicated lazy profile fetch: fetching set ensures only one in-flight
-        // request per user even under concurrent webhook events. In group/room
-        // sources the 1-on-1 profile endpoint 404s for non-friends, so we
-        // pick the scoped member endpoint based on `source.kind`.
-        //
-        // We share `state.inner` (an `Arc<Inner>`) into the spawned task rather
-        // than cloning `name_cache` / `fetching` directly — DashMap::clone() is
-        // a deep clone, so writes to a cloned map would not be visible to the
-        // adapter's `do_send` reads from `self.inner.name_cache`.
-        if !state.inner.name_cache.contains_key(&user_id)
-            && state.inner.fetching.insert(user_id.clone())
-        {
-            let inner = state.inner.clone();
-            let uid = user_id.clone();
-            let source_kind = ev.source.kind.clone();
-            let scope_chat = chat_id.clone();
-            tokio::spawn(async move {
-                let scope = match source_kind.as_str() {
-                    "group" => ProfileScope::Group(&scope_chat),
-                    "room" => ProfileScope::Room(&scope_chat),
-                    _ => ProfileScope::Personal,
-                };
-                if let Some(name) =
-                    fetch_display_name(&inner.client, &inner.channel_token, &uid, scope).await
-                {
-                    inner.name_cache.insert(uid.clone(), name);
-                }
-                inner.fetching.remove(&uid);
-            });
-        }
-
-        let display_name = state
-            .inner
-            .name_cache
-            .get(&user_id)
-            .map_or_else(|| user_id.clone(), |n| n.clone());
+        // Fetch the display name synchronously so it is available for this
+        // message. In group/room sources the 1-on-1 profile endpoint 404s for
+        // non-friends; we use the scoped member endpoint instead.
+        let display_name = if let Some(cached) = state.inner.name_cache.get(&user_id) {
+            cached.clone()
+        } else {
+            let scope = match ev.source.kind.as_str() {
+                "group" => ProfileScope::Group(&chat_id),
+                "room" => ProfileScope::Room(&chat_id),
+                _ => ProfileScope::Personal,
+            };
+            let name = fetch_display_name(
+                &state.inner.client,
+                &state.inner.channel_token,
+                &user_id,
+                scope,
+            )
+            .await
+            .unwrap_or_else(|| user_id.clone());
+            state.inner.name_cache.insert(user_id.clone(), name.clone());
+            name
+        };
 
         // Structured mention detection: cross-reference message.mention.mentionees
         // against the bot's own userId fetched at start. Only meaningful in
@@ -496,7 +480,6 @@ impl LineAdapter {
                 group_flag: DashMap::new(),
                 last_sender: DashMap::new(),
                 name_cache: DashMap::new(),
-                fetching: DashSet::new(),
                 bot_self_user_id: OnceLock::new(),
             }),
         }
@@ -507,7 +490,7 @@ impl LineAdapter {
 
         text = truncate_to_line_limit(text);
 
-        // Prepend @mention in group chats; fall back to @user_id while name is being fetched
+        // Prepend @mention in group chats; name_cache is populated before InboundMessage is built
         if self.inner.group_flag.get(chat_id).is_some_and(|v| *v) {
             if let Some(uid) = self.inner.last_sender.get(chat_id) {
                 let mention = self
