@@ -467,9 +467,8 @@ impl Agent {
 
         // Pre-turn memory recall: surface entries relevant to this task so the
         // model sees them immediately before the question, not buried in the system prompt.
-        // Note: prefetch uses ASCII/Latin keyword matching; non-Latin scripts (e.g. Thai)
-        // are not word-tokenized and will not trigger recall via this path — the full
-        // memory block in the system prompt still covers those cases.
+        // Latin scripts use keyword matching (≥5 chars, stop-word filtered); non-Latin
+        // scripts (Thai, CJK, Arabic, …) use character trigrams — no word segmenter needed.
         let user_msg = mem
             .as_ref()
             .and_then(|m| {
