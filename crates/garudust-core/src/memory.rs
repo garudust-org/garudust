@@ -203,25 +203,58 @@ impl MemoryContent {
         "through", "always", "almost", "already",
     ];
 
-    /// Keyword-match recall: entries whose content contains any significant word
-    /// from `query`. Tokens < 5 alphabetic chars and stop words are excluded to
-    /// reduce false positives. Returns at most [`Self::PREFETCH_LIMIT`] entries,
-    /// newest first.
-    pub fn prefetch(&self, query: &str) -> Vec<&MemoryEntry> {
-        let words: Vec<String> = query
-            .split_whitespace()
-            .filter_map(|w| {
-                let alpha: String = w.chars().filter(|c| c.is_alphabetic()).collect();
+    /// Tokenise `query` into search tokens for prefetch matching.
+    ///
+    /// Two paths:
+    /// - **Latin / ASCII segments** (whitespace-split tokens whose chars are all
+    ///   within Unicode Latin + Latin-Extended range ≤ U+024F): existing logic —
+    ///   strip punctuation, require ≥ 5 alphabetic chars, exclude stop words.
+    /// - **Non-Latin segments** (Thai, CJK, Arabic, Devanagari, …): Thai and
+    ///   similar scripts do not delimit words with spaces, so word-boundary
+    ///   splitting is impossible without a language-specific tokeniser. Instead,
+    ///   extract all overlapping character trigrams (windows of 3 codepoints).
+    ///   A trigram like "ชอบ" will match any memory entry that contains those
+    ///   three consecutive characters, regardless of surrounding context.
+    fn query_tokens(query: &str) -> Vec<String> {
+        let mut tokens: Vec<String> = Vec::new();
+        for segment in query.split_whitespace() {
+            let is_non_latin = segment
+                .chars()
+                .any(|c| c.is_alphabetic() && c as u32 > 0x024F);
+
+            if is_non_latin {
+                // Character trigrams for scripts without word-space delimiters.
+                let chars: Vec<char> = segment.chars().collect();
+                if chars.len() < 3 {
+                    // Too short for a trigram — include as-is.
+                    tokens.push(chars.iter().collect::<String>().to_lowercase());
+                } else {
+                    for window in chars.windows(3) {
+                        tokens.push(window.iter().collect::<String>().to_lowercase());
+                    }
+                }
+            } else {
+                // Latin word: strip punctuation, min 5 alphabetic chars, stop words.
+                let alpha: String = segment.chars().filter(|c| c.is_alphabetic()).collect();
                 if alpha.len() < 5 {
-                    return None;
+                    continue;
                 }
                 let lower = alpha.to_lowercase();
                 if Self::STOP_WORDS.contains(&lower.as_str()) {
-                    return None;
+                    continue;
                 }
-                Some(lower)
-            })
-            .collect();
+                tokens.push(lower);
+            }
+        }
+        tokens
+    }
+
+    /// Keyword-match recall: entries whose content contains any significant word
+    /// from `query`. Latin tokens must be ≥ 5 chars and non-stop-words; non-Latin
+    /// scripts are matched via character trigrams. Returns at most
+    /// [`Self::PREFETCH_LIMIT`] entries, newest first.
+    pub fn prefetch(&self, query: &str) -> Vec<&MemoryEntry> {
+        let words = Self::query_tokens(query);
         if words.is_empty() {
             return vec![];
         }
@@ -633,6 +666,34 @@ mod tests {
         assert!(block.contains("user likes black coffee"));
         assert!(block.contains("[Preferences]"));
         assert!(block.contains("2026-04-29"));
+    }
+
+    #[test]
+    fn prefetch_thai_trigram_match() {
+        // Memory entry written in Thai; query contains overlapping chars.
+        let raw = "[preference|2026-05-01] ผู้ใช้ชอบกาแฟดำ";
+        let mc = MemoryContent::parse(raw);
+        // "ชอบกาแฟ" produces trigrams that overlap with "ชอบกาแฟดำ" in the entry.
+        let hits = mc.prefetch("ฉันชอบกาแฟมาก");
+        assert_eq!(hits.len(), 1, "Thai trigram should match the memory entry");
+    }
+
+    #[test]
+    fn prefetch_thai_no_false_positive() {
+        let raw = "[preference|2026-05-01] ผู้ใช้ชอบกาแฟดำ";
+        let mc = MemoryContent::parse(raw);
+        // Completely unrelated Thai query — no shared trigrams.
+        let hits = mc.prefetch("วันนี้อากาศดี");
+        assert!(hits.is_empty(), "unrelated Thai query should not match");
+    }
+
+    #[test]
+    fn prefetch_mixed_thai_english() {
+        let raw = "[fact|2026-05-01] user likes กาแฟ (coffee)\n§\n[fact|2026-05-01] user lives in Bangkok";
+        let mc = MemoryContent::parse(raw);
+        // Mixed query: English word "Bangkok" (≥5 chars) and Thai trigrams from "กาแฟ".
+        let hits = mc.prefetch("Bangkok กาแฟ");
+        assert_eq!(hits.len(), 2, "both entries should match via their respective paths");
     }
 
     #[test]
