@@ -77,15 +77,6 @@ cd garudust-agent && cargo build --release
 
 ```bash
 curl -LO https://github.com/garudust-org/garudust-agent/releases/latest/download/garudust-linux-x64.tar.gz
-tar -xzf garudust-*.tar.gz
-sudo mv garudust garudust-server /usr/local/bin/
-```
-
-或从源码构建（需 Rust 1.87+）：
-
-```bash
-git clone https://github.com/garudust-org/garudust-agent
-cd garudust-agent && cargo build --release
 ```
 
 ---
