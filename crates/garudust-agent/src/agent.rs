@@ -352,6 +352,34 @@ impl Agent {
         save_conv_to_disk(&home_dir, &key, &entry);
     }
 
+    /// Call a single registered tool by name and return its output as a plain
+    /// string. Intended for server-side preprocessing (e.g. gateway image
+    /// pipeline) where the result must be available before the agent loop runs.
+    /// Returns the tool's content on success, or an error description on failure.
+    pub async fn run_tool(&self, name: &str, args: serde_json::Value) -> String {
+        let ctx = ToolContext {
+            session_id: uuid::Uuid::new_v4().to_string(),
+            agent_id: "gateway".to_string(),
+            iteration: 1,
+            budget: Arc::new(IterationBudget::new(1)),
+            memory: self.memory.clone(),
+            config: self.config.clone(),
+            approver: Arc::new(crate::approver::AutoApprover),
+            sub_agent: None,
+            skill_permissions: Arc::new(tokio::sync::RwLock::new(
+                garudust_core::tool::SkillPermissions::default(),
+            )),
+            required_tools: Arc::new(tokio::sync::RwLock::new(Vec::new())),
+        };
+        match self.tools.dispatch(name, args, &ctx).await {
+            Ok(r) => r.content,
+            Err(e) => {
+                tracing::warn!(tool = %name, error = %e, "run_tool failed");
+                format!("[{name} failed: {e}]")
+            }
+        }
+    }
+
     pub async fn run(
         &self,
         task: &str,

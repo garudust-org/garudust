@@ -3,7 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use garudust_agent::Agent;
 use garudust_core::{
-    config::{get_secret, AgentConfig},
+    config::AgentConfig,
     platform::{MessageHandler, PlatformAdapter},
     tool::CommandApprover,
     types::{ImageAttachment, InboundMessage, OutboundMessage},
@@ -37,9 +37,8 @@ impl GatewayHandler {
         }
     }
 
-    /// Analyse one image attachment with the view_image hub tool and inject the
-    /// description into the conversation history.  Returns true if at least one
-    /// image was successfully stored.
+    /// Analyse image attachments via the registered view_image tool and inject
+    /// the descriptions into conversation history.
     async fn process_images(
         &self,
         attachments: &[ImageAttachment],
@@ -47,85 +46,18 @@ impl GatewayHandler {
         seq_start: usize,
         user_name: &str,
     ) {
-        let script = self
-            .config
-            .home_dir
-            .join("tools")
-            .join("view_image")
-            .join("run.py");
-
-        // The view_image script reads OPENROUTER_API_KEY / GOOGLE_AI_API_KEY from
-        // its env. Since the server no longer loads ~/.garudust/.env into the
-        // process environment, we forward the relevant keys explicitly here —
-        // mirroring the env_required allowlist used by the regular tool dispatch.
-        let or_key = get_secret("OPENROUTER_API_KEY");
-        let gm_key = get_secret("GOOGLE_AI_API_KEY");
-
-        // `uv` is typically installed at ~/.local/bin/uv which is NOT in the
-        // server's PATH when launched as a daemon (PATH inherits from the
-        // launching shell — desktop entries / systemd units often strip it).
-        // Augment PATH so `Command::new("uv")` resolves regardless of how the
-        // server was started.
-        let augmented_path = {
-            let cur = std::env::var("PATH").unwrap_or_default();
-            match std::env::var("HOME") {
-                Ok(home) if !home.is_empty() => {
-                    let extra = format!("{home}/.local/bin");
-                    if cur.split(':').any(|seg| seg == extra) {
-                        cur
-                    } else {
-                        format!("{extra}:{cur}")
-                    }
-                }
-                _ => cur,
-            }
-        };
-
         for (i, att) in attachments.iter().enumerate() {
             let seq = seq_start + i + 1;
-            let description = if script.exists() {
-                let mut cmd = tokio::process::Command::new("uv");
-                cmd.args([
-                    "run",
-                    "--with",
-                    "httpx",
-                    script.to_str().unwrap_or("run.py"),
-                    &att.path,
-                    "อธิบายรูปนี้โดยละเอียด",
-                ]);
-                cmd.env("PATH", &augmented_path);
-                if let Some(v) = &or_key {
-                    cmd.env("OPENROUTER_API_KEY", v);
-                }
-                if let Some(v) = &gm_key {
-                    cmd.env("GOOGLE_AI_API_KEY", v);
-                }
-                if let Some(cfg) = self.config.tools.get("view_image") {
-                    if !cfg.model.is_empty() {
-                        cmd.env("GARUDUST_MODEL", &cfg.model);
-                    }
-                    if !cfg.fallback_model.is_empty() {
-                        cmd.env("GARUDUST_FALLBACK_MODEL", &cfg.fallback_model);
-                    }
-                }
-                match cmd.output().await {
-                    Ok(out) if out.status.success() => {
-                        String::from_utf8_lossy(&out.stdout).trim().to_string()
-                    }
-                    Ok(out) => {
-                        let err = String::from_utf8_lossy(&out.stderr);
-                        tracing::warn!(path = %att.path, err = %err, "view_image failed");
-                        "[ไม่สามารถวิเคราะห์รูปได้]".to_string()
-                    }
-                    Err(e) => {
-                        tracing::warn!(path = %att.path, error = %e, "view_image exec error");
-                        "[ไม่สามารถวิเคราะห์รูปได้]".to_string()
-                    }
-                }
-            } else {
-                "[รูปภาพ — ติดตั้ง view_image tool เพื่อให้วิเคราะห์ได้: garudust tool install view_image]"
-                    .to_string()
-            };
+            let description = self
+                .agent
+                .run_tool(
+                    "view_image",
+                    serde_json::json!({
+                        "source": att.path,
+                        "question": "อธิบายรูปนี้โดยละเอียด"
+                    }),
+                )
+                .await;
 
             let ts = chrono::Local::now().format("%d/%m/%Y %H:%M");
             let user_label = if user_name.is_empty() {
