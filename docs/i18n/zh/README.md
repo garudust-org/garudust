@@ -124,36 +124,6 @@ docker compose up -d
 | `/model <name>` | 即时切换模型 |
 | `Ctrl+C` | 退出 |
 
-### 服务器 — API
-
-`garudust-server` 开放 `POST /chat`、`POST /chat/stream` 和 `ws://…/chat/ws`，并在同一进程中运行所有平台适配器。
-
-```bash
-curl -X POST http://localhost:3000/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "写一首关于 Rust 的俳句"}'
-
-# 流式输出（Server-Sent Events）
-curl -X POST http://localhost:3000/chat/stream \
-  -H "Content-Type: application/json" \
-  -d '{"message": "用 3 句话解释 async/await"}'
-```
-
-### 服务器 — Docker
-
-```bash
-cp .env.example .env        # 填入你的密钥
-docker compose up -d
-curl http://localhost:3000/health
-```
-
-数据持久化在 volume `garudust-data`（容器内为 `/root/.garudust`），可 bind-mount 自定义配置：
-
-```yaml
-# docker-compose.yml — volumes 块
-- ./config.yaml:/root/.garudust/config.yaml:ro
-```
-
 ---
 
 ## 配置

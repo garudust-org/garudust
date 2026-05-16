@@ -124,36 +124,6 @@ docker compose up -d
 | `/model <name>` | เปลี่ยน model ทันที |
 | `Ctrl+C` | ออกจากโปรแกรม |
 
-### Server — API
-
-`garudust-server` เปิด `POST /chat`, `POST /chat/stream` และ `ws://…/chat/ws` พร้อมรัน platform adapter ทุกตัวในกระบวนการเดียว
-
-```bash
-curl -X POST http://localhost:3000/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "เขียน haiku เกี่ยวกับ Rust"}'
-
-# Streaming (Server-Sent Events)
-curl -X POST http://localhost:3000/chat/stream \
-  -H "Content-Type: application/json" \
-  -d '{"message": "อธิบาย async/await ใน 3 ประโยค"}'
-```
-
-### Server — Docker
-
-```bash
-cp .env.example .env        # ใส่ secret ของคุณ
-docker compose up -d
-curl http://localhost:3000/health
-```
-
-ข้อมูลเก็บใน volume `garudust-data` (`/root/.garudust` ใน container) bind-mount config เองได้:
-
-```yaml
-# docker-compose.yml — volumes block
-- ./config.yaml:/root/.garudust/config.yaml:ro
-```
-
 ---
 
 ## การตั้งค่า

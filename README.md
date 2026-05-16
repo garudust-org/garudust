@@ -124,36 +124,6 @@ docker compose up -d
 | `/model <name>` | Switch model on the fly |
 | `Ctrl+C` | Quit |
 
-### Server — API
-
-`garudust-server` exposes `POST /chat`, `POST /chat/stream`, and `ws://…/chat/ws`, and runs all platform adapters in the same process.
-
-```bash
-curl -X POST http://localhost:3000/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "write a haiku about Rust"}'
-
-# Streaming (Server-Sent Events)
-curl -X POST http://localhost:3000/chat/stream \
-  -H "Content-Type: application/json" \
-  -d '{"message": "explain async/await in 3 sentences"}'
-```
-
-### Server — Docker
-
-```bash
-cp .env.example .env        # add your secrets
-docker compose up -d
-curl http://localhost:3000/health
-```
-
-Data persists in the `garudust-data` volume (`/root/.garudust` inside the container). Bind-mount a custom config:
-
-```yaml
-# docker-compose.yml — volumes block
-- ./config.yaml:/root/.garudust/config.yaml:ro
-```
-
 ---
 
 ## Configuration
