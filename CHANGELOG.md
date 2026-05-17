@@ -7,6 +7,30 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.6.0] — 2026-05-17
+
+### Added
+- **Document RAG toolset** — `doc_ingest`, `doc_search`, `doc_list`, `doc_forget` backed by SQLite FTS5 trigram index; supports PDF, TXT, CSV, MD, JSON, DOCX, XLSX
+- **Platform document ingestion** — LINE, Discord, Telegram, Slack, WhatsApp adapters receive file attachments, download them to `/tmp`, and ask the user to confirm before indexing; cancellation cleans up temp files automatically
+- **Session-scoped RAG isolation** — each chat/group has its own document bucket keyed by `conv_key`; documents from one session are never visible to another
+- **`doc_forget`** — remove documents from the RAG index by file name, exact path, or clear all entries for a session
+- **Runtime cron management** — `cron_create`, `cron_list`, `cron_delete` tools let agents schedule, inspect, and cancel recurring autonomous tasks via chat without editing `config.yaml`
+- **`CronManager` trait** — defined in `garudust-core` to break the potential circular dependency between `garudust-tools` and `garudust-cron`; `CronSlot` type alias exported from `garudust-tools` for cleaner wiring
+- Cron scheduler is now always started (even with no static jobs) so runtime tools are available from first boot
+- Unit tests for `cron_create`, `cron_list`, `cron_delete` using an in-memory `MockCronManager`
+
+### Fixed
+- **RAG wrong bucket** — `run_tool` was passing an empty `conv_key`, causing indexed documents to land in an unnamed bucket and be unfindable by `doc_search`; fixed with `run_tool_scoped` that forwards the correct session key
+- **RAG path extraction** — replaced fragile LLM-extracted path from conversation history with a `DashMap<session_key, Vec<DocAttachment>>` that stores the exact download path at receive time
+- **Session isolation** — `session_per_user` isolation now scoped to DM chats only; group chats share one session so images sent by any member are visible to all follow-up queries
+- **Image history label** — injected immediately into history before `view_image` completes, eliminating a race where follow-up questions arrived before the label appeared
+
+### Changed
+- `register_standard_tools` accepts a `cron: Option<CronSlot>` parameter; CLI passes `None`, server passes the live slot
+- `build_agent` in `garudust-server` accepts `cron_slot` and threads it through `spawn_config_watcher` for hot-reload compatibility
+
+---
+
 ## [0.5.0] — 2026-05-16
 
 ### Added
