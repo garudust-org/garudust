@@ -363,15 +363,19 @@ async fn main() -> Result<()> {
             .run(task, approver, "cli", cli.hint.as_deref(), None)
             .await?;
         println!("{}", result.output);
-        eprintln!(
-            "{}",
-            usage_footer(
-                &config.model,
-                result.iterations,
-                result.usage.input_tokens,
-                result.usage.output_tokens
-            )
-        );
+        // show_usage_footer embeds the footer inside result.output already;
+        // only print to stderr when it was not already shown in stdout.
+        if !config.show_usage_footer {
+            eprintln!(
+                "{}",
+                usage_footer(
+                    &config.model,
+                    result.iterations,
+                    result.usage.input_tokens,
+                    result.usage.output_tokens
+                )
+            );
+        }
     } else {
         // ── Interactive TUI mode ──────────────────────────────────────────────
         // shared_state holds both the agent and its MCP handles together so that
