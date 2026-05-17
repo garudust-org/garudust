@@ -455,7 +455,10 @@ mod tests {
 
     #[test]
     fn summarize_failure_passes_error_through() {
-        let s = summarize_ingest("a.md", "[doc_ingest failed: path 'a.md' is outside allowed read directories]");
+        let s = summarize_ingest(
+            "a.md",
+            "[doc_ingest failed: path 'a.md' is outside allowed read directories]",
+        );
         assert!(s.contains("ไม่สำเร็จ"));
         assert!(s.contains("outside allowed read directories"));
     }
