@@ -484,7 +484,7 @@ impl Agent {
             hint.and_then(|h| self.config.routing.get(h)).map_or_else(
                 || (self.transport.clone(), self.config.model.clone()),
                 |target| {
-                    garudust_transport::resolve_hint(target)
+                    garudust_transport::resolve_hint(target, &self.config.providers)
                         .unwrap_or_else(|| (self.transport.clone(), target.clone()))
                 },
             );

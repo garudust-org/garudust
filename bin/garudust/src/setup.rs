@@ -8,7 +8,7 @@ use crossterm::{
     style::{Attribute, Print, SetAttribute},
     terminal::{self, ClearType},
 };
-use garudust_core::config::{AgentConfig, WebhookPlatformConfig};
+use garudust_core::config::{AgentConfig, ProviderProfile, WebhookPlatformConfig};
 
 const PLATFORMS: &[(&str, &[(&str, &str)])] = &[
     ("Telegram", &[("Telegram bot token", "TELEGRAM_TOKEN")]),
@@ -231,6 +231,7 @@ pub async fn run() -> anyhow::Result<()> {
     // `enabled` on the corresponding `platforms.*` block. `None` in Quick mode
     // means "don't touch the yaml's platforms section at all".
     let mut webhook_platform_selections: Option<Vec<(&'static str, bool)>> = None;
+    let mut custom_profiles: Vec<(String, ProviderProfile)> = Vec::new();
     if full {
         println!("Optional Tools (Enter to keep current / skip):");
         let cur_brave = read_env_file(&home_dir, "BRAVE_SEARCH_API_KEY");
@@ -280,6 +281,53 @@ pub async fn run() -> anyhow::Result<()> {
             }
         }
         println!();
+
+        // ── Custom Provider Profiles ──────────────────────────────────────────
+        println!("Custom Provider Profiles (optional — for routing: or tool model overrides):");
+        println!("  Leave profile name blank to skip.\n");
+        loop {
+            let alias = prompt("Profile alias (e.g. groq-backup, local)", None);
+            if alias.is_empty() {
+                break;
+            }
+            let provider_name = prompt(
+                "Provider name (e.g. groq, openai) or leave blank for custom URL",
+                None,
+            );
+            let url_input = if provider_name.is_empty() {
+                prompt("Base URL", None)
+            } else {
+                prompt("Base URL (Enter to use provider default)", None)
+            };
+            let key_env = prompt("API key env var (e.g. GROQ_API_KEY_2)", None);
+            let model_input = prompt("Default model for this profile (Enter to skip)", None);
+
+            let profile = ProviderProfile {
+                name: if provider_name.is_empty() {
+                    None
+                } else {
+                    Some(provider_name)
+                },
+                url: if url_input.is_empty() {
+                    None
+                } else {
+                    Some(url_input)
+                },
+                key: if key_env.is_empty() {
+                    None
+                } else {
+                    Some(format!("${{{key_env}}}"))
+                },
+                model: if model_input.is_empty() {
+                    None
+                } else {
+                    Some(model_input)
+                },
+            };
+            custom_profiles.push((alias, profile));
+            println!();
+        }
+        println!();
     }
 
     // ── Persist ───────────────────────────────────────────────────────────────
@@ -320,6 +368,10 @@ pub async fn run() -> anyhow::Result<()> {
                 _ => {} // Telegram/Discord/Slack/Matrix don't use webhook config
             }
         }
+    }
+
+    for (alias, profile) in custom_profiles {
+        new_config.providers.insert(alias, profile);
     }
 
     new_config.save_yaml()?;

@@ -54,6 +54,188 @@ pub fn get_secret(key: &str) -> Option<String> {
         })
 }
 
+/// Metadata for a built-in OpenAI-compatible provider.
+/// This is the single source of truth used by both the config loader and the
+/// transport layer — no more hardcoded duplicates in multiple match arms.
+#[derive(Debug, Clone, Copy)]
+pub struct BuiltinProvider {
+    pub name: &'static str,
+    pub base_url: &'static str,
+    pub api_key_env: &'static str,
+    /// JSON field name for the token limit sent to the API.
+    pub tokens_param: &'static str,
+}
+
+/// All built-in OpenAI-compatible providers in detection-priority order.
+/// Special transports (anthropic-native, bedrock, ollama, codex) are handled
+/// separately in the transport layer.
+pub const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
+    BuiltinProvider {
+        name: "openai",
+        base_url: "https://api.openai.com/v1",
+        api_key_env: "OPENAI_API_KEY",
+        tokens_param: "max_completion_tokens",
+    },
+    BuiltinProvider {
+        name: "gemini",
+        base_url: "https://generativelanguage.googleapis.com/v1beta/openai",
+        api_key_env: "GEMINI_API_KEY",
+        tokens_param: "max_tokens",
+    },
+    BuiltinProvider {
+        name: "groq",
+        base_url: "https://api.groq.com/openai/v1",
+        api_key_env: "GROQ_API_KEY",
+        tokens_param: "max_tokens",
+    },
+    BuiltinProvider {
+        name: "mistral",
+        base_url: "https://api.mistral.ai/v1",
+        api_key_env: "MISTRAL_API_KEY",
+        tokens_param: "max_tokens",
+    },
+    BuiltinProvider {
+        name: "deepseek",
+        base_url: "https://api.deepseek.com/v1",
+        api_key_env: "DEEPSEEK_API_KEY",
+        tokens_param: "max_tokens",
+    },
+    BuiltinProvider {
+        name: "xai",
+        base_url: "https://api.x.ai/v1",
+        api_key_env: "XAI_API_KEY",
+        tokens_param: "max_tokens",
+    },
+    BuiltinProvider {
+        name: "together",
+        base_url: "https://api.together.xyz/v1",
+        api_key_env: "TOGETHER_API_KEY",
+        tokens_param: "max_tokens",
+    },
+    BuiltinProvider {
+        name: "fireworks",
+        base_url: "https://api.fireworks.ai/inference/v1",
+        api_key_env: "FIREWORKS_API_KEY",
+        tokens_param: "max_tokens",
+    },
+    BuiltinProvider {
+        name: "cerebras",
+        base_url: "https://api.cerebras.ai/v1",
+        api_key_env: "CEREBRAS_API_KEY",
+        tokens_param: "max_tokens",
+    },
+    BuiltinProvider {
+        name: "perplexity",
+        base_url: "https://api.perplexity.ai",
+        api_key_env: "PERPLEXITY_API_KEY",
+        tokens_param: "max_tokens",
+    },
+    BuiltinProvider {
+        name: "cohere",
+        base_url: "https://api.cohere.com/compatibility/v1",
+        api_key_env: "COHERE_API_KEY",
+        tokens_param: "max_tokens",
+    },
+    BuiltinProvider {
+        name: "nvidia",
+        base_url: "https://integrate.api.nvidia.com/v1",
+        api_key_env: "NVIDIA_API_KEY",
+        tokens_param: "max_tokens",
+    },
+    BuiltinProvider {
+        name: "alibaba",
+        base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        api_key_env: "DASHSCOPE_API_KEY",
+        tokens_param: "max_tokens",
+    },
+    BuiltinProvider {
+        name: "doubao",
+        base_url: "https://ark.cn-beijing.volces.com/api/v3",
+        api_key_env: "ARK_API_KEY",
+        tokens_param: "max_tokens",
+    },
+    BuiltinProvider {
+        name: "zhipu",
+        base_url: "https://open.bigmodel.cn/api/paas/v4",
+        api_key_env: "ZHIPU_API_KEY",
+        tokens_param: "max_tokens",
+    },
+    BuiltinProvider {
+        name: "moonshot",
+        base_url: "https://api.moonshot.cn/v1",
+        api_key_env: "MOONSHOT_API_KEY",
+        tokens_param: "max_tokens",
+    },
+    BuiltinProvider {
+        name: "baidu",
+        base_url: "https://qianfan.baidubce.com/v2",
+        api_key_env: "QIANFAN_API_KEY",
+        tokens_param: "max_tokens",
+    },
+    BuiltinProvider {
+        name: "thaillm",
+        base_url: "http://thaillm.or.th/api/v1",
+        api_key_env: "THAILLM_API_KEY",
+        tokens_param: "max_completion_tokens",
+    },
+    BuiltinProvider {
+        name: "vllm",
+        base_url: "http://localhost:8000/v1",
+        api_key_env: "VLLM_API_KEY",
+        tokens_param: "max_completion_tokens",
+    },
+    BuiltinProvider {
+        name: "openrouter",
+        base_url: "https://openrouter.ai/api/v1",
+        api_key_env: "OPENROUTER_API_KEY",
+        tokens_param: "max_completion_tokens",
+    },
+];
+
+/// User-defined provider profile declared in `config.yaml` under `providers:`.
+///
+/// Example:
+/// ```yaml
+/// providers:
+///   default:
+///     name: groq
+///     key: ${GROQ_API_KEY}
+///     model: llama-3.3-70b
+///   groq-backup:
+///     name: groq
+///     key: ${GROQ_API_KEY_2}
+///   local:
+///     url: http://192.168.1.10:8000/v1
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ProviderProfile {
+    /// Builtin provider name — inherits `base_url` and `tokens_param`.
+    /// Optional when `url` is set directly.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// Custom base URL. Overrides the builtin default for `name`.
+    #[serde(default)]
+    pub url: Option<String>,
+    /// API key literal or `${ENV_VAR}` reference.
+    #[serde(default)]
+    pub key: Option<String>,
+    /// Default model — meaningful only for the `default` profile.
+    #[serde(default)]
+    pub model: Option<String>,
+}
+
+impl ProviderProfile {
+    /// Resolve the `key` field: `${ENV_VAR}` → environment value, literal → itself.
+    pub fn resolved_key(&self) -> Option<String> {
+        let k = self.key.as_deref()?;
+        if let Some(var) = k.strip_prefix("${").and_then(|s| s.strip_suffix('}')) {
+            get_secret(var)
+        } else {
+            Some(k.to_string())
+        }
+    }
+}
+
 /// Per-tool or per-skill configuration overrides.
 /// All fields are optional; unset fields leave the tool's own defaults intact.
 /// This struct is intentionally open-ended — new fields can be added here in
@@ -94,7 +276,26 @@ pub struct AgentConfig {
     #[serde(default = "default_provider")]
     pub provider: String,
     pub base_url: Option<String>,
-    /// Provider routing table: hint name → "provider/model" string.
+    /// Named provider profiles. The special name `default` acts as the main LLM
+    /// provider, overriding the top-level `provider:` / `model:` fields.
+    /// Routing hints reference profiles by name (`profile-name/model`).
+    ///
+    /// Example:
+    /// ```yaml
+    /// providers:
+    ///   default:
+    ///     name: groq
+    ///     key: ${GROQ_API_KEY}
+    ///     model: llama-3.3-70b
+    ///   groq-backup:
+    ///     name: groq
+    ///     key: ${GROQ_API_KEY_2}
+    ///   local:
+    ///     url: http://192.168.1.10:8000/v1
+    /// ```
+    #[serde(default)]
+    pub providers: std::collections::HashMap<String, ProviderProfile>,
+    /// Provider routing table: hint name → "provider/model" or "profile/model" string.
     /// Example: `cheap: groq/llama-3.1-8b-instant`
     /// When a hint is passed to agent.run(), the agent looks up the target here,
     /// builds an appropriate transport, and overrides the model for that task only.
@@ -554,6 +755,7 @@ impl Default for AgentConfig {
             tool_delay_ms: 0,
             provider: DEFAULT_PROVIDER.into(),
             base_url: None,
+            providers: std::collections::HashMap::new(),
             routing: std::collections::HashMap::new(),
             tools: std::collections::HashMap::new(),
             api_key: None,
@@ -605,103 +807,57 @@ pub(crate) fn resolve_key_for_provider(
     provider: &str,
     dotenv: &HashMap<String, String>,
 ) -> Option<String> {
-    match provider {
-        "anthropic" => env_or_dotenv("ANTHROPIC_API_KEY", dotenv),
-        "openai" => env_or_dotenv("OPENAI_API_KEY", dotenv),
-        "gemini" => env_or_dotenv("GEMINI_API_KEY", dotenv),
-        "groq" => env_or_dotenv("GROQ_API_KEY", dotenv),
-        "mistral" => env_or_dotenv("MISTRAL_API_KEY", dotenv),
-        "deepseek" => env_or_dotenv("DEEPSEEK_API_KEY", dotenv),
-        "xai" => env_or_dotenv("XAI_API_KEY", dotenv),
-        "vllm" => env_or_dotenv("VLLM_API_KEY", dotenv),
-        "thaillm" => env_or_dotenv("THAILLM_API_KEY", dotenv),
-        "together" => env_or_dotenv("TOGETHER_API_KEY", dotenv),
-        "fireworks" => env_or_dotenv("FIREWORKS_API_KEY", dotenv),
-        "cerebras" => env_or_dotenv("CEREBRAS_API_KEY", dotenv),
-        "perplexity" => env_or_dotenv("PERPLEXITY_API_KEY", dotenv),
-        "cohere" => env_or_dotenv("COHERE_API_KEY", dotenv),
-        "nvidia" => env_or_dotenv("NVIDIA_API_KEY", dotenv),
-        "alibaba" => env_or_dotenv("DASHSCOPE_API_KEY", dotenv),
-        "doubao" => env_or_dotenv("ARK_API_KEY", dotenv),
-        "zhipu" => env_or_dotenv("ZHIPU_API_KEY", dotenv),
-        "moonshot" => env_or_dotenv("MOONSHOT_API_KEY", dotenv),
-        "baidu" => env_or_dotenv("QIANFAN_API_KEY", dotenv),
-        "ollama" | "bedrock" | "codex" => None,
-        _ => env_or_dotenv("OPENROUTER_API_KEY", dotenv),
+    if matches!(provider, "ollama" | "bedrock" | "codex") {
+        return None;
     }
+    if provider == "anthropic" {
+        return env_or_dotenv("ANTHROPIC_API_KEY", dotenv);
+    }
+    if let Some(p) = BUILTIN_PROVIDERS.iter().find(|p| p.name == provider) {
+        return env_or_dotenv(p.api_key_env, dotenv);
+    }
+    env_or_dotenv("OPENROUTER_API_KEY", dotenv)
 }
 
 /// Detect provider and API key from environment when no config.yaml exists.
-/// Priority: anthropic → openai → gemini → groq → mistral → deepseek → xai
-///           → together → fireworks → cerebras → perplexity → cohere → nvidia
-///           → alibaba → doubao → zhipu → moonshot → baidu
-///           → ollama → vllm → thaillm → openrouter.
+/// Priority order follows BUILTIN_PROVIDERS, with anthropic first (special
+/// transport), then ollama/vllm (URL-based), thaillm, and openrouter last.
 pub(crate) fn detect_provider_from_env(config: &mut AgentConfig, dotenv: &HashMap<String, String>) {
+    // anthropic: special transport, highest priority
     if let Some(k) = env_or_dotenv("ANTHROPIC_API_KEY", dotenv) {
         config.api_key = Some(k);
         config.provider = "anthropic".into();
-    } else if let Some(k) = env_or_dotenv("OPENAI_API_KEY", dotenv) {
-        config.api_key = Some(k);
-        config.provider = "openai".into();
-    } else if let Some(k) = env_or_dotenv("GEMINI_API_KEY", dotenv) {
-        config.api_key = Some(k);
-        config.provider = "gemini".into();
-    } else if let Some(k) = env_or_dotenv("GROQ_API_KEY", dotenv) {
-        config.api_key = Some(k);
-        config.provider = "groq".into();
-    } else if let Some(k) = env_or_dotenv("MISTRAL_API_KEY", dotenv) {
-        config.api_key = Some(k);
-        config.provider = "mistral".into();
-    } else if let Some(k) = env_or_dotenv("DEEPSEEK_API_KEY", dotenv) {
-        config.api_key = Some(k);
-        config.provider = "deepseek".into();
-    } else if let Some(k) = env_or_dotenv("XAI_API_KEY", dotenv) {
-        config.api_key = Some(k);
-        config.provider = "xai".into();
-    } else if let Some(k) = env_or_dotenv("TOGETHER_API_KEY", dotenv) {
-        config.api_key = Some(k);
-        config.provider = "together".into();
-    } else if let Some(k) = env_or_dotenv("FIREWORKS_API_KEY", dotenv) {
-        config.api_key = Some(k);
-        config.provider = "fireworks".into();
-    } else if let Some(k) = env_or_dotenv("CEREBRAS_API_KEY", dotenv) {
-        config.api_key = Some(k);
-        config.provider = "cerebras".into();
-    } else if let Some(k) = env_or_dotenv("PERPLEXITY_API_KEY", dotenv) {
-        config.api_key = Some(k);
-        config.provider = "perplexity".into();
-    } else if let Some(k) = env_or_dotenv("COHERE_API_KEY", dotenv) {
-        config.api_key = Some(k);
-        config.provider = "cohere".into();
-    } else if let Some(k) = env_or_dotenv("NVIDIA_API_KEY", dotenv) {
-        config.api_key = Some(k);
-        config.provider = "nvidia".into();
-    } else if let Some(k) = env_or_dotenv("DASHSCOPE_API_KEY", dotenv) {
-        config.api_key = Some(k);
-        config.provider = "alibaba".into();
-    } else if let Some(k) = env_or_dotenv("ARK_API_KEY", dotenv) {
-        config.api_key = Some(k);
-        config.provider = "doubao".into();
-    } else if let Some(k) = env_or_dotenv("ZHIPU_API_KEY", dotenv) {
-        config.api_key = Some(k);
-        config.provider = "zhipu".into();
-    } else if let Some(k) = env_or_dotenv("MOONSHOT_API_KEY", dotenv) {
-        config.api_key = Some(k);
-        config.provider = "moonshot".into();
-    } else if let Some(k) = env_or_dotenv("QIANFAN_API_KEY", dotenv) {
-        config.api_key = Some(k);
-        config.provider = "baidu".into();
-    } else if let Some(url) = env_or_dotenv("OLLAMA_BASE_URL", dotenv) {
+        return;
+    }
+    // All BUILTIN_PROVIDERS in table order; skip the URL-based and fallback ones
+    for p in BUILTIN_PROVIDERS {
+        if matches!(p.name, "thaillm" | "vllm" | "openrouter") {
+            continue;
+        }
+        if let Some(k) = env_or_dotenv(p.api_key_env, dotenv) {
+            config.api_key = Some(k);
+            config.provider = p.name.into();
+            return;
+        }
+    }
+    // ollama and vllm: detected by base_url, not API key
+    if let Some(url) = env_or_dotenv("OLLAMA_BASE_URL", dotenv) {
         config.provider = "ollama".into();
         config.base_url = Some(url);
-    } else if let Some(url) = env_or_dotenv("VLLM_BASE_URL", dotenv) {
+        return;
+    }
+    if let Some(url) = env_or_dotenv("VLLM_BASE_URL", dotenv) {
         config.provider = "vllm".into();
         config.base_url = Some(url);
         config.api_key = env_or_dotenv("VLLM_API_KEY", dotenv);
-    } else if let Some(k) = env_or_dotenv("THAILLM_API_KEY", dotenv) {
+        return;
+    }
+    if let Some(k) = env_or_dotenv("THAILLM_API_KEY", dotenv) {
         config.api_key = Some(k);
         config.provider = "thaillm".into();
-    } else if let Some(k) = env_or_dotenv("OPENROUTER_API_KEY", dotenv) {
+        return;
+    }
+    if let Some(k) = env_or_dotenv("OPENROUTER_API_KEY", dotenv) {
         config.api_key = Some(k);
         config.provider = "openrouter".into();
     }
@@ -739,6 +895,20 @@ impl AgentConfig {
         };
 
         config.home_dir = home_dir;
+
+        // Apply `providers.default` overrides: name → provider, model → model.
+        if let Some(default_profile) = config.providers.get("default") {
+            if let Some(name) = &default_profile.name {
+                if !name.is_empty() {
+                    config.provider = name.clone();
+                }
+            }
+            if let Some(model) = &default_profile.model {
+                if !model.is_empty() {
+                    config.model = model.clone();
+                }
+            }
+        }
 
         // Populate default security paths if they came back empty from YAML
         if config.security.allowed_read_paths.is_empty() {

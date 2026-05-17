@@ -1987,6 +1987,7 @@ dependencies = [
  "futures",
  "garudust-core",
  "garudust-memory",
+ "garudust-transport",
  "globset",
  "jsonschema",
  "lopdf 0.34.0",

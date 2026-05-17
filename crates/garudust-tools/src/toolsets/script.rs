@@ -184,7 +184,17 @@ impl Tool for ScriptTool {
         // backward compatibility with scripts that pre-date this feature.
         if let Some(cfg) = ctx.config.tools.get(self.name()) {
             if !cfg.model.is_empty() {
-                cmd.env("GARUDUST_MODEL", &cfg.model);
+                if let Some((base_url, api_key, model)) =
+                    garudust_transport::resolve_to_env_vars(&cfg.model, &ctx.config.providers)
+                {
+                    cmd.env("GARUDUST_MODEL", &model);
+                    cmd.env("GARUDUST_BASE_URL", &base_url);
+                    if !api_key.is_empty() {
+                        cmd.env("GARUDUST_API_KEY", &api_key);
+                    }
+                } else {
+                    cmd.env("GARUDUST_MODEL", &cfg.model);
+                }
             }
             if !cfg.fallback_model.is_empty() {
                 cmd.env("GARUDUST_FALLBACK_MODEL", &cfg.fallback_model);
