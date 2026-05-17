@@ -1883,6 +1883,7 @@ dependencies = [
  "async-trait",
  "axum",
  "chrono",
+ "dashmap 6.1.0",
  "futures",
  "garudust-agent",
  "garudust-core",
