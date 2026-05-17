@@ -316,12 +316,16 @@ impl MessageHandler for GatewayHandler {
         let platform_name = msg.channel.platform.clone();
         let session_key = msg.session_key.clone();
 
-        // If there are files waiting for RAG confirmation, handle ingestion directly
-        // without relying on the LLM to extract paths or call doc_ingest.
-        let task = if let Some((_, pending)) = self.pending_docs.remove(&msg.session_key) {
-            if pending.is_empty() {
-                msg.text.clone()
-            } else {
+        // If files are waiting for RAG confirmation, handle this turn
+        // deterministically: ingest (or cancel), clean up the temp file, and
+        // reply directly — then return. We must NOT hand the raw confirmation
+        // to the LLM: history only ever contains the friendly filename (the
+        // real /tmp path lives in `pending_docs`, never in history), so the
+        // LLM would re-attempt doc_ingest with a bare filename and fail the
+        // allowed-paths check, reporting a false "outside allowed read
+        // directories" error even though ingestion already succeeded.
+        if let Some((_, pending)) = self.pending_docs.remove(&msg.session_key) {
+            if !pending.is_empty() {
                 let text_lower = msg.text.to_lowercase();
                 let is_negative = [
                     "ไม่ต้องการ",
@@ -339,7 +343,12 @@ impl MessageHandler for GatewayHandler {
                     || text_lower.trim() == "ไม่"
                     || text_lower.trim() == "no";
 
-                if is_negative {
+                let reply_text = if is_negative {
+                    let names = pending
+                        .iter()
+                        .map(|a| a.file_name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ");
                     for att in &pending {
                         if att.path.starts_with("/tmp/") {
                             let _ = tokio::fs::remove_file(&att.path).await;
@@ -350,9 +359,11 @@ impl MessageHandler for GatewayHandler {
                         "[ระบบ]",
                         "[ผู้ใช้ยกเลิก — ไม่มีการนำเข้าไฟล์]",
                     );
+                    format!("รับทราบ ไม่ได้นำเข้าไฟล์ {names} เข้าระบบ")
                 } else {
                     // Ingest each file directly with the correct conv_key so the
                     // document lands in the right per-chat RAG bucket.
+                    let mut lines = Vec::with_capacity(pending.len());
                     for att in &pending {
                         let result = self
                             .agent
@@ -367,13 +378,23 @@ impl MessageHandler for GatewayHandler {
                             "[ระบบ]",
                             &format!("[นำเข้าไฟล์ {} แล้ว: {}]", att.file_name, result),
                         );
+                        lines.push(summarize_ingest(&att.file_name, &result));
+                        if att.path.starts_with("/tmp/") {
+                            let _ = tokio::fs::remove_file(&att.path).await;
+                        }
                     }
-                }
-                msg.text.clone()
+                    lines.join("\n")
+                };
+
+                let _ = self
+                    .platform
+                    .send_message(&msg.channel, OutboundMessage::text(reply_text))
+                    .await;
+                return Ok(());
             }
-        } else {
-            msg.text.clone()
-        };
+        }
+
+        let task = msg.text.clone();
 
         tokio::spawn(async move {
             match agent
@@ -394,5 +415,48 @@ impl MessageHandler for GatewayHandler {
         });
 
         Ok(())
+    }
+}
+
+/// Turn a raw `doc_ingest` tool result into a user-facing Thai status line.
+/// Success content is the tool's JSON (`{"chunks_indexed":N,...}`); empty docs
+/// return a plain "empty" string; failures arrive as `[doc_ingest failed: …]`.
+fn summarize_ingest(file_name: &str, result: &str) -> String {
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(result) {
+        if let Some(n) = v.get("chunks_indexed").and_then(|n| n.as_u64()) {
+            return format!(
+                "นำเข้าไฟล์ \"{file_name}\" เรียบร้อยแล้ว ({n} ส่วน) — ถามเกี่ยวกับเนื้อหาไฟล์นี้ได้เลย"
+            );
+        }
+    }
+    if result.contains("empty") {
+        return format!("ไฟล์ \"{file_name}\" ว่างเปล่า ไม่มีเนื้อหาให้นำเข้า");
+    }
+    format!("นำเข้าไฟล์ \"{file_name}\" ไม่สำเร็จ: {}", result.trim())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::summarize_ingest;
+
+    #[test]
+    fn summarize_success_reports_chunk_count() {
+        let r = r#"{"file":"a.md","chunks_indexed":12,"preview":"x"}"#;
+        let s = summarize_ingest("a.md", r);
+        assert!(s.contains("เรียบร้อยแล้ว"));
+        assert!(s.contains("12 ส่วน"));
+    }
+
+    #[test]
+    fn summarize_empty_doc() {
+        let s = summarize_ingest("a.md", "Document is empty — nothing ingested.");
+        assert!(s.contains("ว่างเปล่า"));
+    }
+
+    #[test]
+    fn summarize_failure_passes_error_through() {
+        let s = summarize_ingest("a.md", "[doc_ingest failed: path 'a.md' is outside allowed read directories]");
+        assert!(s.contains("ไม่สำเร็จ"));
+        assert!(s.contains("outside allowed read directories"));
     }
 }
