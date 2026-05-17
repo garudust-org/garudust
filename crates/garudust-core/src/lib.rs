@@ -20,6 +20,7 @@
 
 pub mod budget;
 pub mod config;
+pub mod cron;
 pub mod error;
 pub mod hooks;
 pub mod memory;

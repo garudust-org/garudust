@@ -1,13 +1,25 @@
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use garudust_agent::Agent;
-use garudust_core::tool::CommandApprover;
+use garudust_core::{cron::CronJobInfo, tool::CommandApprover};
+use tokio::sync::Mutex;
 use tokio_cron_scheduler::{Job, JobScheduler};
+use uuid::Uuid;
+
+struct CronJobEntry {
+    uuid: Uuid,
+    label: String,
+    schedule: String,
+    task: String,
+    created_at: i64,
+}
 
 pub struct CronScheduler {
     inner: JobScheduler,
     agent: Arc<Agent>,
     approver: Arc<dyn CommandApprover>,
+    jobs: Mutex<Vec<CronJobEntry>>,
 }
 
 impl CronScheduler {
@@ -19,6 +31,7 @@ impl CronScheduler {
             inner: JobScheduler::new().await?,
             agent,
             approver,
+            jobs: Mutex::new(Vec::new()),
         })
     }
 
@@ -67,6 +80,78 @@ impl CronScheduler {
 
     pub fn inner_ref(&self) -> &JobScheduler {
         &self.inner
+    }
+}
+
+#[async_trait]
+impl garudust_core::cron::CronManager for CronScheduler {
+    async fn create_job(&self, label: &str, schedule: &str, task: &str) -> anyhow::Result<()> {
+        let mut jobs = self.jobs.lock().await;
+        if jobs.iter().any(|j| j.label == label) {
+            anyhow::bail!("a cron job with label '{label}' already exists; delete it first");
+        }
+
+        let agent = self.agent.clone();
+        let approver = self.approver.clone();
+        let task_str = task.to_string();
+        let job = Job::new_async(schedule, move |_uuid, _lock| {
+            let agent = agent.clone();
+            let approver = approver.clone();
+            let task = task_str.clone();
+            Box::pin(async move {
+                tracing::info!(task = %task, "cron job starting");
+                match agent.run(&task, approver, "cron", None, None).await {
+                    Ok(result) => tracing::info!(
+                        task = %task,
+                        iterations = result.iterations,
+                        "cron job completed"
+                    ),
+                    Err(e) => tracing::error!(task = %task, error = %e, "cron job failed"),
+                }
+            })
+        })?;
+
+        let uuid = self.inner.add(job).await?;
+        tracing::info!(label = %label, schedule = %schedule, "runtime cron job created");
+
+        jobs.push(CronJobEntry {
+            uuid,
+            label: label.to_string(),
+            schedule: schedule.to_string(),
+            task: task.to_string(),
+            created_at: chrono::Utc::now().timestamp(),
+        });
+
+        Ok(())
+    }
+
+    async fn list_jobs(&self) -> Vec<CronJobInfo> {
+        self.jobs
+            .lock()
+            .await
+            .iter()
+            .map(|e| CronJobInfo {
+                label: e.label.clone(),
+                schedule: e.schedule.clone(),
+                task: e.task.clone(),
+                created_at: e.created_at,
+            })
+            .collect()
+    }
+
+    async fn delete_job(&self, label: &str) -> anyhow::Result<bool> {
+        let mut jobs = self.jobs.lock().await;
+        if let Some(idx) = jobs.iter().position(|j| j.label == label) {
+            let entry = jobs.remove(idx);
+            self.inner
+                .remove(&entry.uuid)
+                .await
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+            tracing::info!(label = %label, "runtime cron job deleted");
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 }
 

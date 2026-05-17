@@ -5,7 +5,9 @@ use arc_swap::ArcSwap;
 use clap::Parser;
 use garudust_agent::{Agent, AutoApprover, ConstitutionalApprover, DenyApprover};
 use garudust_core::config::{get_secret, McpServerConfig, WebhookPlatformConfig};
-use garudust_core::{config::AgentConfig, platform::PlatformAdapter, tool::CommandApprover};
+use garudust_core::{
+    config::AgentConfig, cron::CronManager, platform::PlatformAdapter, tool::CommandApprover,
+};
 use garudust_cron::CronScheduler;
 use garudust_gateway::{create_router, AppState, GatewayHandler, Metrics, SessionRegistry};
 use garudust_memory::{DocStore, FileMemoryStore, SessionDb};
@@ -148,6 +150,7 @@ async fn build_agent(
     config: Arc<AgentConfig>,
     db: Arc<SessionDb>,
     doc_store: Option<Arc<DocStore>>,
+    cron_slot: Arc<tokio::sync::Mutex<Option<Arc<dyn CronManager>>>>,
 ) -> (Arc<Agent>, McpHandles) {
     let memory = Arc::new(FileMemoryStore::new(&config.home_dir));
     let transport = build_transport(&config);
@@ -173,7 +176,7 @@ async fn build_agent(
     }
 
     let mut registry = ToolRegistry::new();
-    register_standard_tools(&mut registry, Some(db.clone()), doc_store);
+    register_standard_tools(&mut registry, Some(db.clone()), doc_store, Some(cron_slot));
 
     let mcp_handles = attach_mcp_servers(&mut registry, &config.mcp_servers).await;
 
@@ -259,6 +262,7 @@ fn spawn_config_watcher(
     db: Arc<SessionDb>,
     doc_store: Option<Arc<DocStore>>,
     handles_lock: Arc<tokio::sync::Mutex<McpHandles>>,
+    cron_slot: Arc<tokio::sync::Mutex<Option<Arc<dyn CronManager>>>>,
 ) {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<()>();
 
@@ -326,7 +330,7 @@ fn spawn_config_watcher(
             tracing::info!("config changed — reloading agent");
             let new_config = Arc::new(AgentConfig::load());
             let (new_agent, new_handles) =
-                build_agent(new_config, db.clone(), doc_store.clone()).await;
+                build_agent(new_config, db.clone(), doc_store.clone(), cron_slot.clone()).await;
             // Swap agent first so new requests immediately use the new config, then
             // drop old handles. This narrows (but does not eliminate) the window where
             // in-flight MCP tool calls from the old agent hit terminated child processes;
@@ -400,8 +404,18 @@ async fn main() -> Result<()> {
     );
     let db = Arc::new(SessionDb::open(&config.home_dir)?);
     let doc_store = DocStore::open(&config.home_dir).ok().map(Arc::new);
-    let (agent_inner, mcp_handles) =
-        build_agent(config.clone(), db.clone(), doc_store.clone()).await;
+
+    // Cron slot: filled after the scheduler is created; tools read it at call time.
+    let cron_slot: Arc<tokio::sync::Mutex<Option<Arc<dyn CronManager>>>> =
+        Arc::new(tokio::sync::Mutex::new(None));
+
+    let (agent_inner, mcp_handles) = build_agent(
+        config.clone(),
+        db.clone(),
+        doc_store.clone(),
+        cron_slot.clone(),
+    )
+    .await;
     let agent = Arc::new(ArcSwap::from(agent_inner));
     let mcp_handles = Arc::new(tokio::sync::Mutex::new(mcp_handles));
     let sessions = SessionRegistry::new();
@@ -422,6 +436,7 @@ async fn main() -> Result<()> {
         db.clone(),
         doc_store,
         mcp_handles.clone(),
+        cron_slot.clone(),
     );
 
     // ── Platform adapters ─────────────────────────────────────────────────────
@@ -597,53 +612,55 @@ async fn main() -> Result<()> {
         .clone()
         .or_else(|| config.cron.memory_expiry.clone());
 
-    let needs_cron = !cron_jobs.is_empty() || memory_cron.is_some() || memory_expiry_cron.is_some();
-    if needs_cron {
-        let scheduler = CronScheduler::new(agent.load_full(), approver.clone()).await?;
+    // Always create a scheduler so the cron_create/cron_list/cron_delete tools work
+    // even when no static jobs are configured.
+    let scheduler = Arc::new(CronScheduler::new(agent.load_full(), approver.clone()).await?);
 
-        for (expr, task) in &cron_jobs {
-            scheduler.add_job(expr, task.clone()).await?;
-            tracing::info!(cron = %expr, task = %task, "cron job registered");
-        }
-
-        if let Some(expr) = &memory_expiry_cron {
-            let expiry_config = config.memory_expiry.clone();
-            let home_dir = config.home_dir.clone();
-            scheduler
-                .add_fn_job(expr.trim(), move || {
-                    let expiry_config = expiry_config.clone();
-                    let home_dir = home_dir.clone();
-                    async move {
-                        let store = FileMemoryStore::new(&home_dir);
-                        match store.expire_entries(&expiry_config).await {
-                            Ok(0) => tracing::info!("memory expiry: no entries expired"),
-                            Ok(n) => {
-                                tracing::info!(removed = n, "memory expiry: removed old entries");
-                            }
-                            Err(e) => tracing::error!("memory expiry failed: {e}"),
-                        }
-                    }
-                })
-                .await?;
-            tracing::info!(cron = %expr.trim(), "memory expiry cron registered");
-        }
-
-        if let Some(expr) = &memory_cron {
-            const CONSOLIDATION_TASK: &str =
-                "Review and consolidate your memory. Use the `memory` tool to read all current \
-                 entries. Then rewrite them: remove exact duplicates, merge entries that say the \
-                 same thing, discard facts that are clearly outdated or no longer relevant, and \
-                 keep the result to 50 entries or fewer. Write the consolidated entries back \
-                 using `memory` tool with 'replace' or 'remove' + 'add' actions. \
-                 Do not add any new information — only reorganise what is already there.";
-            scheduler
-                .add_job(expr.trim(), CONSOLIDATION_TASK.to_string())
-                .await?;
-            tracing::info!(cron = %expr.trim(), "memory consolidation cron registered");
-        }
-
-        scheduler.start().await?;
+    for (expr, task) in &cron_jobs {
+        scheduler.add_job(expr, task.clone()).await?;
+        tracing::info!(cron = %expr, task = %task, "cron job registered");
     }
+
+    if let Some(expr) = &memory_expiry_cron {
+        let expiry_config = config.memory_expiry.clone();
+        let home_dir = config.home_dir.clone();
+        scheduler
+            .add_fn_job(expr.trim(), move || {
+                let expiry_config = expiry_config.clone();
+                let home_dir = home_dir.clone();
+                async move {
+                    let store = FileMemoryStore::new(&home_dir);
+                    match store.expire_entries(&expiry_config).await {
+                        Ok(0) => tracing::info!("memory expiry: no entries expired"),
+                        Ok(n) => {
+                            tracing::info!(removed = n, "memory expiry: removed old entries");
+                        }
+                        Err(e) => tracing::error!("memory expiry failed: {e}"),
+                    }
+                }
+            })
+            .await?;
+        tracing::info!(cron = %expr.trim(), "memory expiry cron registered");
+    }
+
+    if let Some(expr) = &memory_cron {
+        const CONSOLIDATION_TASK: &str =
+            "Review and consolidate your memory. Use the `memory` tool to read all current \
+             entries. Then rewrite them: remove exact duplicates, merge entries that say the \
+             same thing, discard facts that are clearly outdated or no longer relevant, and \
+             keep the result to 50 entries or fewer. Write the consolidated entries back \
+             using `memory` tool with 'replace' or 'remove' + 'add' actions. \
+             Do not add any new information — only reorganise what is already there.";
+        scheduler
+            .add_job(expr.trim(), CONSOLIDATION_TASK.to_string())
+            .await?;
+        tracing::info!(cron = %expr.trim(), "memory consolidation cron registered");
+    }
+
+    scheduler.start().await?;
+
+    // Fill the cron slot so tools registered in the agent can now access the scheduler.
+    *cron_slot.lock().await = Some(scheduler.clone() as Arc<dyn CronManager>);
 
     // ── HTTP gateway ──────────────────────────────────────────────────────────
     let shutdown_secs = config.shutdown_timeout_secs;

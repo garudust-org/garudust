@@ -1,4 +1,5 @@
 pub mod browser;
+pub mod cron;
 pub mod delegate;
 pub mod files;
 pub mod git;

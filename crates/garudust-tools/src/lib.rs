@@ -20,6 +20,7 @@
 //! | `search` | `search_files`, `search_code` — glob and content search |
 //! | `rag` | `doc_ingest`, `doc_search`, `doc_list`, `doc_forget` — document RAG via FTS5 |
 //! | `delegate` | `delegate_task` — spawn a sub-agent for a sub-task |
+//! | `cron` | `cron_create`, `cron_list`, `cron_delete` — runtime cron job management |
 
 pub mod hub;
 pub mod registry;
@@ -35,13 +36,22 @@ pub use toolsets::script::load_script_tools;
 /// `db` is `Some` when session-search history is available (always in the
 /// server, optional in the CLI). Callers that don't need the session-search
 /// tool pass `None`.
+///
+/// `cron` is `Some` when a runtime cron scheduler is available. The slot is
+/// filled after the scheduler is started; tools check at call time.
 pub fn register_standard_tools(
     registry: &mut ToolRegistry,
     db: Option<std::sync::Arc<garudust_memory::SessionDb>>,
     doc_store: Option<std::sync::Arc<garudust_memory::DocStore>>,
+    cron: Option<
+        std::sync::Arc<
+            tokio::sync::Mutex<Option<std::sync::Arc<dyn garudust_core::cron::CronManager>>>,
+        >,
+    >,
 ) {
     use toolsets::{
         browser::BrowserTool,
+        cron::{CronCreate, CronDelete, CronList},
         delegate::{DelegateTask, DelegateTasks},
         files::{ListDirectory, ReadFile, WriteFile},
         git::{GitDiff, GitLog, GitStatus},
@@ -90,4 +100,9 @@ pub fn register_standard_tools(
     registry.register(ReadNote);
     registry.register(ListNotes);
     registry.register(JsonQuery);
+    if let Some(slot) = cron {
+        registry.register(CronCreate { slot: slot.clone() });
+        registry.register(CronList { slot: slot.clone() });
+        registry.register(CronDelete { slot });
+    }
 }

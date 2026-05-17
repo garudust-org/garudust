@@ -1861,6 +1861,7 @@ name = "garudust-cron"
 version = "0.5.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "chrono",
  "fs4",
  "garudust-agent",
@@ -1872,6 +1873,7 @@ dependencies = [
  "tokio",
  "tokio-cron-scheduler",
  "tracing",
+ "uuid",
 ]
 
 [[package]]

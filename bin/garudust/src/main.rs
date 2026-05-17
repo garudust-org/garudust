@@ -205,7 +205,7 @@ async fn build_agent(config: Arc<AgentConfig>) -> (Arc<Agent>, McpHandles) {
     let doc_store = DocStore::open(&config.home_dir).ok().map(Arc::new);
 
     let mut registry = ToolRegistry::new();
-    register_standard_tools(&mut registry, db.clone(), doc_store);
+    register_standard_tools(&mut registry, db.clone(), doc_store, None);
 
     let mcp_handles = attach_mcp_servers(&mut registry, &config.mcp_servers).await;
 
