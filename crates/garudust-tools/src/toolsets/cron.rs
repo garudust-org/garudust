@@ -184,3 +184,232 @@ impl Tool for CronDelete {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use async_trait::async_trait;
+    use garudust_core::{
+        budget::IterationBudget,
+        config::AgentConfig,
+        cron::{CronJobInfo, CronManager},
+        tool::{ApprovalDecision, CommandApprover, SkillPermissions, ToolContext},
+    };
+    use serde_json::json;
+    use tokio::sync::{Mutex, RwLock};
+
+    use super::*;
+
+    // ── stubs ─────────────────────────────────────────────────────────────────
+
+    struct AutoApprove;
+    #[async_trait]
+    impl CommandApprover for AutoApprove {
+        async fn approve(&self, _: &str, _: &str) -> ApprovalDecision {
+            ApprovalDecision::Approved
+        }
+    }
+
+    struct NopMemory;
+    #[async_trait]
+    impl garudust_core::memory::MemoryStore for NopMemory {
+        async fn read_memory(
+            &self,
+        ) -> Result<garudust_core::memory::MemoryContent, garudust_core::AgentError> {
+            Ok(garudust_core::memory::MemoryContent::default())
+        }
+        async fn write_memory(
+            &self,
+            _: &garudust_core::memory::MemoryContent,
+        ) -> Result<(), garudust_core::AgentError> {
+            Ok(())
+        }
+        async fn read_user_profile(&self) -> Result<String, garudust_core::AgentError> {
+            Ok(String::new())
+        }
+        async fn write_user_profile(&self, _: &str) -> Result<(), garudust_core::AgentError> {
+            Ok(())
+        }
+    }
+
+    fn make_ctx() -> ToolContext {
+        ToolContext {
+            session_id: "test".into(),
+            conv_key: String::new(),
+            agent_id: "test".into(),
+            iteration: 0,
+            budget: Arc::new(IterationBudget::new(10)),
+            memory: Arc::new(NopMemory),
+            config: Arc::new(AgentConfig::default()),
+            approver: Arc::new(AutoApprove),
+            sub_agent: None,
+            skill_permissions: Arc::new(RwLock::new(SkillPermissions::default())),
+            required_tools: Arc::new(RwLock::new(Vec::new())),
+        }
+    }
+
+    // ── mock CronManager ─────────────────────────────────────────────────────
+
+    struct MockCron {
+        jobs: std::sync::Mutex<Vec<CronJobInfo>>,
+    }
+
+    impl MockCron {
+        fn new() -> Arc<Self> {
+            Arc::new(Self {
+                jobs: std::sync::Mutex::new(Vec::new()),
+            })
+        }
+    }
+
+    #[async_trait]
+    impl CronManager for MockCron {
+        async fn create_job(&self, label: &str, schedule: &str, task: &str) -> anyhow::Result<()> {
+            let mut jobs = self.jobs.lock().unwrap();
+            if jobs.iter().any(|j| j.label == label) {
+                anyhow::bail!("label '{label}' already exists");
+            }
+            jobs.push(CronJobInfo {
+                label: label.to_string(),
+                schedule: schedule.to_string(),
+                task: task.to_string(),
+                created_at: 0,
+            });
+            Ok(())
+        }
+
+        async fn list_jobs(&self) -> Vec<CronJobInfo> {
+            self.jobs.lock().unwrap().clone()
+        }
+
+        async fn delete_job(&self, label: &str) -> anyhow::Result<bool> {
+            let mut jobs = self.jobs.lock().unwrap();
+            if let Some(idx) = jobs.iter().position(|j| j.label == label) {
+                jobs.remove(idx);
+                Ok(true)
+            } else {
+                Ok(false)
+            }
+        }
+    }
+
+    fn make_slot(mgr: Option<Arc<dyn CronManager>>) -> CronSlot {
+        Arc::new(Mutex::new(mgr))
+    }
+
+    // ── tests ─────────────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn empty_slot_returns_error() {
+        let tool = CronCreate {
+            slot: make_slot(None),
+        };
+        let result = tool
+            .execute(
+                json!({"label":"x","schedule":"0 * * * * *","task":"t"}),
+                &make_ctx(),
+            )
+            .await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not available"));
+    }
+
+    #[tokio::test]
+    async fn create_then_list_shows_job() {
+        let slot = make_slot(Some(MockCron::new()));
+        let ctx = make_ctx();
+
+        CronCreate { slot: slot.clone() }
+            .execute(
+                json!({"label":"morning","schedule":"0 30 8 * * *","task":"do something"}),
+                &ctx,
+            )
+            .await
+            .expect("create should succeed");
+
+        let out = CronList { slot }
+            .execute(json!({}), &ctx)
+            .await
+            .expect("list should succeed")
+            .content;
+
+        assert!(out.contains("morning"), "label missing from list: {out}");
+        assert!(out.contains("0 30 8 * * *"), "schedule missing: {out}");
+    }
+
+    #[tokio::test]
+    async fn duplicate_label_returns_error() {
+        let slot = make_slot(Some(MockCron::new()));
+        let ctx = make_ctx();
+
+        CronCreate { slot: slot.clone() }
+            .execute(
+                json!({"label":"dup","schedule":"0 * * * * *","task":"t"}),
+                &ctx,
+            )
+            .await
+            .expect("first create should succeed");
+
+        let result = CronCreate { slot }
+            .execute(
+                json!({"label":"dup","schedule":"0 * * * * *","task":"t2"}),
+                &ctx,
+            )
+            .await;
+        assert!(result.is_err(), "duplicate label must fail");
+    }
+
+    #[tokio::test]
+    async fn delete_existing_job_removes_it() {
+        let slot = make_slot(Some(MockCron::new()));
+        let ctx = make_ctx();
+
+        CronCreate { slot: slot.clone() }
+            .execute(
+                json!({"label":"bye","schedule":"0 * * * * *","task":"t"}),
+                &ctx,
+            )
+            .await
+            .unwrap();
+
+        let del = CronDelete { slot: slot.clone() }
+            .execute(json!({"label":"bye"}), &ctx)
+            .await
+            .expect("delete should succeed")
+            .content;
+        assert!(del.contains("removed"), "unexpected message: {del}");
+
+        let list = CronList { slot }
+            .execute(json!({}), &ctx)
+            .await
+            .unwrap()
+            .content;
+        assert!(!list.contains("bye"), "deleted job still visible: {list}");
+    }
+
+    #[tokio::test]
+    async fn delete_nonexistent_label_not_found() {
+        let slot = make_slot(Some(MockCron::new()));
+        let out = CronDelete { slot }
+            .execute(json!({"label":"ghost"}), &make_ctx())
+            .await
+            .expect("delete of unknown label should not error")
+            .content;
+        assert!(
+            out.contains("No cron job found"),
+            "expected not-found message, got: {out}"
+        );
+    }
+
+    #[tokio::test]
+    async fn list_empty_manager_reports_no_jobs() {
+        let slot = make_slot(Some(MockCron::new()));
+        let out = CronList { slot }
+            .execute(json!({}), &make_ctx())
+            .await
+            .expect("list should succeed")
+            .content;
+        assert!(out.contains("No active"), "unexpected: {out}");
+    }
+}
