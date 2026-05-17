@@ -1,0 +1,21 @@
+[advisories]
+# All four advisories affect rustls-webpki 0.102.8, which enters the dependency
+# tree through: serenity 0.12.5 → tokio-tungstenite 0.21 → rustls 0.22 → rustls-webpki 0.102.8
+#
+# serenity 0.12.5 is the latest published release; no 0.12.x patch exists that
+# upgrades to rustls 0.23+ (which uses rustls-webpki 0.103.x).
+#
+# Risk assessment: the vulnerabilities relate to TLS certificate validation
+# (wildcard name constraints, URI name constraints, CRL parsing).  Exploitation
+# requires a network-level MITM between the bot and Discord's API servers —
+# a high bar given that connections are outbound TLS to well-known Discord
+# endpoints, not accepting untrusted inbound connections.
+#
+# Remediation path: upgrade to serenity 0.13+ once released upstream.
+# Tracked: https://github.com/garudust-org/garudust-agent/issues — Discord TLS dep audit
+ignore = [
+    "RUSTSEC-2026-0049",
+    "RUSTSEC-2026-0098",
+    "RUSTSEC-2026-0099",
+    "RUSTSEC-2026-0104",
+]
