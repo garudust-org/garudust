@@ -195,6 +195,11 @@ pub struct AgentConfig {
     /// where end users see the output. Default: false.
     #[serde(default)]
     pub show_usage_footer: bool,
+    /// Maximum number of tokens (rough estimate: chars / 4) injected from
+    /// persistent memory into the system prompt. Oldest entries are dropped
+    /// first when the cap is exceeded. `None` = no cap. Default: None.
+    #[serde(default)]
+    pub max_memory_tokens: Option<u32>,
     /// Per-platform webhook server settings (LINE, WhatsApp, generic webhook).
     /// Each entry sets enabled flag, listening port, and HTTP path. Tokens and
     /// secrets continue to be read from `~/.garudust/.env` — never from yaml.
@@ -580,6 +585,7 @@ impl Default for AgentConfig {
             disabled_toolsets: default_disabled_toolsets(),
             disabled_tools: Vec::new(),
             show_usage_footer: false,
+            max_memory_tokens: None,
             platforms: WebhookPlatformsConfig {
                 webhook: Some(WebhookPlatformConfig::default_webhook()),
                 line: None,

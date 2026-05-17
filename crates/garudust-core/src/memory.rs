@@ -334,6 +334,48 @@ impl MemoryContent {
         let inner = sections.join("\n\n");
         format!("<untrusted_memory>\n{inner}\n</untrusted_memory>")
     }
+
+    /// Like [`serialize_for_prompt`] but drops the oldest entries first until
+    /// the output fits within `max_tokens` (estimated as chars / 4).
+    pub fn serialize_for_prompt_capped(&self, max_tokens: u32) -> String {
+        if self.entries.is_empty() {
+            return String::new();
+        }
+        // Sort by date: entries with a date come first (newest kept), undated last.
+        // We want to drop oldest first, so sort ascending and truncate from the front.
+        let mut indexed: Vec<(usize, &MemoryEntry)> = self.entries.iter().enumerate().collect();
+        indexed.sort_by(|(_, a), (_, b)| {
+            match (a.created_at.is_empty(), b.created_at.is_empty()) {
+                (false, false) => a.created_at.cmp(&b.created_at),
+                (true, false) => std::cmp::Ordering::Greater, // undated → older
+                (false, true) => std::cmp::Ordering::Less,
+                (true, true) => std::cmp::Ordering::Equal,
+            }
+        });
+
+        // Keep as many entries as possible within the token budget, newest first.
+        let max_chars = (max_tokens as usize) * 4;
+        let mut kept_indices = std::collections::HashSet::new();
+        let mut budget = max_chars;
+        for (idx, entry) in indexed.iter().rev() {
+            let cost = entry.content.chars().count() + 50; // +50 for formatting overhead
+            if budget >= cost {
+                budget -= cost;
+                kept_indices.insert(*idx);
+            }
+        }
+
+        let capped = MemoryContent {
+            entries: self
+                .entries
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| kept_indices.contains(i))
+                .map(|(_, e)| e.clone())
+                .collect(),
+        };
+        capped.serialize_for_prompt()
+    }
 }
 
 #[async_trait]

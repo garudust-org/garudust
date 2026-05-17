@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 use std::io;
 
+use garudust_core::pricing::estimate_cost_usd;
+
 use crossterm::{
     cursor::{Hide, Show},
     event::{self, Event, KeyCode, KeyModifiers},
@@ -48,6 +50,10 @@ pub struct Tui {
     thinking_since: Option<std::time::Instant>,
     toolsets: BTreeMap<String, Vec<String>>,
     skill_names: Vec<String>,
+    model: String,
+    session_input_tokens: u32,
+    session_output_tokens: u32,
+    session_turns: u32,
 }
 
 #[derive(Clone)]
@@ -115,7 +121,11 @@ fn next_word(s: &str, cursor: usize) -> usize {
 }
 
 impl Tui {
-    pub fn new(toolsets: BTreeMap<String, Vec<String>>, skill_names: Vec<String>) -> Self {
+    pub fn new(
+        toolsets: BTreeMap<String, Vec<String>>,
+        skill_names: Vec<String>,
+        model: String,
+    ) -> Self {
         Self {
             input: String::new(),
             cursor: 0,
@@ -126,6 +136,10 @@ impl Tui {
             thinking_since: None,
             toolsets,
             skill_names,
+            model,
+            session_input_tokens: 0,
+            session_output_tokens: 0,
+            session_turns: 0,
         }
     }
 
@@ -189,6 +203,7 @@ impl Tui {
         mut rx_agent: mpsc::Receiver<AgentEvent>,
         toolsets: BTreeMap<String, Vec<String>>,
         skill_names: Vec<String>,
+        model: String,
     ) -> io::Result<()> {
         enable_raw_mode()?;
         let mut stdout = io::stdout();
@@ -196,7 +211,7 @@ impl Tui {
         let backend = CrosstermBackend::new(stdout);
         let mut term = Terminal::new(backend)?;
 
-        let mut tui = Tui::new(toolsets, skill_names);
+        let mut tui = Tui::new(toolsets, skill_names, model);
         tui.messages.push((
             Role::Assistant,
             "Type your task and press Enter.  /help for commands.".into(),
@@ -340,8 +355,19 @@ impl Tui {
             } => {
                 self.streaming = false;
                 self.thinking_since = None;
+                self.session_turns += 1;
+                self.session_input_tokens += input_tokens;
+                self.session_output_tokens += output_tokens;
+                let total = input_tokens + output_tokens;
+                let cost_part = estimate_cost_usd(&self.model, input_tokens, output_tokens)
+                    .map(|c| format!(" | ~${c:.4}"))
+                    .unwrap_or_default();
+                let session_cost =
+                    estimate_cost_usd(&self.model, self.session_input_tokens, self.session_output_tokens)
+                        .map(|c| format!(" | session ~${c:.4}"))
+                        .unwrap_or_default();
                 self.status = format!(
-                    "Done — {iterations} iter | {input_tokens} in / {output_tokens} out tokens"
+                    "Done — {iterations} iter | {total} tok{cost_part}{session_cost}"
                 );
             }
             AgentEvent::Error(e) => {

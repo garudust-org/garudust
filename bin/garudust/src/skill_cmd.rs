@@ -1,7 +1,7 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
-use garudust_tools::{hub, skill_hub};
+use garudust_tools::{hub, skill_hub, toolsets::skills::validate_skill_md};
 
 pub async fn list(skills_dir: &Path, offline: bool) -> Result<()> {
     println!(
@@ -105,4 +105,70 @@ pub async fn update(skill_name: Option<&str>, skills_dir: &Path) -> Result<()> {
         }
     }
     Ok(())
+}
+
+pub async fn validate(path: Option<&PathBuf>, skills_dir: &Path) -> Result<()> {
+    // Collect SKILL.md files to check
+    let targets: Vec<PathBuf> = if let Some(p) = path {
+        if p.file_name().is_some_and(|n| n == "SKILL.md") {
+            vec![p.clone()]
+        } else {
+            // Treat as directory — find all SKILL.md files inside it
+            collect_skill_files(p).await
+        }
+    } else {
+        collect_skill_files(skills_dir).await
+    };
+
+    if targets.is_empty() {
+        println!("No SKILL.md files found.");
+        return Ok(());
+    }
+
+    let mut ok = 0usize;
+    let mut errors = 0usize;
+
+    for skill_path in &targets {
+        match tokio::fs::read_to_string(skill_path).await {
+            Err(e) => {
+                eprintln!("FAIL  {}  — cannot read file: {e}", skill_path.display());
+                errors += 1;
+            }
+            Ok(content) => match validate_skill_md(&content, skill_path) {
+                Ok(skill) => {
+                    println!("OK    {}  (name: {})", skill_path.display(), skill.name);
+                    ok += 1;
+                }
+                Err(reason) => {
+                    eprintln!("FAIL  {}  — {reason}", skill_path.display());
+                    errors += 1;
+                }
+            },
+        }
+    }
+
+    println!("\n{} ok, {} error(s)", ok, errors);
+    if errors > 0 {
+        std::process::exit(1);
+    }
+    Ok(())
+}
+
+async fn collect_skill_files(dir: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(current) = stack.pop() {
+        let Ok(mut entries) = tokio::fs::read_dir(&current).await else {
+            continue;
+        };
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let p = entry.path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if p.file_name().is_some_and(|n| n == "SKILL.md") {
+                out.push(p);
+            }
+        }
+    }
+    out
 }

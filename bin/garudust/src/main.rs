@@ -12,6 +12,7 @@ use clap::{Parser, Subcommand};
 use garudust_agent::{Agent, AutoApprover};
 use garudust_core::config::AgentConfig;
 use garudust_core::config::McpServerConfig;
+use garudust_core::pricing::usage_footer;
 use garudust_memory::{DocStore, FileMemoryStore, SessionDb};
 use garudust_tools::{
     load_script_tools, register_standard_tools, security::docker_available,
@@ -98,6 +99,11 @@ enum SkillCmd {
     Update {
         /// Specific skill to update (omit to update all)
         name: Option<String>,
+    },
+    /// Validate SKILL.md files — report malformed frontmatter or missing required fields
+    Validate {
+        /// Path to a specific SKILL.md file or directory to scan (default: ~/.garudust/skills/)
+        path: Option<std::path::PathBuf>,
     },
 }
 
@@ -334,6 +340,9 @@ async fn main() -> Result<()> {
                 SkillCmd::Update { name } => {
                     skill_cmd::update(name.as_deref(), &skills_dir).await?;
                 }
+                SkillCmd::Validate { path } => {
+                    skill_cmd::validate(path.as_ref(), &skills_dir).await?;
+                }
             }
             return Ok(());
         }
@@ -355,8 +364,13 @@ async fn main() -> Result<()> {
             .await?;
         println!("{}", result.output);
         eprintln!(
-            "[{} iter | {}in {}out tokens]",
-            result.iterations, result.usage.input_tokens, result.usage.output_tokens
+            "{}",
+            usage_footer(
+                &config.model,
+                result.iterations,
+                result.usage.input_tokens,
+                result.usage.output_tokens
+            )
         );
     } else {
         // ── Interactive TUI mode ──────────────────────────────────────────────
@@ -453,7 +467,7 @@ async fn main() -> Result<()> {
                 .into_iter()
                 .map(|s| s.name)
                 .collect::<Vec<_>>();
-        tui::Tui::run(tx_event, rx_agent, toolsets, skill_names).await?;
+        tui::Tui::run(tx_event, rx_agent, toolsets, skill_names, config.model.clone()).await?;
     }
 
     Ok(())

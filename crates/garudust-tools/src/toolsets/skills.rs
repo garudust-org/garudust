@@ -94,6 +94,66 @@ pub fn parse_skill_md(content: &str, path: PathBuf) -> Option<Skill> {
     })
 }
 
+/// Like [`parse_skill_md`] but returns a descriptive error instead of `None`.
+/// Used by `garudust skill validate`.
+pub fn validate_skill_md(content: &str, path: &Path) -> Result<Skill, String> {
+    let content = content.trim();
+    let rest = content
+        .strip_prefix("---")
+        .ok_or("missing opening `---` frontmatter delimiter")?;
+    let end = rest
+        .find("\n---")
+        .ok_or("missing closing `---` frontmatter delimiter")?;
+    let frontmatter = &rest[..end];
+    let body = rest[end + 4..].trim().to_string();
+
+    let yaml: serde_yaml::Value = serde_yaml::from_str(frontmatter)
+        .map_err(|e| format!("invalid YAML in frontmatter: {e}"))?;
+
+    let name = yaml["name"]
+        .as_str()
+        .ok_or("missing required field `name` in frontmatter")?
+        .to_string();
+    let description = yaml["description"].as_str().unwrap_or("").to_string();
+    let version = yaml["version"].as_str().map(str::to_string);
+    let platforms = yaml["platforms"].as_sequence().map(|seq| {
+        seq.iter()
+            .filter_map(|v| v.as_str().map(str::to_string))
+            .collect()
+    });
+    let mut permissions: Option<HashMap<String, bool>> =
+        yaml["permissions"].as_mapping().map(|map| {
+            map.iter()
+                .filter_map(|(k, v)| Some((k.as_str()?.to_string(), v.as_bool()?)))
+                .collect()
+        });
+    if let Some(allowed) = yaml["allowed-tools"].as_str() {
+        let map = permissions.get_or_insert_with(HashMap::new);
+        for tool in allowed.split_whitespace() {
+            map.entry(tool.to_string()).or_insert(true);
+        }
+    }
+    let required_tools = yaml["required_tools"]
+        .as_sequence()
+        .map(|seq| {
+            seq.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Ok(Skill {
+        name,
+        description,
+        version,
+        platforms,
+        permissions,
+        required_tools,
+        body,
+        path: path.to_path_buf(),
+    })
+}
+
 pub async fn load_skills_from_dir(dir: &Path) -> Vec<Skill> {
     let mut skills = Vec::new();
     let mut stack = vec![dir.to_path_buf()];

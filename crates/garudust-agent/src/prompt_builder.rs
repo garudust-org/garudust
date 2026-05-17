@@ -32,7 +32,10 @@ pub async fn build_system_prompt(
 
     // Memory
     if let Some(mem) = memory_content {
-        let content = mem.serialize_for_prompt();
+        let content = match config.max_memory_tokens {
+            Some(cap) => mem.serialize_for_prompt_capped(cap),
+            None => mem.serialize_for_prompt(),
+        };
         if !content.is_empty() {
             parts.push(format!("# Memory\n{content}"));
         }

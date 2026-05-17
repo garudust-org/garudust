@@ -72,3 +72,19 @@ jobs:
 
       - name: cargo fmt
         run: cargo fmt --all -- --check
+
+  audit:
+    name: Security audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: cargo audit
+        run: cargo audit
