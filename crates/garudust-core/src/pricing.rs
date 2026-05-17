@@ -107,7 +107,7 @@ pub fn estimate_cost_usd(model: &str, input_tokens: u32, output_tokens: u32) -> 
 pub fn usage_footer(model: &str, iters: u32, input_tokens: u32, output_tokens: u32) -> String {
     let total = input_tokens + output_tokens;
     let cost_part = estimate_cost_usd(model, input_tokens, output_tokens)
-        .map(|c| format!(" | ~${c:.4}"))
+        .map(|c| format!(" | ~${c:.3}"))
         .unwrap_or_default();
     let short_model = model.rsplit_once('/').map_or(model, |(_, n)| n);
     format!(
