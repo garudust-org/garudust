@@ -362,13 +362,15 @@ impl Tui {
                 let cost_part = estimate_cost_usd(&self.model, input_tokens, output_tokens)
                     .map(|c| format!(" | ~${c:.4}"))
                     .unwrap_or_default();
-                let session_cost =
-                    estimate_cost_usd(&self.model, self.session_input_tokens, self.session_output_tokens)
-                        .map(|c| format!(" | session ~${c:.4}"))
-                        .unwrap_or_default();
-                self.status = format!(
-                    "Done — {iterations} iter | {total} tok{cost_part}{session_cost}"
-                );
+                let session_cost = estimate_cost_usd(
+                    &self.model,
+                    self.session_input_tokens,
+                    self.session_output_tokens,
+                )
+                .map(|c| format!(" | session ~${c:.4}"))
+                .unwrap_or_default();
+                self.status =
+                    format!("Done — {iterations} iter | {total} tok{cost_part}{session_cost}");
             }
             AgentEvent::Error(e) => {
                 self.streaming = false;

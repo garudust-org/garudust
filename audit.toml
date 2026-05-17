@@ -1,0 +1,13 @@
+[advisories]
+# rustls-webpki 0.102.8 CVEs — all four advisories affect the same transitive
+# dependency chain: serenity 0.12.x → tokio-tungstenite 0.21 → rustls 0.22 →
+# rustls-webpki 0.102.8.  No patched version of serenity 0.12 exists; fixing
+# requires upgrading to serenity 0.13+ which is a breaking API change tracked
+# as a future roadmap item.  Direct TLS connections in Garudust go through
+# reqwest/rustls 0.23 which is not affected.
+ignore = [
+    "RUSTSEC-2026-0049",
+    "RUSTSEC-2026-0098",
+    "RUSTSEC-2026-0099",
+    "RUSTSEC-2026-0104",
+]

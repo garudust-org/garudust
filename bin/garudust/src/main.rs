@@ -471,7 +471,14 @@ async fn main() -> Result<()> {
                 .into_iter()
                 .map(|s| s.name)
                 .collect::<Vec<_>>();
-        tui::Tui::run(tx_event, rx_agent, toolsets, skill_names, config.model.clone()).await?;
+        tui::Tui::run(
+            tx_event,
+            rx_agent,
+            toolsets,
+            skill_names,
+            config.model.clone(),
+        )
+        .await?;
     }
 
     Ok(())

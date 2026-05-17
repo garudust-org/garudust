@@ -147,7 +147,7 @@ pub async fn validate(path: Option<&PathBuf>, skills_dir: &Path) -> Result<()> {
         }
     }
 
-    println!("\n{} ok, {} error(s)", ok, errors);
+    println!("\n{ok} ok, {errors} error(s)");
     if errors > 0 {
         std::process::exit(1);
     }
