@@ -34,13 +34,13 @@ async fn get_manager(slot: &CronSlot) -> Result<Arc<dyn CronManager>, ToolError>
 
 #[async_trait]
 impl Tool for CronCreate {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "cron_create"
     }
-    fn toolset(&self) -> &str {
+    fn toolset(&self) -> &'static str {
         "cron"
     }
-    fn description(&self) -> &str {
+    fn description(&self) -> &'static str {
         "Schedule a recurring autonomous task. The agent will execute the task text on the given \
          cron schedule. Uses 6-field cron syntax: sec min hour day_of_month month day_of_week \
          (e.g. '0 30 8 * * *' = every day at 08:30). Runtime jobs are not persisted across \
@@ -95,13 +95,13 @@ impl Tool for CronCreate {
 
 #[async_trait]
 impl Tool for CronList {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "cron_list"
     }
-    fn toolset(&self) -> &str {
+    fn toolset(&self) -> &'static str {
         "cron"
     }
-    fn description(&self) -> &str {
+    fn description(&self) -> &'static str {
         "List all active runtime cron jobs (created via cron_create). \
          Config-file jobs defined in config.yaml are not shown here."
     }
@@ -138,13 +138,13 @@ impl Tool for CronList {
 
 #[async_trait]
 impl Tool for CronDelete {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "cron_delete"
     }
-    fn toolset(&self) -> &str {
+    fn toolset(&self) -> &'static str {
         "cron"
     }
-    fn description(&self) -> &str {
+    fn description(&self) -> &'static str {
         "Remove a runtime cron job by its label. Has no effect on config-file jobs."
     }
     fn schema(&self) -> Value {
