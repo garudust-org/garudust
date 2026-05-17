@@ -423,7 +423,7 @@ impl MessageHandler for GatewayHandler {
 /// return a plain "empty" string; failures arrive as `[doc_ingest failed: …]`.
 fn summarize_ingest(file_name: &str, result: &str) -> String {
     if let Ok(v) = serde_json::from_str::<serde_json::Value>(result) {
-        if let Some(n) = v.get("chunks_indexed").and_then(|n| n.as_u64()) {
+        if let Some(n) = v.get("chunks_indexed").and_then(serde_json::Value::as_u64) {
             return format!(
                 "นำเข้าไฟล์ \"{file_name}\" เรียบร้อยแล้ว ({n} ส่วน) — ถามเกี่ยวกับเนื้อหาไฟล์นี้ได้เลย"
             );
