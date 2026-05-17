@@ -88,6 +88,135 @@ fn lookup(model: &str) -> Option<ModelPrice> {
             input_per_m: 0.075,
             output_per_m: 0.30,
         }
+    // DeepSeek
+    } else if name.starts_with("deepseek-r1") {
+        ModelPrice {
+            input_per_m: 0.55,
+            output_per_m: 2.19,
+        }
+    } else if name.starts_with("deepseek-v3") {
+        ModelPrice {
+            input_per_m: 0.27,
+            output_per_m: 1.10,
+        }
+    // Mistral
+    } else if name.starts_with("mistral-large") {
+        ModelPrice {
+            input_per_m: 2.00,
+            output_per_m: 6.00,
+        }
+    } else if name.starts_with("mistral-small") {
+        ModelPrice {
+            input_per_m: 0.10,
+            output_per_m: 0.30,
+        }
+    } else if name.starts_with("codestral") {
+        ModelPrice {
+            input_per_m: 0.20,
+            output_per_m: 0.60,
+        }
+    // xAI Grok
+    } else if name.starts_with("grok-3-mini") {
+        ModelPrice {
+            input_per_m: 0.30,
+            output_per_m: 0.50,
+        }
+    } else if name.starts_with("grok-3") {
+        ModelPrice {
+            input_per_m: 3.00,
+            output_per_m: 15.00,
+        }
+    } else if name.starts_with("grok-2") {
+        ModelPrice {
+            input_per_m: 2.00,
+            output_per_m: 10.00,
+        }
+    // Perplexity Sonar
+    } else if name.starts_with("sonar-pro") {
+        ModelPrice {
+            input_per_m: 3.00,
+            output_per_m: 15.00,
+        }
+    } else if name.starts_with("sonar-reasoning") {
+        ModelPrice {
+            input_per_m: 1.00,
+            output_per_m: 5.00,
+        }
+    } else if name.starts_with("sonar") {
+        ModelPrice {
+            input_per_m: 1.00,
+            output_per_m: 1.00,
+        }
+    // Cohere Command
+    } else if name.starts_with("command-r-plus") {
+        ModelPrice {
+            input_per_m: 2.50,
+            output_per_m: 10.00,
+        }
+    } else if name.starts_with("command-r") {
+        ModelPrice {
+            input_per_m: 0.15,
+            output_per_m: 0.60,
+        }
+    // Alibaba Qwen (DashScope)
+    } else if name.starts_with("qwen-max") {
+        ModelPrice {
+            input_per_m: 4.00,
+            output_per_m: 12.00,
+        }
+    } else if name.starts_with("qwen-plus") {
+        ModelPrice {
+            input_per_m: 0.80,
+            output_per_m: 2.00,
+        }
+    } else if name.starts_with("qwen-turbo") {
+        ModelPrice {
+            input_per_m: 0.20,
+            output_per_m: 0.60,
+        }
+    // Zhipu GLM
+    } else if name.starts_with("glm-4-plus") {
+        ModelPrice {
+            input_per_m: 5.00,
+            output_per_m: 5.00,
+        }
+    } else if name.starts_with("glm-4") {
+        ModelPrice {
+            input_per_m: 0.14,
+            output_per_m: 0.14,
+        }
+    // Moonshot Kimi
+    } else if name.starts_with("moonshot-v1-128k") {
+        ModelPrice {
+            input_per_m: 8.00,
+            output_per_m: 8.00,
+        }
+    } else if name.starts_with("moonshot-v1-32k") {
+        ModelPrice {
+            input_per_m: 3.20,
+            output_per_m: 3.20,
+        }
+    } else if name.starts_with("moonshot-v1") {
+        ModelPrice {
+            input_per_m: 1.60,
+            output_per_m: 1.60,
+        }
+    // Together AI / Cerebras / Fireworks — Llama family
+    } else if name.contains("llama-3.3-70b") || name.contains("llama3.3-70b") {
+        ModelPrice {
+            input_per_m: 0.88,
+            output_per_m: 0.88,
+        }
+    } else if name.contains("llama-3.1-70b") || name.contains("llama3.1-70b") {
+        ModelPrice {
+            input_per_m: 0.88,
+            output_per_m: 0.88,
+        }
+    } else if name.contains("llama-3.1-8b") || name.contains("llama3.1-8b") {
+        ModelPrice {
+            input_per_m: 0.18,
+            output_per_m: 0.18,
+        }
     } else {
         return None;
     };

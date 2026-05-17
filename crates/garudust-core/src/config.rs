@@ -180,7 +180,9 @@ pub struct AgentConfig {
     /// Available toolsets: web, files, terminal, memory, skills, agent,
     ///   browser, git, notes, json, mcp, rag
     /// Providers: anthropic, openai, gemini, groq, mistral, deepseek, xai,
-    ///   openrouter, vllm, ollama, bedrock, codex, thaillm
+    ///   openrouter, vllm, ollama, bedrock, codex, thaillm,
+    ///   together, fireworks, cerebras, perplexity, cohere, nvidia,
+    ///   alibaba, doubao, zhipu, moonshot, baidu
     /// Example: `disabled_toolsets: [browser, git, notes, json, agent, rag]`
     #[serde(default = "default_disabled_toolsets")]
     pub disabled_toolsets: Vec<String>,
@@ -613,6 +615,17 @@ pub(crate) fn resolve_key_for_provider(
         "xai" => env_or_dotenv("XAI_API_KEY", dotenv),
         "vllm" => env_or_dotenv("VLLM_API_KEY", dotenv),
         "thaillm" => env_or_dotenv("THAILLM_API_KEY", dotenv),
+        "together" => env_or_dotenv("TOGETHER_API_KEY", dotenv),
+        "fireworks" => env_or_dotenv("FIREWORKS_API_KEY", dotenv),
+        "cerebras" => env_or_dotenv("CEREBRAS_API_KEY", dotenv),
+        "perplexity" => env_or_dotenv("PERPLEXITY_API_KEY", dotenv),
+        "cohere" => env_or_dotenv("COHERE_API_KEY", dotenv),
+        "nvidia" => env_or_dotenv("NVIDIA_API_KEY", dotenv),
+        "alibaba" => env_or_dotenv("DASHSCOPE_API_KEY", dotenv),
+        "doubao" => env_or_dotenv("ARK_API_KEY", dotenv),
+        "zhipu" => env_or_dotenv("ZHIPU_API_KEY", dotenv),
+        "moonshot" => env_or_dotenv("MOONSHOT_API_KEY", dotenv),
+        "baidu" => env_or_dotenv("QIANFAN_API_KEY", dotenv),
         "ollama" | "bedrock" | "codex" => None,
         _ => env_or_dotenv("OPENROUTER_API_KEY", dotenv),
     }
@@ -620,6 +633,8 @@ pub(crate) fn resolve_key_for_provider(
 
 /// Detect provider and API key from environment when no config.yaml exists.
 /// Priority: anthropic → openai → gemini → groq → mistral → deepseek → xai
+///           → together → fireworks → cerebras → perplexity → cohere → nvidia
+///           → alibaba → doubao → zhipu → moonshot → baidu
 ///           → ollama → vllm → thaillm → openrouter.
 pub(crate) fn detect_provider_from_env(config: &mut AgentConfig, dotenv: &HashMap<String, String>) {
     if let Some(k) = env_or_dotenv("ANTHROPIC_API_KEY", dotenv) {
@@ -643,6 +658,39 @@ pub(crate) fn detect_provider_from_env(config: &mut AgentConfig, dotenv: &HashMa
     } else if let Some(k) = env_or_dotenv("XAI_API_KEY", dotenv) {
         config.api_key = Some(k);
         config.provider = "xai".into();
+    } else if let Some(k) = env_or_dotenv("TOGETHER_API_KEY", dotenv) {
+        config.api_key = Some(k);
+        config.provider = "together".into();
+    } else if let Some(k) = env_or_dotenv("FIREWORKS_API_KEY", dotenv) {
+        config.api_key = Some(k);
+        config.provider = "fireworks".into();
+    } else if let Some(k) = env_or_dotenv("CEREBRAS_API_KEY", dotenv) {
+        config.api_key = Some(k);
+        config.provider = "cerebras".into();
+    } else if let Some(k) = env_or_dotenv("PERPLEXITY_API_KEY", dotenv) {
+        config.api_key = Some(k);
+        config.provider = "perplexity".into();
+    } else if let Some(k) = env_or_dotenv("COHERE_API_KEY", dotenv) {
+        config.api_key = Some(k);
+        config.provider = "cohere".into();
+    } else if let Some(k) = env_or_dotenv("NVIDIA_API_KEY", dotenv) {
+        config.api_key = Some(k);
+        config.provider = "nvidia".into();
+    } else if let Some(k) = env_or_dotenv("DASHSCOPE_API_KEY", dotenv) {
+        config.api_key = Some(k);
+        config.provider = "alibaba".into();
+    } else if let Some(k) = env_or_dotenv("ARK_API_KEY", dotenv) {
+        config.api_key = Some(k);
+        config.provider = "doubao".into();
+    } else if let Some(k) = env_or_dotenv("ZHIPU_API_KEY", dotenv) {
+        config.api_key = Some(k);
+        config.provider = "zhipu".into();
+    } else if let Some(k) = env_or_dotenv("MOONSHOT_API_KEY", dotenv) {
+        config.api_key = Some(k);
+        config.provider = "moonshot".into();
+    } else if let Some(k) = env_or_dotenv("QIANFAN_API_KEY", dotenv) {
+        config.api_key = Some(k);
+        config.provider = "baidu".into();
     } else if let Some(url) = env_or_dotenv("OLLAMA_BASE_URL", dotenv) {
         config.provider = "ollama".into();
         config.base_url = Some(url);

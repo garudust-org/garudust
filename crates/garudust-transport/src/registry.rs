@@ -91,6 +91,84 @@ fn build_base_transport(
             base_url.unwrap_or_else(|| "http://thaillm.or.th/api/v1".into()),
             api_key,
         )),
+        "together" => Arc::new(
+            ChatCompletionsTransport::new(
+                base_url.unwrap_or_else(|| "https://api.together.xyz/v1".into()),
+                api_key,
+            )
+            .with_tokens_param("max_tokens"),
+        ),
+        "fireworks" => Arc::new(
+            ChatCompletionsTransport::new(
+                base_url.unwrap_or_else(|| "https://api.fireworks.ai/inference/v1".into()),
+                api_key,
+            )
+            .with_tokens_param("max_tokens"),
+        ),
+        "cerebras" => Arc::new(
+            ChatCompletionsTransport::new(
+                base_url.unwrap_or_else(|| "https://api.cerebras.ai/v1".into()),
+                api_key,
+            )
+            .with_tokens_param("max_tokens"),
+        ),
+        "perplexity" => Arc::new(
+            ChatCompletionsTransport::new(
+                base_url.unwrap_or_else(|| "https://api.perplexity.ai".into()),
+                api_key,
+            )
+            .with_tokens_param("max_tokens"),
+        ),
+        "cohere" => Arc::new(
+            ChatCompletionsTransport::new(
+                base_url.unwrap_or_else(|| "https://api.cohere.com/compatibility/v1".into()),
+                api_key,
+            )
+            .with_tokens_param("max_tokens"),
+        ),
+        "nvidia" => Arc::new(
+            ChatCompletionsTransport::new(
+                base_url.unwrap_or_else(|| "https://integrate.api.nvidia.com/v1".into()),
+                api_key,
+            )
+            .with_tokens_param("max_tokens"),
+        ),
+        "alibaba" => Arc::new(
+            ChatCompletionsTransport::new(
+                base_url
+                    .unwrap_or_else(|| "https://dashscope.aliyuncs.com/compatible-mode/v1".into()),
+                api_key,
+            )
+            .with_tokens_param("max_tokens"),
+        ),
+        "doubao" => Arc::new(
+            ChatCompletionsTransport::new(
+                base_url.unwrap_or_else(|| "https://ark.cn-beijing.volces.com/api/v3".into()),
+                api_key,
+            )
+            .with_tokens_param("max_tokens"),
+        ),
+        "zhipu" => Arc::new(
+            ChatCompletionsTransport::new(
+                base_url.unwrap_or_else(|| "https://open.bigmodel.cn/api/paas/v4".into()),
+                api_key,
+            )
+            .with_tokens_param("max_tokens"),
+        ),
+        "moonshot" => Arc::new(
+            ChatCompletionsTransport::new(
+                base_url.unwrap_or_else(|| "https://api.moonshot.cn/v1".into()),
+                api_key,
+            )
+            .with_tokens_param("max_tokens"),
+        ),
+        "baidu" => Arc::new(
+            ChatCompletionsTransport::new(
+                base_url.unwrap_or_else(|| "https://qianfan.baidubce.com/v2".into()),
+                api_key,
+            )
+            .with_tokens_param("max_tokens"),
+        ),
         _ => Arc::new(ChatCompletionsTransport::new(
             base_url.unwrap_or_else(|| "https://openrouter.ai/api/v1".into()),
             api_key,
@@ -112,6 +190,17 @@ const KNOWN_PROVIDERS: &[&str] = &[
     "ollama",
     "bedrock",
     "codex",
+    "together",
+    "fireworks",
+    "cerebras",
+    "perplexity",
+    "cohere",
+    "nvidia",
+    "alibaba",
+    "doubao",
+    "zhipu",
+    "moonshot",
+    "baidu",
 ];
 
 fn api_key_for_provider(provider: &str) -> String {
@@ -125,6 +214,17 @@ fn api_key_for_provider(provider: &str) -> String {
         "xai" => "XAI_API_KEY",
         "thaillm" => "THAILLM_API_KEY",
         "vllm" => "VLLM_API_KEY",
+        "together" => "TOGETHER_API_KEY",
+        "fireworks" => "FIREWORKS_API_KEY",
+        "cerebras" => "CEREBRAS_API_KEY",
+        "perplexity" => "PERPLEXITY_API_KEY",
+        "cohere" => "COHERE_API_KEY",
+        "nvidia" => "NVIDIA_API_KEY",
+        "alibaba" => "DASHSCOPE_API_KEY",
+        "doubao" => "ARK_API_KEY",
+        "zhipu" => "ZHIPU_API_KEY",
+        "moonshot" => "MOONSHOT_API_KEY",
+        "baidu" => "QIANFAN_API_KEY",
         _ => "OPENROUTER_API_KEY",
     };
     garudust_core::config::get_secret(var).unwrap_or_default()
