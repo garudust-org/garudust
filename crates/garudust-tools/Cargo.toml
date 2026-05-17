@@ -12,8 +12,8 @@ keywords     = ["ai", "agent", "tools", "mcp", "llm"]
 categories   = ["development-tools", "filesystem"]
 
 [dependencies]
-garudust-core   = { path = "../garudust-core",   version = "0.5.0" }
-garudust-memory = { path = "../garudust-memory", version = "0.5.0" }
+garudust-core   = { path = "../garudust-core",   version = "0.6.0" }
+garudust-memory = { path = "../garudust-memory", version = "0.6.0" }
 async-trait     = { workspace = true }
 serde           = { workspace = true }
 serde_json      = { workspace = true }
