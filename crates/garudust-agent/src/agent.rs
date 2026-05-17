@@ -375,9 +375,20 @@ impl Agent {
     /// pipeline) where the result must be available before the agent loop runs.
     /// Returns the tool's content on success, or an error description on failure.
     pub async fn run_tool(&self, name: &str, args: serde_json::Value) -> String {
+        self.run_tool_scoped(name, args, "").await
+    }
+
+    /// Like `run_tool` but sets `conv_key` so storage-scoped tools (e.g.
+    /// `doc_ingest`, `doc_search`) operate on the correct conversation bucket.
+    pub async fn run_tool_scoped(
+        &self,
+        name: &str,
+        args: serde_json::Value,
+        conv_key: &str,
+    ) -> String {
         let ctx = ToolContext {
             session_id: uuid::Uuid::new_v4().to_string(),
-            conv_key: String::new(),
+            conv_key: conv_key.to_string(),
             agent_id: "gateway".to_string(),
             iteration: 1,
             budget: Arc::new(IterationBudget::new(1)),
@@ -393,7 +404,7 @@ impl Agent {
         match self.tools.dispatch(name, args, &ctx).await {
             Ok(r) => r.content,
             Err(e) => {
-                tracing::warn!(tool = %name, error = %e, "run_tool failed");
+                tracing::warn!(tool = %name, conv_key = %conv_key, error = %e, "run_tool_scoped failed");
                 format!("[{name} failed: {e}]")
             }
         }

@@ -316,23 +316,50 @@ impl MessageHandler for GatewayHandler {
         let platform_name = msg.channel.platform.clone();
         let session_key = msg.session_key.clone();
 
-        // If there are files waiting for RAG confirmation, prepend an explicit
-        // directive so the agent knows the exact paths — no LLM text extraction needed.
+        // If there are files waiting for RAG confirmation, handle ingestion directly
+        // without relying on the LLM to extract paths or call doc_ingest.
         let task = if let Some((_, pending)) = self.pending_docs.remove(&msg.session_key) {
             if pending.is_empty() {
                 msg.text.clone()
             } else {
-                let files_info = pending
+                let text_lower = msg.text.to_lowercase();
+                let is_negative = ["ไม่ต้องการ", "ไม่เอา", "ไม่ต้อง", "ยกเลิก", "no\n", " no ", "nope", "cancel", "不要"]
                     .iter()
-                    .map(|d| format!("\"{}\" (path: {})", d.file_name, d.path))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                format!(
-                    "[SYSTEM: ผู้ใช้กำลังตอบคำถามเรื่องการนำเข้าไฟล์: {files_info} \
-                     ถ้าผู้ใช้ยืนยัน ให้เรียก doc_ingest สำหรับแต่ละ path ทันที \
-                     ถ้าผู้ใช้ไม่ยืนยัน ให้ลบไฟล์ชั่วคราวและแจ้งผู้ใช้]\n\n{}",
-                    msg.text
-                )
+                    .any(|n| text_lower.contains(n))
+                    || text_lower.trim() == "ไม่"
+                    || text_lower.trim() == "no";
+
+                if is_negative {
+                    for att in &pending {
+                        if att.path.starts_with("/tmp/") {
+                            let _ = tokio::fs::remove_file(&att.path).await;
+                        }
+                    }
+                    self.agent.inject_history(
+                        &msg.session_key,
+                        "[ระบบ]",
+                        "[ผู้ใช้ยกเลิก — ไม่มีการนำเข้าไฟล์]",
+                    );
+                } else {
+                    // Ingest each file directly with the correct conv_key so the
+                    // document lands in the right per-chat RAG bucket.
+                    for att in &pending {
+                        let result = self
+                            .agent
+                            .run_tool_scoped(
+                                "doc_ingest",
+                                serde_json::json!({"path": att.path}),
+                                &msg.session_key,
+                            )
+                            .await;
+                        self.agent.inject_history(
+                            &msg.session_key,
+                            "[ระบบ]",
+                            &format!("[นำเข้าไฟล์ {} แล้ว: {}]", att.file_name, result),
+                        );
+                    }
+                }
+                msg.text.clone()
             }
         } else {
             msg.text.clone()
