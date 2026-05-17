@@ -231,3 +231,142 @@ pub fn build_transport(config: &AgentConfig) -> Arc<dyn ProviderTransport> {
         base
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use garudust_core::config::ProviderProfile;
+
+    use super::{resolve_hint, resolve_to_env_vars};
+
+    fn profile(name: Option<&str>, url: Option<&str>, key: Option<&str>) -> ProviderProfile {
+        ProviderProfile {
+            name: name.map(str::to_string),
+            url: url.map(str::to_string),
+            key: key.map(str::to_string),
+            model: None,
+        }
+    }
+
+    fn profiles(pairs: &[(&str, ProviderProfile)]) -> HashMap<String, ProviderProfile> {
+        pairs
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), v.clone()))
+            .collect()
+    }
+
+    // ── resolve_hint ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn hint_unknown_prefix_is_none() {
+        assert!(resolve_hint("totally-unknown/some-model", &profiles(&[])).is_none());
+    }
+
+    #[test]
+    fn hint_builtin_provider_returns_some() {
+        let result = resolve_hint("groq/llama-3.1-8b-instant", &profiles(&[]));
+        assert!(result.is_some());
+        let (_, model) = result.unwrap();
+        assert_eq!(model, "llama-3.1-8b-instant");
+    }
+
+    #[test]
+    fn hint_user_profile_wins_over_builtin() {
+        let map = profiles(&[("groq", profile(Some("openai"), None, Some("sk-custom")))]);
+        let result = resolve_hint("groq/gpt-4o", &map);
+        assert!(result.is_some());
+        let (_, model) = result.unwrap();
+        assert_eq!(model, "gpt-4o");
+    }
+
+    #[test]
+    fn hint_user_profile_arbitrary_alias() {
+        let map = profiles(&[(
+            "my-local",
+            profile(None, Some("http://localhost:8000/v1"), Some("token")),
+        )]);
+        let result = resolve_hint("my-local/llama3", &map);
+        assert!(result.is_some());
+        let (_, model) = result.unwrap();
+        assert_eq!(model, "llama3");
+    }
+
+    #[test]
+    fn hint_no_slash_returns_none() {
+        assert!(resolve_hint("groq", &profiles(&[])).is_none());
+    }
+
+    #[test]
+    fn hint_anthropic_builtin_returns_some() {
+        let result = resolve_hint("anthropic/claude-sonnet-4-6", &profiles(&[]));
+        assert!(result.is_some());
+        let (_, model) = result.unwrap();
+        assert_eq!(model, "claude-sonnet-4-6");
+    }
+
+    // ── resolve_to_env_vars ───────────────────────────────────────────────────
+
+    #[test]
+    fn env_vars_unknown_returns_none() {
+        assert!(resolve_to_env_vars("totally-unknown/model", &profiles(&[])).is_none());
+    }
+
+    #[test]
+    fn env_vars_no_slash_returns_none() {
+        assert!(resolve_to_env_vars("groq", &profiles(&[])).is_none());
+    }
+
+    #[test]
+    fn env_vars_builtin_provider_returns_base_url() {
+        let (base_url, _key, model) =
+            resolve_to_env_vars("groq/llama-3.1-8b-instant", &profiles(&[])).unwrap();
+        assert_eq!(base_url, "https://api.groq.com/openai/v1");
+        assert_eq!(model, "llama-3.1-8b-instant");
+    }
+
+    #[test]
+    fn env_vars_profile_with_url() {
+        let map = profiles(&[(
+            "local",
+            profile(None, Some("http://192.168.1.10:8000/v1"), Some("tok")),
+        )]);
+        let (base_url, key, model) = resolve_to_env_vars("local/llama3", &map).unwrap();
+        assert_eq!(base_url, "http://192.168.1.10:8000/v1");
+        assert_eq!(key, "tok");
+        assert_eq!(model, "llama3");
+    }
+
+    #[test]
+    fn env_vars_profile_with_builtin_name_uses_builtin_url() {
+        let map = profiles(&[("backup", profile(Some("groq"), None, Some("gsk-2")))]);
+        let (base_url, key, model) =
+            resolve_to_env_vars("backup/llama-3.3-70b-versatile", &map).unwrap();
+        assert_eq!(base_url, "https://api.groq.com/openai/v1");
+        assert_eq!(key, "gsk-2");
+        assert_eq!(model, "llama-3.3-70b-versatile");
+    }
+
+    #[test]
+    fn env_vars_profile_no_url_no_name_returns_none() {
+        // No url and no builtin name → can't determine base_url.
+        let map = profiles(&[("mystery", profile(None, None, Some("tok")))]);
+        assert!(resolve_to_env_vars("mystery/model", &map).is_none());
+    }
+
+    #[test]
+    fn env_vars_profile_key_env_var_resolved() {
+        std::env::set_var("GARUDUST_TEST_REGISTRY_KEY", "resolved-key");
+        let map = profiles(&[(
+            "p",
+            profile(
+                None,
+                Some("http://localhost:8000/v1"),
+                Some("${GARUDUST_TEST_REGISTRY_KEY}"),
+            ),
+        )]);
+        let (_, key, _) = resolve_to_env_vars("p/model", &map).unwrap();
+        assert_eq!(key, "resolved-key");
+        std::env::remove_var("GARUDUST_TEST_REGISTRY_KEY");
+    }
+}

@@ -1402,4 +1402,91 @@ mod tests {
         assert_eq!(cfg.provider, "baidu");
         assert_eq!(cfg.api_key.as_deref(), Some("qf-test"));
     }
+
+    // ── ProviderProfile::resolved_key ─────────────────────────────────────────
+
+    #[test]
+    fn profile_resolved_key_literal() {
+        let p = super::ProviderProfile {
+            key: Some("sk-literal".into()),
+            ..Default::default()
+        };
+        assert_eq!(p.resolved_key(), Some("sk-literal".into()));
+    }
+
+    #[test]
+    fn profile_resolved_key_none_when_absent() {
+        let p = super::ProviderProfile::default();
+        assert!(p.resolved_key().is_none());
+    }
+
+    #[test]
+    fn profile_resolved_key_env_var_interpolation() {
+        // Set a unique env var just for this test.
+        std::env::set_var("GARUDUST_TEST_KEY_INTERP", "env-value-123");
+        let p = super::ProviderProfile {
+            key: Some("${GARUDUST_TEST_KEY_INTERP}".into()),
+            ..Default::default()
+        };
+        assert_eq!(p.resolved_key(), Some("env-value-123".into()));
+        std::env::remove_var("GARUDUST_TEST_KEY_INTERP");
+    }
+
+    #[test]
+    fn profile_resolved_key_missing_env_var_returns_none() {
+        std::env::remove_var("GARUDUST_TEST_KEY_MISSING");
+        let p = super::ProviderProfile {
+            key: Some("${GARUDUST_TEST_KEY_MISSING}".into()),
+            ..Default::default()
+        };
+        assert!(p.resolved_key().is_none());
+    }
+
+    // ── providers.default → config.provider / model ───────────────────────────
+
+    #[test]
+    fn providers_default_overrides_provider_and_model() {
+        let yaml = r#"
+providers:
+  default:
+    name: groq
+    model: llama-3.3-70b-versatile
+"#;
+        let mut cfg: AgentConfig = serde_yaml::from_str(yaml).unwrap();
+        // Simulate the load() post-processing step.
+        if let Some(default_profile) = cfg.providers.get("default") {
+            if let Some(name) = &default_profile.name.clone() {
+                if !name.is_empty() {
+                    cfg.provider = name.clone();
+                }
+            }
+            if let Some(model) = &default_profile.model.clone() {
+                if !model.is_empty() {
+                    cfg.model = model.clone();
+                }
+            }
+        }
+        assert_eq!(cfg.provider, "groq");
+        assert_eq!(cfg.model, "llama-3.3-70b-versatile");
+    }
+
+    #[test]
+    fn providers_map_deserializes_correctly() {
+        let yaml = r#"
+providers:
+  groq-backup:
+    name: groq
+    key: "${GROQ_API_KEY_2}"
+  local:
+    url: "http://192.168.1.10:8000/v1"
+"#;
+        let cfg: AgentConfig = serde_yaml::from_str(yaml).unwrap();
+        assert!(cfg.providers.contains_key("groq-backup"));
+        assert!(cfg.providers.contains_key("local"));
+        let backup = &cfg.providers["groq-backup"];
+        assert_eq!(backup.name.as_deref(), Some("groq"));
+        assert_eq!(backup.key.as_deref(), Some("${GROQ_API_KEY_2}"));
+        let local = &cfg.providers["local"];
+        assert_eq!(local.url.as_deref(), Some("http://192.168.1.10:8000/v1"));
+    }
 }
