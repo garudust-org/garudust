@@ -548,7 +548,7 @@ cargo clippy --workspace      # ตรวจ lint
 - [Discord](https://discord.com/channels/1501414298449088745/1501414298893942877) — คุย ถามตอบ และแชร์ไอเดีย
 - [Issues](https://github.com/garudust-org/garudust-agent/issues) — รายงานบักและ feature requests
 - [Discussions](https://github.com/garudust-org/garudust-agent/discussions) — ไอเดียและข้อเสนอที่ต้องการถกเถียง
-- [dev.to/nisit15](https://dev.to/nisit15) — บทความและบทเรียน
+- [dev.to/garudust](https://dev.to/garudust) — บทความและบทเรียน
 
 ---
 
