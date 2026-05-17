@@ -36,7 +36,7 @@ A self-improving AI agent runtime written in Rust — delivered as a single ~10 
 - **Lifecycle hooks** — `AgentHooks` callbacks for every turn, compression event, delegation, and session end
 - **agentskills.io compatible** — install community skills from the hub or any GitHub repo with one command
 - **7 platform adapters** — Telegram, Discord, Slack, Matrix, LINE, WhatsApp, Webhook — all in one process
-- **Swap providers with one env var** — Anthropic, OpenAI, Gemini, Groq, Mistral, DeepSeek, xAI, OpenRouter, AWS Bedrock, Ollama, vLLM, ThaiLLM, or any OpenAI-compatible endpoint
+- **Swap providers with one env var** — Anthropic, OpenAI, Gemini, Groq, Mistral, DeepSeek, xAI, Together AI, Fireworks, Cerebras, Perplexity, Cohere, NVIDIA NIM, Alibaba DashScope, ByteDance Doubao, Zhipu AI, Moonshot, Baidu ERNIE, OpenRouter, AWS Bedrock, Ollama, vLLM, ThaiLLM, or any OpenAI-compatible endpoint
 - **Provider routing hints** — map hint names to provider/model pairs in config; pass `--hint fast` to route a single task to a cheaper model without changing the default
 - **Per-tool model config** — override the model (and fallback) used by each hub tool or skill script via `tools.<name>.model` in `config.yaml`
 - **Secure by design** — Docker sandbox, hardline command blocks, memory-poisoning protection, automatic secret redaction
@@ -308,6 +308,17 @@ All adapters run together in the same `garudust-server` process. Set the relevan
 | Ollama | `provider: ollama` + `base_url` | *(none)* |
 | vLLM | `provider: vllm` + `base_url` | `VLLM_API_KEY` |
 | ThaiLLM | `provider: thaillm` | `THAILLM_API_KEY` |
+| Together AI | `provider: together` | `TOGETHER_API_KEY` |
+| Fireworks AI | `provider: fireworks` | `FIREWORKS_API_KEY` |
+| Cerebras | `provider: cerebras` | `CEREBRAS_API_KEY` |
+| Perplexity | `provider: perplexity` | `PERPLEXITY_API_KEY` |
+| Cohere | `provider: cohere` | `COHERE_API_KEY` |
+| NVIDIA NIM | `provider: nvidia` | `NVIDIA_API_KEY` |
+| Alibaba DashScope | `provider: alibaba` | `DASHSCOPE_API_KEY` |
+| ByteDance Doubao | `provider: doubao` | `ARK_API_KEY` |
+| Zhipu AI (GLM) | `provider: zhipu` | `ZHIPU_API_KEY` |
+| Moonshot (Kimi) | `provider: moonshot` | `MOONSHOT_API_KEY` |
+| Baidu ERNIE | `provider: baidu` | `QIANFAN_API_KEY` |
 | Any OpenAI-compat | `provider: custom` + `base_url` | relevant key |
 
 Fallback keys: `LLM_FALLBACK_API_KEYS=key2,key3` — rotated automatically on auth failure.

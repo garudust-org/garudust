@@ -36,7 +36,7 @@ AI agent runtime แบบ self-improving เขียนด้วย Rust — b
 - **Lifecycle hooks** — `AgentHooks` callback ทุก turn, compression, delegation และ session end
 - **รองรับ agentskills.io** — ติดตั้ง skill จาก hub หรือ GitHub repo ใดก็ได้ด้วยคำสั่งเดียว
 - **7 แพลตฟอร์มในกระบวนการเดียว** — Telegram, Discord, Slack, Matrix, LINE, WhatsApp, Webhook
-- **เปลี่ยน LLM ด้วย env var เดียว** — รองรับ Anthropic, OpenAI, Gemini, Groq, Mistral, DeepSeek, xAI, OpenRouter, AWS Bedrock, Ollama, vLLM, ThaiLLM
+- **เปลี่ยน LLM ด้วย env var เดียว** — รองรับ Anthropic, OpenAI, Gemini, Groq, Mistral, DeepSeek, xAI, Together AI, Fireworks, Cerebras, Perplexity, Cohere, NVIDIA NIM, Alibaba DashScope, ByteDance Doubao, Zhipu AI, Moonshot, Baidu ERNIE, OpenRouter, AWS Bedrock, Ollama, vLLM, ThaiLLM
 - **Provider routing hints** — กำหนด hint name → provider/model ใน config แล้วส่ง `--hint fast` เพื่อเปลี่ยน model เฉพาะ task นั้นโดยไม่กระทบ default
 - **กำหนด model ต่อ tool** — override model (และ fallback) ที่แต่ละ hub tool ใช้ผ่าน `tools.<name>.model` ใน `config.yaml`
 - **ปลอดภัยตั้งแต่ต้น** — Docker sandbox, บล็อคคำสั่งอันตราย, ป้องกัน memory poisoning, redact secret อัตโนมัติ
@@ -307,6 +307,17 @@ mcp_servers:
 | Ollama | `provider: ollama` + `base_url` | *(ไม่ต้องการ)* |
 | vLLM | `provider: vllm` + `base_url` | `VLLM_API_KEY` |
 | ThaiLLM | `provider: thaillm` | `THAILLM_API_KEY` |
+| Together AI | `provider: together` | `TOGETHER_API_KEY` |
+| Fireworks AI | `provider: fireworks` | `FIREWORKS_API_KEY` |
+| Cerebras | `provider: cerebras` | `CEREBRAS_API_KEY` |
+| Perplexity | `provider: perplexity` | `PERPLEXITY_API_KEY` |
+| Cohere | `provider: cohere` | `COHERE_API_KEY` |
+| NVIDIA NIM | `provider: nvidia` | `NVIDIA_API_KEY` |
+| Alibaba DashScope | `provider: alibaba` | `DASHSCOPE_API_KEY` |
+| ByteDance Doubao | `provider: doubao` | `ARK_API_KEY` |
+| Zhipu AI (GLM) | `provider: zhipu` | `ZHIPU_API_KEY` |
+| Moonshot (Kimi) | `provider: moonshot` | `MOONSHOT_API_KEY` |
+| Baidu ERNIE | `provider: baidu` | `QIANFAN_API_KEY` |
 | OpenAI-compat อื่น ๆ | `provider: custom` + `base_url` | API key ที่เกี่ยวข้อง |
 
 Fallback keys: `LLM_FALLBACK_API_KEYS=key2,key3` — สลับอัตโนมัติเมื่อ auth ล้มเหลว

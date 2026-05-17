@@ -36,7 +36,7 @@
 - **生命周期钩子** — `AgentHooks` 回调覆盖每轮对话、压缩事件、委派及会话结束
 - **兼容 agentskills.io** — 一条命令从社区 hub 或任意 GitHub 仓库安装技能
 - **7 大平台适配器** — Telegram、Discord、Slack、Matrix、LINE、WhatsApp、Webhook，同进程运行
-- **一个环境变量切换提供商** — 支持 Anthropic、OpenAI、Gemini、Groq、Mistral、DeepSeek、xAI、OpenRouter、AWS Bedrock、Ollama、vLLM、ThaiLLM
+- **一个环境变量切换提供商** — 支持 Anthropic、OpenAI、Gemini、Groq、Mistral、DeepSeek、xAI、Together AI、Fireworks、Cerebras、Perplexity、Cohere、NVIDIA NIM、阿里云百炼（DashScope）、字节豆包、智谱 AI、Moonshot、百度文心、OpenRouter、AWS Bedrock、Ollama、vLLM、ThaiLLM
 - **提供商路由 hint** — 在 config 中将 hint 名称映射到 provider/model 对；传入 `--hint fast` 即可仅针对该任务切换到更廉价的模型，不影响默认配置
 - **按工具配置模型** — 通过 `config.yaml` 中的 `tools.<name>.model` 为每个 hub 工具或技能脚本指定模型（及备用模型）
 - **安全优先设计** — Docker 沙箱、硬性命令拦截、内存投毒防护、工具输出自动脱敏
@@ -307,6 +307,17 @@ mcp_servers:
 | Ollama | `provider: ollama` + `base_url` | *（无需）* |
 | vLLM | `provider: vllm` + `base_url` | `VLLM_API_KEY` |
 | ThaiLLM | `provider: thaillm` | `THAILLM_API_KEY` |
+| Together AI | `provider: together` | `TOGETHER_API_KEY` |
+| Fireworks AI | `provider: fireworks` | `FIREWORKS_API_KEY` |
+| Cerebras | `provider: cerebras` | `CEREBRAS_API_KEY` |
+| Perplexity | `provider: perplexity` | `PERPLEXITY_API_KEY` |
+| Cohere | `provider: cohere` | `COHERE_API_KEY` |
+| NVIDIA NIM | `provider: nvidia` | `NVIDIA_API_KEY` |
+| 阿里云百炼（DashScope） | `provider: alibaba` | `DASHSCOPE_API_KEY` |
+| 字节豆包 | `provider: doubao` | `ARK_API_KEY` |
+| 智谱 AI（GLM） | `provider: zhipu` | `ZHIPU_API_KEY` |
+| Moonshot（Kimi） | `provider: moonshot` | `MOONSHOT_API_KEY` |
+| 百度文心 | `provider: baidu` | `QIANFAN_API_KEY` |
 | 任意 OpenAI 兼容 | `provider: custom` + `base_url` | 对应 API 密钥 |
 
 备用密钥：`LLM_FALLBACK_API_KEYS=key2,key3` — 鉴权失败时自动轮换
