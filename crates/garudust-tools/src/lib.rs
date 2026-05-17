@@ -31,6 +31,13 @@ pub mod toolsets;
 pub use registry::ToolRegistry;
 pub use toolsets::script::load_script_tools;
 
+/// Shared lazy reference to a [`garudust_core::cron::CronManager`].
+/// The slot starts as `None` and is filled after the scheduler starts,
+/// breaking the agent → tools → scheduler → agent initialisation order.
+pub type CronSlot = std::sync::Arc<
+    tokio::sync::Mutex<Option<std::sync::Arc<dyn garudust_core::cron::CronManager>>>,
+>;
+
 /// Register the full standard tool suite into `registry`.
 ///
 /// `db` is `Some` when session-search history is available (always in the
@@ -43,11 +50,7 @@ pub fn register_standard_tools(
     registry: &mut ToolRegistry,
     db: Option<std::sync::Arc<garudust_memory::SessionDb>>,
     doc_store: Option<std::sync::Arc<garudust_memory::DocStore>>,
-    cron: Option<
-        std::sync::Arc<
-            tokio::sync::Mutex<Option<std::sync::Arc<dyn garudust_core::cron::CronManager>>>,
-        >,
-    >,
+    cron: Option<CronSlot>,
 ) {
     use toolsets::{
         browser::BrowserTool,

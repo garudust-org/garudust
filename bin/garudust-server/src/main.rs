@@ -17,7 +17,7 @@ use garudust_platforms::{
 };
 use garudust_tools::{
     load_script_tools, register_standard_tools, security::docker_available,
-    toolsets::mcp::connect_mcp_server, ToolRegistry,
+    toolsets::mcp::connect_mcp_server, CronSlot, ToolRegistry,
 };
 use garudust_transport::build_transport;
 use notify::event::ModifyKind;
@@ -150,7 +150,7 @@ async fn build_agent(
     config: Arc<AgentConfig>,
     db: Arc<SessionDb>,
     doc_store: Option<Arc<DocStore>>,
-    cron_slot: Arc<tokio::sync::Mutex<Option<Arc<dyn CronManager>>>>,
+    cron_slot: CronSlot,
 ) -> (Arc<Agent>, McpHandles) {
     let memory = Arc::new(FileMemoryStore::new(&config.home_dir));
     let transport = build_transport(&config);
@@ -262,7 +262,7 @@ fn spawn_config_watcher(
     db: Arc<SessionDb>,
     doc_store: Option<Arc<DocStore>>,
     handles_lock: Arc<tokio::sync::Mutex<McpHandles>>,
-    cron_slot: Arc<tokio::sync::Mutex<Option<Arc<dyn CronManager>>>>,
+    cron_slot: CronSlot,
 ) {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<()>();
 
@@ -406,8 +406,7 @@ async fn main() -> Result<()> {
     let doc_store = DocStore::open(&config.home_dir).ok().map(Arc::new);
 
     // Cron slot: filled after the scheduler is created; tools read it at call time.
-    let cron_slot: Arc<tokio::sync::Mutex<Option<Arc<dyn CronManager>>>> =
-        Arc::new(tokio::sync::Mutex::new(None));
+    let cron_slot: CronSlot = Arc::new(tokio::sync::Mutex::new(None));
 
     let (agent_inner, mcp_handles) = build_agent(
         config.clone(),
