@@ -1052,4 +1052,184 @@ mod tests {
         assert_eq!(cfg.provider, "anthropic");
         assert_eq!(cfg.api_key.as_deref(), Some("sk-ant-test"));
     }
+
+    // ── resolve_key — new providers ───────────────────────────────────────────
+
+    #[test]
+    fn resolve_together_key() {
+        let map = dotenv(&[("TOGETHER_API_KEY", "tog-test")]);
+        assert_eq!(
+            resolve_key_for_provider("together", &map),
+            Some("tog-test".into())
+        );
+    }
+
+    #[test]
+    fn resolve_fireworks_key() {
+        let map = dotenv(&[("FIREWORKS_API_KEY", "fw-test")]);
+        assert_eq!(
+            resolve_key_for_provider("fireworks", &map),
+            Some("fw-test".into())
+        );
+    }
+
+    #[test]
+    fn resolve_cerebras_key() {
+        let map = dotenv(&[("CEREBRAS_API_KEY", "cb-test")]);
+        assert_eq!(
+            resolve_key_for_provider("cerebras", &map),
+            Some("cb-test".into())
+        );
+    }
+
+    #[test]
+    fn resolve_perplexity_key() {
+        let map = dotenv(&[("PERPLEXITY_API_KEY", "pplx-test")]);
+        assert_eq!(
+            resolve_key_for_provider("perplexity", &map),
+            Some("pplx-test".into())
+        );
+    }
+
+    #[test]
+    fn resolve_cohere_key() {
+        let map = dotenv(&[("COHERE_API_KEY", "co-test")]);
+        assert_eq!(
+            resolve_key_for_provider("cohere", &map),
+            Some("co-test".into())
+        );
+    }
+
+    #[test]
+    fn resolve_nvidia_key() {
+        let map = dotenv(&[("NVIDIA_API_KEY", "nvapi-test")]);
+        assert_eq!(
+            resolve_key_for_provider("nvidia", &map),
+            Some("nvapi-test".into())
+        );
+    }
+
+    #[test]
+    fn resolve_alibaba_key() {
+        let map = dotenv(&[("DASHSCOPE_API_KEY", "sk-ds-test")]);
+        assert_eq!(
+            resolve_key_for_provider("alibaba", &map),
+            Some("sk-ds-test".into())
+        );
+    }
+
+    #[test]
+    fn resolve_doubao_key() {
+        let map = dotenv(&[("ARK_API_KEY", "ark-test")]);
+        assert_eq!(
+            resolve_key_for_provider("doubao", &map),
+            Some("ark-test".into())
+        );
+    }
+
+    #[test]
+    fn resolve_zhipu_key() {
+        let map = dotenv(&[("ZHIPU_API_KEY", "zp-test")]);
+        assert_eq!(
+            resolve_key_for_provider("zhipu", &map),
+            Some("zp-test".into())
+        );
+    }
+
+    #[test]
+    fn resolve_moonshot_key() {
+        let map = dotenv(&[("MOONSHOT_API_KEY", "ms-kimi-test")]);
+        assert_eq!(
+            resolve_key_for_provider("moonshot", &map),
+            Some("ms-kimi-test".into())
+        );
+    }
+
+    #[test]
+    fn resolve_baidu_key() {
+        let map = dotenv(&[("QIANFAN_API_KEY", "qf-test")]);
+        assert_eq!(
+            resolve_key_for_provider("baidu", &map),
+            Some("qf-test".into())
+        );
+    }
+
+    // ── detect_provider_from_env — new providers ──────────────────────────────
+
+    #[test]
+    fn detect_together_only() {
+        let cfg = detect(&[("TOGETHER_API_KEY", "tog-test")]);
+        assert_eq!(cfg.provider, "together");
+        assert_eq!(cfg.api_key.as_deref(), Some("tog-test"));
+    }
+
+    #[test]
+    fn detect_fireworks_only() {
+        let cfg = detect(&[("FIREWORKS_API_KEY", "fw-test")]);
+        assert_eq!(cfg.provider, "fireworks");
+        assert_eq!(cfg.api_key.as_deref(), Some("fw-test"));
+    }
+
+    #[test]
+    fn detect_cerebras_only() {
+        let cfg = detect(&[("CEREBRAS_API_KEY", "cb-test")]);
+        assert_eq!(cfg.provider, "cerebras");
+        assert_eq!(cfg.api_key.as_deref(), Some("cb-test"));
+    }
+
+    #[test]
+    fn detect_perplexity_only() {
+        let cfg = detect(&[("PERPLEXITY_API_KEY", "pplx-test")]);
+        assert_eq!(cfg.provider, "perplexity");
+        assert_eq!(cfg.api_key.as_deref(), Some("pplx-test"));
+    }
+
+    #[test]
+    fn detect_cohere_only() {
+        let cfg = detect(&[("COHERE_API_KEY", "co-test")]);
+        assert_eq!(cfg.provider, "cohere");
+        assert_eq!(cfg.api_key.as_deref(), Some("co-test"));
+    }
+
+    #[test]
+    fn detect_nvidia_only() {
+        let cfg = detect(&[("NVIDIA_API_KEY", "nvapi-test")]);
+        assert_eq!(cfg.provider, "nvidia");
+        assert_eq!(cfg.api_key.as_deref(), Some("nvapi-test"));
+    }
+
+    #[test]
+    fn detect_alibaba_only() {
+        let cfg = detect(&[("DASHSCOPE_API_KEY", "sk-ds-test")]);
+        assert_eq!(cfg.provider, "alibaba");
+        assert_eq!(cfg.api_key.as_deref(), Some("sk-ds-test"));
+    }
+
+    #[test]
+    fn detect_doubao_only() {
+        let cfg = detect(&[("ARK_API_KEY", "ark-test")]);
+        assert_eq!(cfg.provider, "doubao");
+        assert_eq!(cfg.api_key.as_deref(), Some("ark-test"));
+    }
+
+    #[test]
+    fn detect_zhipu_only() {
+        let cfg = detect(&[("ZHIPU_API_KEY", "zp-test")]);
+        assert_eq!(cfg.provider, "zhipu");
+        assert_eq!(cfg.api_key.as_deref(), Some("zp-test"));
+    }
+
+    #[test]
+    fn detect_moonshot_only() {
+        let cfg = detect(&[("MOONSHOT_API_KEY", "ms-kimi-test")]);
+        assert_eq!(cfg.provider, "moonshot");
+        assert_eq!(cfg.api_key.as_deref(), Some("ms-kimi-test"));
+    }
+
+    #[test]
+    fn detect_baidu_only() {
+        let cfg = detect(&[("QIANFAN_API_KEY", "qf-test")]);
+        assert_eq!(cfg.provider, "baidu");
+        assert_eq!(cfg.api_key.as_deref(), Some("qf-test"));
+    }
 }

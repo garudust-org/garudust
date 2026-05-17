@@ -277,4 +277,40 @@ mod tests {
         assert!(footer.contains("@ claude-haiku-4-5"));
         assert!(!footer.contains("anthropic/"));
     }
+
+    #[test]
+    fn new_providers_have_pricing() {
+        for model in &[
+            "deepseek-r1",
+            "deepseek-v3",
+            "mistral-large-2407",
+            "mistral-small-2503",
+            "codestral-2405",
+            "grok-3",
+            "grok-3-mini",
+            "grok-2-1212",
+            "sonar-pro",
+            "sonar-reasoning",
+            "sonar",
+            "command-r-plus",
+            "command-r-08-2024",
+            "qwen-max",
+            "qwen-plus",
+            "qwen-turbo",
+            "glm-4-plus",
+            "glm-4-0520",
+            "moonshot-v1-8k",
+            "moonshot-v1-32k",
+            "moonshot-v1-128k",
+            "llama-3.3-70b-instruct-turbo",
+            "llama-3.1-8b-instruct-turbo",
+            "llama3.3-70b",
+            "llama3.1-70b",
+        ] {
+            assert!(
+                estimate_cost_usd(model, 1_000, 500).is_some(),
+                "missing pricing for {model}"
+            );
+        }
+    }
 }
