@@ -549,6 +549,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed step-by-step guides on each 
 - [Discord](https://discord.com/channels/1501414298449088745/1501414298893942877) — chat, questions, and ideas
 - [Issues](https://github.com/garudust-org/garudust-agent/issues) — bug reports and feature requests
 - [Discussions](https://github.com/garudust-org/garudust-agent/discussions) — longer-form proposals
+- [dev.to/nisit15](https://dev.to/nisit15) — articles and tutorials
 
 ---
 
