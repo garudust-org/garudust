@@ -202,12 +202,11 @@ fn lookup(model: &str) -> Option<ModelPrice> {
             output_per_m: 1.60,
         }
     // Together AI / Cerebras / Fireworks — Llama family
-    } else if name.contains("llama-3.3-70b") || name.contains("llama3.3-70b") {
-        ModelPrice {
-            input_per_m: 0.88,
-            output_per_m: 0.88,
-        }
-    } else if name.contains("llama-3.1-70b") || name.contains("llama3.1-70b") {
+    } else if name.contains("llama-3.3-70b")
+        || name.contains("llama3.3-70b")
+        || name.contains("llama-3.1-70b")
+        || name.contains("llama3.1-70b")
+    {
         ModelPrice {
             input_per_m: 0.88,
             output_per_m: 0.88,
