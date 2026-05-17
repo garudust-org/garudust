@@ -70,15 +70,15 @@ impl EventHandler for DiscordHandler {
                                     file_name: att.filename.clone(),
                                 }),
                                 Err(e) => {
-                                    tracing::warn!(att_id = %att.id, error = %e, "Discord: write doc failed")
+                                    tracing::warn!(att_id = %att.id, error = %e, "Discord: write doc failed");
                                 }
                             },
                             Err(e) => {
-                                tracing::warn!(att_id = %att.id, error = %e, "Discord: read doc bytes failed")
+                                tracing::warn!(att_id = %att.id, error = %e, "Discord: read doc bytes failed");
                             }
                         },
                         Err(e) => {
-                            tracing::warn!(att_id = %att.id, error = %e, "Discord: download doc failed")
+                            tracing::warn!(att_id = %att.id, error = %e, "Discord: download doc failed");
                         }
                     }
                 }
