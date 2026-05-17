@@ -199,10 +199,19 @@ tools:
 # ── 安全 ──────────────────────────────────────────────────────────────────────
 security:
   approval_mode: smart        # auto | smart | deny
+                              # smart = 审计高风险工具调用但不拦截
+                              # 使用 deny 可拦截所有未明确授权的工具调用
   terminal_sandbox: none      # none | docker
+                              # 警告：none 直接在宿主机上执行 shell 命令
+                              # 生产环境建议使用 docker 以隔离命令执行
   rate_limit_rpm: ~           # 每 IP 每分钟请求限制（~ = 不限）
   allowed_read_paths: []      # 默认：cwd + home
   allowed_write_paths: []     # 默认：cwd
+
+# ── 子智能体委派 ───────────────────────────────────────────────────────────────
+# max_delegation_depth: 1     # delegate_task 最大递归深度（默认 1）
+                              # 0 = 子智能体不可继续委派
+                              # 防止无限递归委派链
 
 # ── 记忆过期 ──────────────────────────────────────────────────────────────────
 memory_expiry:
@@ -316,10 +325,10 @@ mcp_servers:
 | `browser` | 通过 CDP 控制 Chrome/Chromium — 点击、输入、截图、执行 JS |
 | `read_file` / `write_file` | 文件读写 |
 | `list_directory` | 支持 glob 模式和深度限制的目录列表 |
-| `terminal` | 执行 shell 命令（可选 Docker 沙箱隔离） |
+| `terminal` | 执行 shell 命令（可选 Docker 沙箱隔离 — 请参阅安全说明） |
 | `memory` | 跨会话持久化键值存储 |
 | `session_search` | 全文搜索历史对话（FTS5 trigram） |
-| `delegate_task` | 并行派生子智能体处理分解任务 |
+| `delegate_task` | 并行派生子智能体处理分解任务（深度受 `max_delegation_depth` 限制） |
 | `skill_view` / `write_skill` | 加载和编写可复用技能 |
 | `doc_ingest` | 将文档（PDF、TXT、CSV、MD 等）建立全文索引 |
 | `doc_search` | 在所有已建索引的文档中全文搜索 |
@@ -460,6 +469,40 @@ garudust skill uninstall git-workflow
 你：JSON 始终使用 2 个空格缩进
 Agent：已记录。
 # 下次会话：直接应用，无需再次提醒
+```
+
+---
+
+## 安全说明
+
+### Terminal 工具
+
+`terminal_sandbox: none`（默认值）直接在**宿主机 OS** 上执行 shell 命令——智能体选择运行的任何命令都将具有与服务器进程相同的权限。
+
+- **开发 / 本地 CLI 用途：** 默认值可接受。
+- **生产 / 多用户部署：** 设置 `terminal_sandbox: docker` 以将命令执行隔离在 Docker 容器中，或完全禁用该工具：
+
+```yaml
+security:
+  terminal_sandbox: docker   # 生产环境推荐
+
+# 或完全禁用该工具：
+disabled_tools: [terminal]
+```
+
+`approval_mode: smart` 会审计并记录潜在高风险的工具调用，但**不会拦截**执行。若需拦截：
+
+```yaml
+security:
+  approval_mode: deny        # 拦截所有未授权的工具调用
+```
+
+### delegate_task 递归
+
+`delegate_task` 会派生子智能体。若无深度限制，恶意或配置错误的提示词可能触发无限递归委派。默认 `max_delegation_depth: 1` 表示子智能体最多可再派生一层。设置为 `0` 可完全禁止子智能体委派：
+
+```yaml
+max_delegation_depth: 0   # 子智能体不可继续委派子智能体
 ```
 
 ---

@@ -191,6 +191,10 @@ pub struct Agent {
     compressor: ContextCompressor,
     session_db: Option<Arc<SessionDb>>,
     hooks: Arc<dyn AgentHooks>,
+    /// Nesting depth of this agent in a delegation chain (0 = root agent).
+    /// spawn_child() increments this; ToolContext sets sub_agent=None when
+    /// depth >= config.max_delegation_depth to prevent infinite recursion.
+    delegation_depth: u32,
     /// Per-session conversation history: session_key → (user_input, assistant_output) pairs.
     /// Shared across Clone (same logical agent); fresh for spawn_child() (sub-agent).
     conversation_history: Arc<DashMap<String, VecDeque<(String, String)>>>,
@@ -217,6 +221,7 @@ impl Clone for Agent {
             compressor: build_compressor(self.transport.clone(), comp_model, &self.config),
             session_db: self.session_db.clone(),
             hooks: self.hooks.clone(),
+            delegation_depth: self.delegation_depth,
             conversation_history: self.conversation_history.clone(),
         }
     }
@@ -268,6 +273,7 @@ impl Agent {
             compressor,
             session_db: None,
             hooks: Arc::new(NoopHooks),
+            delegation_depth: 0,
             conversation_history: Arc::new(DashMap::new()),
         }
     }
@@ -329,6 +335,7 @@ impl Agent {
             compressor: build_compressor(self.transport.clone(), comp_model, &self.config),
             session_db: self.session_db.clone(),
             hooks: self.hooks.clone(),
+            delegation_depth: self.delegation_depth + 1,
             conversation_history: Arc::new(DashMap::new()),
         }
     }
@@ -808,7 +815,14 @@ impl Agent {
             // Parallel tool dispatch via tokio::join_all
             // spawn_child() gives the sub-agent its own fresh budget so delegate_task
             // iterations do not consume the parent's quota.
-            let sub_agent: Arc<dyn SubAgentRunner> = Arc::new(self.spawn_child());
+            // sub_agent is None once max_delegation_depth is reached, which makes
+            // delegate_task return an error instead of recursing further.
+            let sub_agent: Option<Arc<dyn SubAgentRunner>> =
+                if self.delegation_depth < self.config.max_delegation_depth {
+                    Some(Arc::new(self.spawn_child()))
+                } else {
+                    None
+                };
             let ctx = Arc::new(ToolContext {
                 session_id: session_id.clone(),
                 conv_key: conv_key.clone(),
@@ -820,7 +834,7 @@ impl Agent {
                 memory: self.memory.clone(),
                 config: self.config.clone(),
                 approver: approver.clone(),
-                sub_agent: Some(sub_agent),
+                sub_agent,
                 skill_permissions: skill_permissions.clone(),
                 required_tools: required_tools.clone(),
             });

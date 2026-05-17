@@ -199,10 +199,19 @@ tools:
 # ── Security ──────────────────────────────────────────────────────────────────
 security:
   approval_mode: smart        # auto | smart | deny
+                              # smart = ตรวจสอบ tool ที่มีความเสี่ยงแต่ไม่บล็อก
+                              # ใช้ deny เพื่อบล็อกทุก tool call ที่ไม่ได้รับอนุญาต
   terminal_sandbox: none      # none | docker
+                              # คำเตือน: none รัน shell command บน host โดยตรง
+                              # ใช้ docker ใน production เพื่อ isolate การรัน command
   rate_limit_rpm: ~           # จำกัด request ต่อ IP ต่อนาที (~ = ไม่จำกัด)
   allowed_read_paths: []      # default: cwd + home
   allowed_write_paths: []     # default: cwd
+
+# ── Sub-agent delegation ──────────────────────────────────────────────────────
+# max_delegation_depth: 1     # ความลึกสูงสุดของการ delegate ซ้อนกัน (default 1)
+                              # 0 = sub-agent ไม่สามารถ delegate ต่อได้
+                              # ป้องกันการ delegate ซ้อนกันไม่สิ้นสุด
 
 # ── Memory expiry ─────────────────────────────────────────────────────────────
 memory_expiry:
@@ -316,10 +325,10 @@ built-in tools พร้อมใช้ทันที ไม่ต้องต�
 | `browser` | ควบคุม Chrome/Chromium ผ่าน CDP — คลิก, พิมพ์, screenshot, รัน JS |
 | `read_file` / `write_file` | อ่านและเขียนไฟล์ |
 | `list_directory` | แสดงไฟล์ด้วย glob pattern และ depth limit |
-| `terminal` | รัน shell command (รองรับ Docker sandbox) |
+| `terminal` | รัน shell command (รองรับ Docker sandbox — ดูหมายเหตุด้านความปลอดภัย) |
 | `memory` | memory แบบ key-value ที่คงอยู่ข้าม session |
 | `session_search` | ค้นหาประวัติการสนทนา (FTS5 trigram) |
-| `delegate_task` | spawn sub-agent แบบ parallel สำหรับงานย่อย |
+| `delegate_task` | spawn sub-agent แบบ parallel สำหรับงานย่อย (จำกัดความลึกด้วย `max_delegation_depth`) |
 | `skill_view` / `write_skill` | โหลดและเขียน skill ที่ใช้ซ้ำได้ |
 | `doc_ingest` | นำเข้าเอกสาร (PDF, TXT, CSV, MD, …) เข้าสู่ดัชนีค้นหา |
 | `doc_search` | ค้นหาข้อความในเอกสารที่นำเข้าทั้งหมด |
@@ -460,6 +469,40 @@ agent บันทึกทุกสิ่งที่เรียนรู้�
 คุณ: format JSON ด้วย 2-space indent เสมอ
 Agent: รับทราบ — บันทึกไว้ใน memory แล้ว
 # session ถัดไป: ทำให้เลย ไม่ต้องเตือนอีก
+```
+
+---
+
+## หมายเหตุด้านความปลอดภัย
+
+### Terminal tool
+
+`terminal_sandbox: none` (ค่าเริ่มต้น) รัน shell command **โดยตรงบน host OS** — command ที่ agent เลือกรันจะมีสิทธิ์เท่ากับ server process
+
+- **สำหรับการพัฒนา / CLI ในเครื่อง:** ค่าเริ่มต้นใช้งานได้
+- **สำหรับ production / หลายผู้ใช้:** ตั้งค่า `terminal_sandbox: docker` เพื่อ isolate การรัน command หรือปิด tool นี้ทั้งหมด:
+
+```yaml
+security:
+  terminal_sandbox: docker   # แนะนำสำหรับ production
+
+# หรือปิด tool ทั้งหมด:
+disabled_tools: [terminal]
+```
+
+`approval_mode: smart` ตรวจสอบและ log การเรียก tool ที่มีความเสี่ยง แต่**ไม่บล็อก**การทำงาน หากต้องการบล็อก:
+
+```yaml
+security:
+  approval_mode: deny        # บล็อก tool call ทุกอย่างที่ไม่ได้รับอนุญาต
+```
+
+### delegate_task recursion
+
+`delegate_task` spawn sub-agent ถ้าไม่มีการจำกัดความลึก อาจเกิดการ delegate ซ้อนกันไม่สิ้นสุดได้ ค่าเริ่มต้น `max_delegation_depth: 1` หมายความว่า sub-agent สามารถ spawn ได้อีก 1 ระดับ ตั้งค่าเป็น `0` เพื่อป้องกันทั้งหมด:
+
+```yaml
+max_delegation_depth: 0   # sub-agent ไม่สามารถ delegate ต่อได้เลย
 ```
 
 ---

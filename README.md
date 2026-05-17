@@ -199,10 +199,20 @@ tools:
 # ── Security ─────────────────────────────────────────────────────────────────
 security:
   approval_mode: smart        # auto | smart | deny
+                              # smart = audits risky calls but does NOT block them;
+                              # use deny to block all tool use without explicit allow-list
   terminal_sandbox: none      # none | docker
+                              # WARNING: none runs shell commands directly on the host.
+                              # Use docker in production to isolate command execution.
   rate_limit_rpm: ~           # per-IP limit (~ = unlimited)
   allowed_read_paths: []      # defaults to cwd + home
   allowed_write_paths: []     # defaults to cwd
+
+# ── Sub-agent delegation ──────────────────────────────────────────────────────
+# max_delegation_depth: 1     # max recursive depth of delegate_task (default 1)
+                              # depth 0 = sub-agents cannot delegate further
+                              # depth 1 = sub-agents may spawn one more level (default)
+                              # Prevents runaway recursive delegation chains.
 
 # ── Memory expiry ────────────────────────────────────────────────────────────
 memory_expiry:
@@ -316,10 +326,10 @@ Built-in tools are available out of the box — no configuration required.
 | `browser` | Control Chrome/Chromium via CDP — click, type, screenshot, run JS |
 | `read_file` / `write_file` | Filesystem read and write |
 | `list_directory` | List files with glob patterns and depth limits |
-| `terminal` | Run shell commands (Docker sandbox optional) |
+| `terminal` | Run shell commands (Docker sandbox optional — see security note below) |
 | `memory` | Persistent key-value memory across sessions |
 | `session_search` | Full-text search across past conversations (FTS5 trigram) |
-| `delegate_task` | Spawn a parallel sub-agent for decomposed work |
+| `delegate_task` | Spawn a parallel sub-agent for decomposed work (depth-limited by `max_delegation_depth`) |
 | `skill_view` / `write_skill` | Load and write reusable skills |
 | `doc_ingest` | Index a document (PDF, TXT, CSV, MD, …) for full-text search |
 | `doc_search` | Full-text search across all indexed documents |
@@ -460,6 +470,40 @@ The agent saves everything it learns to `~/.garudust/memory/` and loads it at th
 You: always format JSON with 2-space indent
 Agent: Got it — saving to memory.
 # Next session: already applied, no reminder needed
+```
+
+---
+
+## Security Notes
+
+### Terminal tool
+
+`terminal_sandbox: none` (the default) executes shell commands **directly on the host OS**. Any command the agent chooses to run will have the same permissions as the server process.
+
+- **For development / local CLI use:** the default is acceptable.
+- **For production / multi-user deployments:** set `terminal_sandbox: docker` to isolate command execution in a Docker container, or disable the terminal tool entirely:
+
+```yaml
+security:
+  terminal_sandbox: docker   # recommended for production
+
+# or disable the tool entirely:
+disabled_tools: [terminal]
+```
+
+`approval_mode: smart` audits potentially risky calls and logs them, but does **not** block execution. To require explicit approval or deny all unapproved tool use, change the mode:
+
+```yaml
+security:
+  approval_mode: deny        # block all tool use not in an allow-list
+```
+
+### delegate_task recursion
+
+`delegate_task` spawns a sub-agent. Without a depth limit, a malicious or misconfigured prompt could trigger unbounded recursive delegation. The default `max_delegation_depth: 1` means a sub-agent can spawn one further level of sub-agents, but no deeper. Set to `0` to prevent sub-agents from delegating at all:
+
+```yaml
+max_delegation_depth: 0   # sub-agents cannot spawn further sub-agents
 ```
 
 ---

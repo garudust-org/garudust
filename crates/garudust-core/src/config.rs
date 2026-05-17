@@ -83,6 +83,12 @@ pub struct AgentConfig {
     /// the parent (e.g. `sub_agent_max_iterations: 10`) to limit runaway delegation chains.
     #[serde(default)]
     pub sub_agent_max_iterations: Option<u32>,
+    /// Maximum nesting depth for delegate_task / delegate_tasks.
+    /// Depth 0 = parent agent, depth 1 = first sub-agent, etc.
+    /// Sub-agents at or beyond this depth cannot call delegate_task again.
+    /// Default: 1 (sub-agents may not re-delegate).
+    #[serde(default = "default_max_delegation_depth")]
+    pub max_delegation_depth: u32,
     #[serde(default)]
     pub tool_delay_ms: u64,
     #[serde(default = "default_provider")]
@@ -218,6 +224,9 @@ fn default_provider() -> String {
 }
 fn default_max_iterations() -> u32 {
     90
+}
+fn default_max_delegation_depth() -> u32 {
+    1
 }
 fn default_nudge_interval() -> u32 {
     5
@@ -534,6 +543,7 @@ impl Default for AgentConfig {
             model: DEFAULT_MODEL.into(),
             max_iterations: 90,
             sub_agent_max_iterations: None,
+            max_delegation_depth: 1,
             tool_delay_ms: 0,
             provider: DEFAULT_PROVIDER.into(),
             base_url: None,
