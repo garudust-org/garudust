@@ -323,9 +323,19 @@ impl MessageHandler for GatewayHandler {
                 msg.text.clone()
             } else {
                 let text_lower = msg.text.to_lowercase();
-                let is_negative = ["ไม่ต้องการ", "ไม่เอา", "ไม่ต้อง", "ยกเลิก", "no\n", " no ", "nope", "cancel", "不要"]
-                    .iter()
-                    .any(|n| text_lower.contains(n))
+                let is_negative = [
+                    "ไม่ต้องการ",
+                    "ไม่เอา",
+                    "ไม่ต้อง",
+                    "ยกเลิก",
+                    "no\n",
+                    " no ",
+                    "nope",
+                    "cancel",
+                    "不要",
+                ]
+                .iter()
+                .any(|n| text_lower.contains(n))
                     || text_lower.trim() == "ไม่"
                     || text_lower.trim() == "no";
 
