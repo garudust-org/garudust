@@ -225,7 +225,7 @@ pub async fn run() -> anyhow::Result<()> {
                 }
             }
             // Providers whose default base_url is localhost need a URL prompt.
-            let needs_url = builtin.map_or(false, |p| p.base_url.starts_with("http://localhost"));
+            let needs_url = builtin.is_some_and(|p| p.base_url.starts_with("http://localhost"));
             let url = if needs_url {
                 let default_url = builtin.map(|p| p.base_url);
                 let u = prompt("Base URL", default_url);
