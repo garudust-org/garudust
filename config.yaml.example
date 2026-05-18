@@ -1,0 +1,254 @@
+# Garudust Agent — config.yaml reference
+#
+# Copy to ~/.garudust/config.yaml and edit as needed.
+# Run `garudust setup` to generate this file interactively.
+# Secrets (API keys) belong in ~/.garudust/.env, not here.
+# Lines beginning with # are comments; uncomment to activate.
+
+# ── Provider profiles ─────────────────────────────────────────────────────────
+# Named profiles used by providers.default, routing:, and tool model overrides.
+# The special name "default" defines the main LLM provider.
+#
+# Profile fields:
+#   name  — builtin provider name (anthropic / openai / groq / deepseek /
+#            gemini / mistral / xai / together / fireworks / cerebras /
+#            perplexity / cohere / nvidia / alibaba / doubao / zhipu /
+#            moonshot / baidu / thaillm / vllm / openrouter / ollama / bedrock)
+#   url   — custom base URL (overrides the builtin default for name, or used
+#            alone for fully custom endpoints)
+#   key   — literal API key or ${ENV_VAR} reference (recommended)
+#   model — default model for this profile (required for "default" profile)
+
+providers:
+  default:
+    name: anthropic
+    key: ${ANTHROPIC_API_KEY}
+    model: claude-sonnet-4-6
+
+  # Additional profiles for routing or tool overrides:
+
+  # groq-fast:
+  #   name: groq
+  #   key: ${GROQ_API_KEY}
+  #   model: llama-3.1-8b-instant
+
+  # groq-backup:            # second Groq key for credential rotation
+  #   name: groq
+  #   key: ${GROQ_API_KEY_2}
+
+  # vision:                 # dedicated profile for image-capable tools
+  #   name: openai
+  #   key: ${OPENAI_API_KEY}
+
+  # local:                  # self-hosted vLLM / Ollama on another machine
+  #   url: http://192.168.1.10:8000/v1
+  #   key: ${VLLM_API_KEY}
+
+  # deepseek-r1:
+  #   name: deepseek
+  #   key: ${DEEPSEEK_API_KEY}
+  #   model: deepseek-reasoner
+
+# ── Legacy provider fields (still supported) ──────────────────────────────────
+# Ignored when providers.default is set. Use providers: above instead.
+# provider: openrouter
+# model: anthropic/claude-sonnet-4-6
+# base_url: https://openrouter.ai/api/v1
+
+# ── Routing ───────────────────────────────────────────────────────────────────
+# Map hint names → "profile/model" or "builtin-provider/model".
+# Pass a hint via agent.run(hint="fast") or `--routing fast` flag.
+# The agent uses this transport+model only for that task; default is unchanged.
+
+# routing:
+#   fast:   groq-fast/llama-3.1-8b-instant
+#   smart:  groq/llama-3.3-70b-versatile
+#   vision: vision/gpt-4o
+#   local:  local/llama3.2
+
+# ── Tool model overrides ──────────────────────────────────────────────────────
+# Set a different model for specific tools (e.g. multimodal tools).
+# model/fallback_model accept "profile/model" or bare model strings.
+# The tool subprocess receives GARUDUST_MODEL, GARUDUST_BASE_URL,
+# GARUDUST_API_KEY, and GARUDUST_FALLBACK_MODEL as env vars.
+
+# tools:
+#   view_image:
+#     model: vision/gpt-4o
+#     fallback_model: openai/gpt-4o-mini
+
+# ── Agent behaviour ───────────────────────────────────────────────────────────
+
+# Maximum tool-use iterations per task. Default: 90.
+# max_iterations: 90
+
+# Cap for sub-agents spawned via delegate_task. Defaults to max_iterations.
+# sub_agent_max_iterations: 30
+
+# Maximum delegation depth (agent → sub-agent chain). Default: 1.
+# max_delegation_depth: 1
+
+# Delay in ms between consecutive tool calls (rate-limit courtesy). Default: 0.
+# tool_delay_ms: 0
+
+# Inject a memory-save reminder every N iterations. 0 = disabled. Default: 5.
+# nudge_interval: 5
+
+# Minimum iterations to trigger auto skill-reflection after a task. Default: 5.
+# auto_skill_threshold: 5
+
+# Show token usage and cost footer after each task. Default: false.
+# show_usage_footer: true
+
+# ── Model settings ────────────────────────────────────────────────────────────
+
+# Hard cap on total tokens (input + output) per task. Default: unlimited.
+# max_tokens_per_task: 200000
+
+# Maximum output tokens per LLM request. Default: 8192.
+# max_output_tokens: 4096
+
+# Model context window in tokens. Compressor uses this to decide when to
+# summarise history. Default: 128000.
+# Set this for small-context local models (e.g. 27168 for Qwen3-14B-AWQ).
+# context_window: 27168
+
+# Reasoning effort for extended-thinking models (Claude / OpenAI o-series).
+# Values: low | medium | high
+# reasoning_effort: medium
+
+# ── LLM reliability ───────────────────────────────────────────────────────────
+
+# Retry attempts on transient errors (429, 5xx, network). 0 = disabled. Default: 3.
+# llm_max_retries: 3
+
+# Base delay (ms) for exponential backoff between retries. Default: 1000.
+# llm_retry_base_ms: 1000
+
+# Timeout (s) for a single LLM API call. 0 = no limit. Default: 120.
+# llm_timeout_secs: 120
+
+# Timeout (s) for tool calls (non-terminal). 0 = no limit. Default: 60.
+# tool_timeout_secs: 60
+
+# Graceful shutdown drain window (s). Default: 30.
+# shutdown_timeout_secs: 30
+
+# ── Context compression ───────────────────────────────────────────────────────
+
+# compression:
+#   enabled: true           # compress conversation history when near context limit
+#   keep_last: 6            # number of recent messages always kept verbatim
+
+# ── Toolsets ──────────────────────────────────────────────────────────────────
+# Available toolsets: web, files, terminal, memory, skills, agent,
+#   browser, git, notes, json, mcp, rag
+# Disable entire toolsets to reduce context or restrict capabilities.
+
+# disabled_toolsets: [browser, git, notes]
+
+# Disable individual tools by exact name (finer-grained than toolsets).
+# disabled_tools: [image_read, pdf_read, session_search]
+
+# ── Memory expiry ─────────────────────────────────────────────────────────────
+# Retention period per memory category. null = never expires.
+
+# memory_expiry:
+#   fact_days: 90           # factual observations — default 90
+#   project_days: 30        # project/task context — default 30
+#   other_days: 60          # uncategorised — default 60
+#   preference_days: null   # user preferences — default never
+#   skill_days: null        # learned skills — default never
+
+# Maximum tokens of memory injected into each request. Default: unlimited.
+# max_memory_tokens: 4000
+
+# ── HTTP gateway ──────────────────────────────────────────────────────────────
+
+server:
+  port: 3000
+
+# ── Security ──────────────────────────────────────────────────────────────────
+
+security:
+  # Command approval mode: auto | smart | deny. Default: smart.
+  # auto  — run all terminal commands without prompting
+  # smart — block obviously dangerous commands, allow the rest
+  # deny  — block all terminal command execution
+  approval_mode: smart
+
+  # Per-IP rate limit (requests/minute). Default: unlimited.
+  # rate_limit_rpm: 60
+
+  # Terminal sandbox. Default: none (direct host execution).
+  # docker — wraps every command in `docker run --rm` with hardened flags.
+  # terminal_sandbox: none
+
+  # Docker image for the sandbox. Default: ubuntu:24.04.
+  # terminal_sandbox_image: ubuntu:24.04
+
+  # Extra docker run flags (appended after hardened defaults).
+  # terminal_sandbox_opts: ["--network=none", "--memory=512m", "--cpus=0.5"]
+
+  # Allowed root directories for read_file. Defaults to cwd + home.
+  # allowed_read_paths: [/data/docs, /mnt/shared]
+
+  # Allowed root directories for write_file. Defaults to cwd.
+  # allowed_write_paths: [/tmp/agent-output]
+
+# ── Platform access controls ──────────────────────────────────────────────────
+
+# platform:
+#   # Restrict to specific user IDs (Telegram, Discord, Slack, …). Empty = allow all.
+#   allowed_user_ids: ["123456789"]
+#
+#   # Require the bot to be @mentioned before responding. Default: false.
+#   require_mention: false
+#
+#   # Bot username for mention detection (Discord: "MyBot", Slack: "mybot").
+#   bot_username: ""
+#
+#   # Give each user an independent conversation session. Default: false.
+#   session_per_user: false
+
+# ── Webhook platform adapters ─────────────────────────────────────────────────
+# Tokens live in ~/.garudust/.env. These blocks control enable/port/path only.
+
+# platforms:
+#   line:
+#     enabled: true
+#     port: 3001
+#     webhook_path: /webhook/line
+#
+#   whatsapp:
+#     enabled: false
+#     port: 3002
+#     webhook_path: /webhook/whatsapp
+
+# ── MCP servers ───────────────────────────────────────────────────────────────
+# Expose external tool servers via Model Context Protocol.
+
+# mcp_servers:
+#   - name: filesystem
+#     command: npx
+#     args: ["-y", "@modelcontextprotocol/server-filesystem", "/home/user/docs"]
+#
+#   - name: github
+#     command: npx
+#     args: ["-y", "@modelcontextprotocol/server-github"]
+
+# ── Cron ──────────────────────────────────────────────────────────────────────
+
+# cron:
+#   jobs:
+#     - schedule: "0 9 * * 1-5"   # weekdays at 09:00
+#       task: "Write a morning briefing and save it to ~/briefing.md"
+#
+#     - schedule: "0 18 * * 5"    # Fridays at 18:00
+#       task: "Review this week's work and update the project memory"
+#
+#   # Consolidate and deduplicate memory entries on a schedule.
+#   memory_consolidation: "0 3 * * *"   # daily at 03:00
+#
+#   # Expire stale memory entries (respects memory_expiry settings above).
+#   memory_expiry: "0 4 * * 0"          # weekly on Sunday at 04:00
