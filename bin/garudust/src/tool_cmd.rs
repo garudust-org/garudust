@@ -85,8 +85,8 @@ pub async fn install(tool_name: &str, tools_dir: &Path, hub: &str) -> Result<()>
 
     // Write default model config from tool.yaml into config.yaml (only if not already set).
     let (model, fallback_model) = hub::read_tool_model_defaults(tools_dir, tool_name).await;
+    let mut cfg = AgentConfig::load();
     if !model.is_empty() || !fallback_model.is_empty() {
-        let mut cfg = AgentConfig::load();
         let entry = cfg.tools.entry(tool_name.to_string()).or_default();
         let mut updated = false;
         if entry.model.is_empty() && !model.is_empty() {
@@ -105,7 +105,39 @@ pub async fn install(tool_name: &str, tools_dir: &Path, hub: &str) -> Result<()>
             if !fallback_model.is_empty() {
                 println!("  fallback_model: {fallback_model}");
             }
-            println!("  (override: garudust config set tools.{tool_name}.model <model>)");
+            println!("  (override: garudust config set tools.{tool_name}.model <profile/model>)");
+        }
+    }
+
+    // Warn about any env_required keys not yet present in ~/.garudust/.env.
+    let env_required = hub::read_tool_env_required(tools_dir, tool_name).await;
+    if !env_required.is_empty() {
+        let env_path = cfg.home_dir.join(".env");
+        let existing: std::collections::HashSet<String> = std::fs::read_to_string(&env_path)
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|l| {
+                let l = l.trim();
+                if l.is_empty() || l.starts_with('#') {
+                    return None;
+                }
+                l.split_once('=').map(|(k, _)| k.trim().to_string())
+            })
+            .collect();
+
+        let missing: Vec<&str> = env_required
+            .iter()
+            .filter(|k| !existing.contains(*k))
+            .map(String::as_str)
+            .collect();
+
+        if missing.is_empty() {
+            println!("All required API keys are already configured.");
+        } else {
+            println!("\nThis tool requires API keys not yet set — add them to ~/.garudust/.env:");
+            for k in &missing {
+                println!("  garudust config set {k} <your-key>");
+            }
         }
     }
 

@@ -71,25 +71,36 @@ pub async fn fetch_index(repo: &str) -> Result<HubIndex> {
     serde_yaml::from_str(&text).context("parse hub index.yaml")
 }
 
-// ── Tool YAML model defaults ──────────────────────────────────────────────────
+// ── Tool YAML metadata helpers ────────────────────────────────────────────────
+
+#[derive(serde::Deserialize, Default)]
+struct ToolMeta {
+    #[serde(default)]
+    model: String,
+    #[serde(default)]
+    fallback_model: String,
+    #[serde(default)]
+    env_required: Vec<String>,
+}
+
+async fn read_tool_meta(tools_dir: &Path, tool_name: &str) -> ToolMeta {
+    let path = tools_dir.join(tool_name).join("tool.yaml");
+    let Ok(text) = tokio::fs::read_to_string(&path).await else {
+        return ToolMeta::default();
+    };
+    serde_yaml::from_str(&text).unwrap_or_default()
+}
 
 /// Read the `model` and `fallback_model` fields from an installed tool's `tool.yaml`.
 /// Returns `(model, fallback_model)` — both empty when the fields are absent.
 pub async fn read_tool_model_defaults(tools_dir: &Path, tool_name: &str) -> (String, String) {
-    #[derive(serde::Deserialize, Default)]
-    struct ModelFields {
-        #[serde(default)]
-        model: String,
-        #[serde(default)]
-        fallback_model: String,
-    }
+    let meta = read_tool_meta(tools_dir, tool_name).await;
+    (meta.model, meta.fallback_model)
+}
 
-    let path = tools_dir.join(tool_name).join("tool.yaml");
-    let Ok(text) = tokio::fs::read_to_string(&path).await else {
-        return (String::new(), String::new());
-    };
-    let fields: ModelFields = serde_yaml::from_str(&text).unwrap_or_default();
-    (fields.model, fields.fallback_model)
+/// Read the `env_required` list from an installed tool's `tool.yaml`.
+pub async fn read_tool_env_required(tools_dir: &Path, tool_name: &str) -> Vec<String> {
+    read_tool_meta(tools_dir, tool_name).await.env_required
 }
 
 // ── Install ───────────────────────────────────────────────────────────────────

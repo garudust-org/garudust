@@ -16,6 +16,16 @@ const SECRET_KEYS: &[&str] = &[
     "MATRIX_PASSWORD",
 ];
 
+/// Returns true when `key` looks like a secret that belongs in `.env` — even if
+/// it is not in the hardcoded `SECRET_KEYS` list (e.g. keys added by hub tools).
+fn is_dynamic_secret(key: &str) -> bool {
+    let u = key.to_uppercase();
+    u.ends_with("_API_KEY")
+        || u.ends_with("_TOKEN")
+        || u.ends_with("_SECRET")
+        || u.ends_with("_PASSWORD")
+}
+
 const ENV_KEYS: &[&str] = &[
     "GARUDUST_APPROVAL_MODE",
     "GARUDUST_RATE_LIMIT",
@@ -249,7 +259,8 @@ pub fn show(config: &AgentConfig) {
 pub fn set(key: &str, value: &str, home_dir: &Path) -> anyhow::Result<()> {
     let upper = key.to_uppercase();
 
-    if SECRET_KEYS.contains(&upper.as_str()) {
+    // Known secret keys + any key that looks like an API key / token / secret.
+    if SECRET_KEYS.contains(&upper.as_str()) || is_dynamic_secret(key) {
         AgentConfig::set_env_var(home_dir, &upper, value)?;
         println!("[✓] {} saved to {}", upper, home_dir.join(".env").display());
         return Ok(());
@@ -259,6 +270,23 @@ pub fn set(key: &str, value: &str, home_dir: &Path) -> anyhow::Result<()> {
         AgentConfig::set_env_var(home_dir, &upper, value)?;
         println!("[✓] {} saved to {}", upper, home_dir.join(".env").display());
         return Ok(());
+    }
+
+    // tools.<name>.model  /  tools.<name>.fallback_model
+    if let Some(rest) = key.strip_prefix("tools.") {
+        if let Some((tool_name, field)) = rest.rsplit_once('.') {
+            match field {
+                "model" | "fallback_model" => {
+                    update_yaml_tool_model(tool_name, field, value, home_dir)?;
+                    println!(
+                        "[✓] tools.{tool_name}.{field} = {value} saved to {}",
+                        home_dir.join("config.yaml").display()
+                    );
+                    return Ok(());
+                }
+                _ => {}
+            }
+        }
     }
 
     if YAML_KEYS.contains(&key) {
@@ -271,7 +299,10 @@ pub fn set(key: &str, value: &str, home_dir: &Path) -> anyhow::Result<()> {
     }
 
     anyhow::bail!(
-        "Unknown key: '{key}'\n\nSecret keys (saved to .env):\n  {}\n\nEnv keys (saved to .env):\n  {}\n\nConfig keys (saved to config.yaml):\n  {}",
+        "Unknown key: '{key}'\n\n\
+        Secret / token keys (saved to .env):\n  {}\n  … or any key ending in _API_KEY, _TOKEN, _SECRET, _PASSWORD\n\n\
+        Env keys (saved to .env):\n  {}\n\n\
+        Config keys (saved to config.yaml):\n  {}\n  tools.<name>.model\n  tools.<name>.fallback_model",
         SECRET_KEYS.join(", "),
         ENV_KEYS.join(", "),
         YAML_KEYS.join(", "),
@@ -309,6 +340,29 @@ fn platform_or_insert<'a>(
         port: default_port,
         webhook_path: default_path.into(),
     })
+}
+
+fn update_yaml_tool_model(
+    tool_name: &str,
+    field: &str,
+    value: &str,
+    home_dir: &Path,
+) -> anyhow::Result<()> {
+    let yaml_path = home_dir.join("config.yaml");
+    let mut config: AgentConfig = if yaml_path.exists() {
+        serde_yaml::from_str(&std::fs::read_to_string(&yaml_path)?).unwrap_or_default()
+    } else {
+        AgentConfig::default()
+    };
+    config.home_dir = home_dir.to_path_buf();
+    let entry = config.tools.entry(tool_name.to_string()).or_default();
+    match field {
+        "model" => entry.model = value.into(),
+        "fallback_model" => entry.fallback_model = value.into(),
+        _ => unreachable!(),
+    }
+    config.save_yaml()?;
+    Ok(())
 }
 
 fn update_yaml(key: &str, value: &str, home_dir: &Path) -> anyhow::Result<()> {
