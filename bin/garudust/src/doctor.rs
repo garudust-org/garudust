@@ -60,26 +60,27 @@ pub async fn run(config: &AgentConfig) {
     checks.push(Check::ok("Model", &config.model));
 
     // ── API Key ──────────────────────────────────────────────────────────────
+    let api_key = config.effective_api_key();
     match config.provider.as_str() {
         "ollama" => {
             checks.push(Check::ok("API key", "not required (ollama)"));
         }
         "vllm" => {
-            if let Some(k) = &config.api_key {
+            if let Some(k) = &api_key {
                 checks.push(Check::ok("API key", redact(k)));
             } else {
                 checks.push(Check::ok("API key", "not required (vllm)"));
             }
         }
         "anthropic" => {
-            if let Some(k) = &config.api_key {
+            if let Some(k) = &api_key {
                 checks.push(Check::ok("API key", redact(k)));
             } else {
                 checks.push(Check::fail("API key", "not set — export ANTHROPIC_API_KEY"));
             }
         }
         _ => {
-            if let Some(k) = &config.api_key {
+            if let Some(k) = &api_key {
                 checks.push(Check::ok("API key", redact(k)));
             } else {
                 checks.push(Check::fail(
@@ -91,9 +92,10 @@ pub async fn run(config: &AgentConfig) {
     }
 
     // ── Connectivity ─────────────────────────────────────────────────────────
+    // Honour `providers.default` (its `url:` or built-in default for `name:`)
+    // before the legacy `base_url:`; only then fall back to provider defaults.
     let base = config
-        .base_url
-        .clone()
+        .effective_base_url()
         .unwrap_or_else(|| match config.provider.as_str() {
             "anthropic" => "https://api.anthropic.com".into(),
             "ollama" => "http://localhost:11434".into(),
