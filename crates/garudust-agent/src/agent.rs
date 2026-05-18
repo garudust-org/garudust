@@ -425,7 +425,7 @@ impl Agent {
         hint: Option<&str>,
         session_key: Option<&str>,
     ) -> Result<AgentResult, AgentError> {
-        self.run_inner(task, approver, platform, None, hint, session_key)
+        self.run_inner(task, approver, platform, None, None, hint, session_key)
             .await
     }
 
@@ -435,10 +435,11 @@ impl Agent {
         approver: Arc<dyn garudust_core::tool::CommandApprover>,
         platform: &str,
         chunk_tx: mpsc::UnboundedSender<String>,
+        tool_tx: Option<mpsc::UnboundedSender<String>>,
         hint: Option<&str>,
         session_key: Option<&str>,
     ) -> Result<AgentResult, AgentError> {
-        self.run_inner(task, approver, platform, Some(chunk_tx), hint, session_key)
+        self.run_inner(task, approver, platform, Some(chunk_tx), tool_tx, hint, session_key)
             .await
     }
 
@@ -448,6 +449,7 @@ impl Agent {
         approver: Arc<dyn garudust_core::tool::CommandApprover>,
         platform: &str,
         chunk_tx: Option<mpsc::UnboundedSender<String>>,
+        tool_tx: Option<mpsc::UnboundedSender<String>>,
         hint: Option<&str>,
         session_key: Option<&str>,
     ) -> Result<AgentResult, AgentError> {
@@ -876,9 +878,13 @@ impl Agent {
                     .collect();
                 let tools = self.tools.clone();
                 let ctx = ctx.clone();
+                let tool_tx = tool_tx.clone();
                 async move {
                     let mut results: Vec<(usize, Message)> = Vec::new();
                     for (orig_idx, name, args, id) in calls {
+                        if let Some(tx) = &tool_tx {
+                            let _ = tx.send(name.clone());
+                        }
                         debug!(tool = %name, "dispatching");
                         let res = if tool_timeout_secs > 0 && !tools.bypass_dispatch_timeout(&name)
                         {

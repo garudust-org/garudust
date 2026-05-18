@@ -80,11 +80,17 @@ pub async fn install(source: &str, name: &str, hub_repo: &str, skills_dir: &Path
     if is_short_name {
         println!("Installing skill '{source}' from hub {hub_repo}...");
         hub::install_skill_from_hub(hub_repo, source, skills_dir).await?;
-        println!("Installed skill '{source}'.");
+        println!(
+            "✓ Installed skill '{source}' → {}",
+            skills_dir.join(format!("{source}.md")).display()
+        );
     } else {
         println!("Installing skill from '{source}'...");
         let installed_name = skill_hub::install_skill(source, name, skills_dir).await?;
-        println!("Installed skill '{installed_name}'.");
+        println!(
+            "✓ Installed skill '{installed_name}' → {}",
+            skills_dir.join(format!("{installed_name}.md")).display()
+        );
     }
     Ok(())
 }

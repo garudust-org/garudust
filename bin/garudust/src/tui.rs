@@ -23,6 +23,7 @@ use tokio::sync::mpsc;
 pub enum AgentEvent {
     OutputChunk(String),
     Thinking,
+    ToolCall(String),
     Done {
         iterations: u32,
         input_tokens: u32,
@@ -347,6 +348,9 @@ impl Tui {
                 self.streaming = false;
                 self.thinking_since = Some(std::time::Instant::now());
                 self.status = "Thinking…".into();
+            }
+            AgentEvent::ToolCall(name) => {
+                self.status = format!("▸ {name}");
             }
             AgentEvent::Done {
                 iterations,

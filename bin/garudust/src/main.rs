@@ -5,14 +5,16 @@ mod skill_cmd;
 mod tool_cmd;
 mod tui;
 
+use std::io::Write as _;
 use std::sync::Arc;
+use std::time::Instant;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use garudust_agent::{Agent, AutoApprover};
 use garudust_core::config::AgentConfig;
 use garudust_core::config::McpServerConfig;
-use garudust_core::pricing::usage_footer;
+use garudust_core::pricing::estimate_cost_usd;
 use garudust_memory::{DocStore, FileMemoryStore, SessionDb};
 use garudust_tools::{
     load_script_tools, register_standard_tools, security::docker_available,
@@ -355,25 +357,67 @@ async fn main() -> Result<()> {
     let (agent, mcp_handles) = build_agent(config.clone()).await;
 
     if let Some(task) = &cli.task {
-        // ── One-shot mode ─────────────────────────────────────────────────────
-        // Keep handles alive for the duration of the run; drop at block exit.
+        // ── One-shot mode (streaming) ─────────────────────────────────────────
         let _handles = mcp_handles;
         let approver = Arc::new(AutoApprover);
+
+        // Print routing hint before running.
+        if let Some(hint) = &cli.hint {
+            let target = config.routing.get(hint.as_str()).map(String::as_str).unwrap_or("—");
+            eprintln!("\x1b[2m  ▸ routing: {hint} → {target}\x1b[0m");
+        }
+        eprint!("\x1b[2mthinking...\x1b[0m");
+        std::io::stderr().flush().ok();
+
+        let (chunk_tx, mut chunk_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+        let (tool_tx, mut tool_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+
+        // Forward tool names to stderr as "  ▸ name".
+        tokio::spawn(async move {
+            while let Some(name) = tool_rx.recv().await {
+                eprint!("\r\x1b[K\x1b[2m  ▸ {name}\x1b[0m\n");
+                std::io::stderr().flush().ok();
+            }
+        });
+
+        // Forward text chunks to stdout.
+        let print_task = tokio::spawn(async move {
+            let mut started = false;
+            while let Some(chunk) = chunk_rx.recv().await {
+                if !started {
+                    // Clear the "thinking..." line before first text output.
+                    eprint!("\r\x1b[K");
+                    std::io::stderr().flush().ok();
+                    started = true;
+                }
+                print!("{chunk}");
+                std::io::stdout().flush().ok();
+            }
+        });
+
+        let started_at = Instant::now();
         let result = agent
-            .run(task, approver, "cli", cli.hint.as_deref(), None)
+            .run_streaming(task, approver, "cli", chunk_tx, Some(tool_tx), cli.hint.as_deref(), None)
             .await?;
-        println!("{}", result.output);
-        // show_usage_footer embeds the footer inside result.output already;
-        // only print to stderr when it was not already shown in stdout.
+        print_task.await.ok();
+
+        // Newline after streamed output.
+        println!();
+
         if !config.show_usage_footer {
+            let elapsed = started_at.elapsed().as_secs_f32();
+            let input_tokens = result.usage.input_tokens;
+            let output_tokens = result.usage.output_tokens;
+            let cost_part = estimate_cost_usd(&config.model, input_tokens, output_tokens)
+                .map(|c| format!(" | ~${c:.3}"))
+                .unwrap_or_default();
+            // Show effective model when a routing hint was used.
+            let model_suffix = cli.hint.as_deref()
+                .and_then(|h| config.routing.get(h))
+                .map(|m| format!(" · {m}"))
+                .unwrap_or_default();
             eprintln!(
-                "{}",
-                usage_footer(
-                    &config.model,
-                    result.iterations,
-                    result.usage.input_tokens,
-                    result.usage.output_tokens
-                )
+                "\x1b[2mtokens: {input_tokens} in / {output_tokens} out · {elapsed:.1}s{cost_part}{model_suffix}\x1b[0m"
             );
         }
     } else {
@@ -428,10 +472,17 @@ async fn main() -> Result<()> {
                         let current_agent = shared_agent.read().await.clone();
 
                         let (chunk_tx, mut chunk_rx) = mpsc::unbounded_channel::<String>();
+                        let (tool_tx, mut tool_rx) = mpsc::unbounded_channel::<String>();
                         let tx_agent3 = tx_agent2.clone();
+                        let tx_agent4 = tx_agent2.clone();
                         tokio::spawn(async move {
                             while let Some(delta) = chunk_rx.recv().await {
                                 let _ = tx_agent3.send(AgentEvent::OutputChunk(delta)).await;
+                            }
+                        });
+                        tokio::spawn(async move {
+                            while let Some(name) = tool_rx.recv().await {
+                                let _ = tx_agent4.send(AgentEvent::ToolCall(name)).await;
                             }
                         });
 
@@ -441,6 +492,7 @@ async fn main() -> Result<()> {
                                 approver2.clone(),
                                 "cli",
                                 chunk_tx,
+                                Some(tool_tx),
                                 None,
                                 Some("cli:tui"),
                             )

@@ -151,6 +151,7 @@ async fn chat_stream(
                 approver,
                 "http-sse",
                 chunk_tx,
+                None,
                 req.hint.as_deref(),
                 req.session_key.as_deref(),
             )
@@ -198,6 +199,7 @@ async fn handle_ws(mut socket: WebSocket, state: AppState) {
                 approver2,
                 "ws",
                 chunk_tx,
+                None,
                 ws_hint.as_deref(),
                 ws_session_key.as_deref(),
             )

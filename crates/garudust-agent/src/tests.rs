@@ -158,6 +158,7 @@ async fn run_streaming_emits_chunks() {
             tx,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
