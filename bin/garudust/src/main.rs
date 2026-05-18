@@ -363,7 +363,10 @@ async fn main() -> Result<()> {
 
         // Print routing hint before running.
         if let Some(hint) = &cli.hint {
-            let target = config.routing.get(hint.as_str()).map(String::as_str).unwrap_or("—");
+            let target = config
+                .routing
+                .get(hint.as_str())
+                .map_or("—", String::as_str);
             eprintln!("\x1b[2m  ▸ routing: {hint} → {target}\x1b[0m");
         }
         eprint!("\x1b[2mthinking...\x1b[0m");
@@ -397,7 +400,15 @@ async fn main() -> Result<()> {
 
         let started_at = Instant::now();
         let result = agent
-            .run_streaming(task, approver, "cli", chunk_tx, Some(tool_tx), cli.hint.as_deref(), None)
+            .run_streaming(
+                task,
+                approver,
+                "cli",
+                chunk_tx,
+                Some(tool_tx),
+                cli.hint.as_deref(),
+                None,
+            )
             .await?;
         print_task.await.ok();
 
@@ -412,7 +423,9 @@ async fn main() -> Result<()> {
                 .map(|c| format!(" | ~${c:.3}"))
                 .unwrap_or_default();
             // Show effective model when a routing hint was used.
-            let model_suffix = cli.hint.as_deref()
+            let model_suffix = cli
+                .hint
+                .as_deref()
                 .and_then(|h| config.routing.get(h))
                 .map(|m| format!(" · {m}"))
                 .unwrap_or_default();

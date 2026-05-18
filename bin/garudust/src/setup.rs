@@ -94,7 +94,9 @@ pub async fn run() -> anyhow::Result<()> {
     // ── Mode ──────────────────────────────────────────────────────────────────
     println!("{C_BOLD}{C_YELLOW}Setup mode:{C_RESET}");
     println!("  {C_CYAN}1){C_RESET}  Quick {C_DIM}— provider + model only{C_RESET}");
-    println!("  {C_CYAN}2){C_RESET}  Full  {C_DIM}— provider, model, and platform adapters{C_RESET}");
+    println!(
+        "  {C_CYAN}2){C_RESET}  Full  {C_DIM}— provider, model, and platform adapters{C_RESET}"
+    );
     let mode = prompt("Choose mode", Some("1"));
     let full = matches!(mode.trim(), "2" | "full");
     println!();

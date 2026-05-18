@@ -439,8 +439,16 @@ impl Agent {
         hint: Option<&str>,
         session_key: Option<&str>,
     ) -> Result<AgentResult, AgentError> {
-        self.run_inner(task, approver, platform, Some(chunk_tx), tool_tx, hint, session_key)
-            .await
+        self.run_inner(
+            task,
+            approver,
+            platform,
+            Some(chunk_tx),
+            tool_tx,
+            hint,
+            session_key,
+        )
+        .await
     }
 
     async fn run_inner(
