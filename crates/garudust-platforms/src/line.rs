@@ -1,4 +1,5 @@
-use std::path::PathBuf;
+use std::fmt::Write as _;
+use std::path::Path;
 use std::pin::Pin;
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
@@ -151,14 +152,13 @@ struct Inner {
 impl Inner {
     /// Record the resolved bot userId into the in-memory `OnceLock` and, on
     /// first set, persist it to state.db so future restarts skip the network.
-    fn remember_bot_id(&self, user_id: String) {
-        if self.bot_self_user_id.set(user_id.clone()).is_ok() {
+    fn remember_bot_id(&self, user_id: &str) {
+        if self.bot_self_user_id.set(user_id.to_owned()).is_ok() {
             if let Some(store) = &self.bot_id_store {
-                match store.put(&self.token_hash, &user_id) {
-                    Ok(()) => tracing::debug!("LINE: bot userId persisted to state.db"),
-                    Err(e) => {
-                        tracing::warn!(error = %e, "LINE: failed to persist bot userId cache")
-                    }
+                if let Err(e) = store.put(&self.token_hash, user_id) {
+                    tracing::warn!(error = %e, "LINE: failed to persist bot userId cache");
+                } else {
+                    tracing::debug!("LINE: bot userId persisted to state.db");
                 }
             }
         }
@@ -187,7 +187,7 @@ impl Inner {
         *gate = Some(Instant::now());
         if let Some(uid) = fetch_bot_info(&self.client, &self.channel_token).await {
             tracing::info!("LINE: bot self userId fetched lazily — mention detection active");
-            self.remember_bot_id(uid);
+            self.remember_bot_id(&uid);
         }
     }
 }
@@ -201,13 +201,14 @@ async fn fetch_bot_info(client: &reqwest::Client, token: &str) -> Option<String>
         .send()
         .await
     {
-        Ok(resp) if resp.status().is_success() => match resp.json::<BotInfoResp>().await {
-            Ok(info) => Some(info.user_id),
-            Err(_) => {
+        Ok(resp) if resp.status().is_success() => {
+            if let Ok(info) = resp.json::<BotInfoResp>().await {
+                Some(info.user_id)
+            } else {
                 tracing::warn!("LINE: /bot/info response did not parse");
                 None
             }
-        },
+        }
         Ok(resp) => {
             tracing::warn!(status = %resp.status(), "LINE: /bot/info returned non-success");
             None
@@ -596,13 +597,16 @@ impl LineAdapter {
         channel_secret: String,
         port: u16,
         webhook_path: String,
-        home_dir: PathBuf,
+        home_dir: &Path,
     ) -> Self {
-        let token_hash = Sha256::digest(channel_token.as_bytes())
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect::<String>();
-        let bot_id_store = match BotIdentityStore::open(&home_dir) {
+        let token_hash =
+            Sha256::digest(channel_token.as_bytes())
+                .iter()
+                .fold(String::new(), |mut acc, b| {
+                    let _ = write!(acc, "{b:02x}");
+                    acc
+                });
+        let bot_id_store = match BotIdentityStore::open(home_dir) {
             Ok(s) => Some(s),
             Err(e) => {
                 tracing::warn!(
@@ -731,10 +735,8 @@ impl PlatformAdapter for LineAdapter {
                 let mut delay = Duration::from_secs(1);
                 for attempt in 1..=BOT_INFO_RETRIES {
                     if let Some(uid) = fetch_bot_info(&inner.client, &inner.channel_token).await {
-                        tracing::info!(
-                            "LINE: bot self userId fetched — mention detection active"
-                        );
-                        inner.remember_bot_id(uid);
+                        tracing::info!("LINE: bot self userId fetched — mention detection active");
+                        inner.remember_bot_id(&uid);
                         return;
                     }
                     if attempt < BOT_INFO_RETRIES {

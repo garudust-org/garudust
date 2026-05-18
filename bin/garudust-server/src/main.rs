@@ -543,7 +543,7 @@ async fn main() -> Result<()> {
                 secret,
                 cfg.port,
                 cfg.webhook_path.clone(),
-                config.home_dir.clone(),
+                &config.home_dir,
             ));
             start_platform(
                 platform,
