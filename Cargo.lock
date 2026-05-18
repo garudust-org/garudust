@@ -1148,9 +1148,9 @@ dependencies = [
 
 [[package]]
 name = "dashmap"
-version = "6.1.0"
+version = "6.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5041cc499144891f3790297212f32a74fb938e5136a14943f338ef9e0ae276cf"
+checksum = "e6361d5c062261c78a176addb82d4c821ae42bed6089de0e12603cd25de2059c"
 dependencies = [
  "cfg-if",
  "crossbeam-utils",
@@ -1827,7 +1827,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
- "dashmap 6.1.0",
+ "dashmap 6.2.1",
  "futures",
  "garudust-core",
  "garudust-memory",
@@ -1888,7 +1888,7 @@ dependencies = [
  "async-trait",
  "axum",
  "chrono",
- "dashmap 6.1.0",
+ "dashmap 6.2.1",
  "futures",
  "garudust-agent",
  "garudust-core",
@@ -1937,7 +1937,7 @@ dependencies = [
  "async-trait",
  "axum",
  "base64",
- "dashmap 6.1.0",
+ "dashmap 6.2.1",
  "futures",
  "garudust-agent",
  "garudust-core",
@@ -2114,7 +2114,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9efcab3c1958580ff1f25a2a41be1668f7603d849bb63af523b208a3cc1223b8"
 dependencies = [
  "cfg-if",
- "dashmap 6.1.0",
+ "dashmap 6.2.1",
  "futures-sink",
  "futures-timer",
  "futures-util",
