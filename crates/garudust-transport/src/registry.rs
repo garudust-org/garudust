@@ -51,9 +51,10 @@ fn build_base_transport(
         _ => {
             let builtin = BUILTIN_PROVIDERS.iter().find(|p| p.name == provider);
             let url = base_url.unwrap_or_else(|| {
-                builtin
-                    .map(|p| p.base_url.to_string())
-                    .unwrap_or_else(|| "https://openrouter.ai/api/v1".into())
+                builtin.map_or_else(
+                    || "https://openrouter.ai/api/v1".into(),
+                    |p| p.base_url.to_string(),
+                )
             });
             let tokens_param = builtin.map_or("max_completion_tokens", |p| p.tokens_param);
             Arc::new(ChatCompletionsTransport::new(url, api_key).with_tokens_param(tokens_param))
@@ -92,9 +93,10 @@ fn build_from_profile(profile: &ProviderProfile) -> Arc<dyn ProviderTransport> {
     let builtin: Option<&BuiltinProvider> =
         BUILTIN_PROVIDERS.iter().find(|p| p.name == provider_name);
     let url = profile.url.clone().unwrap_or_else(|| {
-        builtin
-            .map(|p| p.base_url.to_string())
-            .unwrap_or_else(|| "https://openrouter.ai/api/v1".into())
+        builtin.map_or_else(
+            || "https://openrouter.ai/api/v1".into(),
+            |p| p.base_url.to_string(),
+        )
     });
     let tokens_param = builtin.map_or("max_completion_tokens", |p| p.tokens_param);
     Arc::new(ChatCompletionsTransport::new(url, key).with_tokens_param(tokens_param))
@@ -111,9 +113,9 @@ fn build_from_profile(profile: &ProviderProfile) -> Arc<dyn ProviderTransport> {
 /// 2. Built-in provider name (anthropic, groq, openai, …).
 ///
 /// Returns `None` when the prefix is not a known profile or provider.
-pub fn resolve_hint(
+pub fn resolve_hint<S: std::hash::BuildHasher>(
     target: &str,
-    profiles: &HashMap<String, ProviderProfile>,
+    profiles: &HashMap<String, ProviderProfile, S>,
 ) -> Option<(Arc<dyn ProviderTransport>, String)> {
     let (prefix, model) = target.split_once('/')?;
 
@@ -148,9 +150,9 @@ pub fn resolve_hint(
 /// to `(base_url, api_key, model)` so the subprocess can be given explicit env vars.
 ///
 /// Returns `None` when the prefix is unrecognised.
-pub fn resolve_to_env_vars(
+pub fn resolve_to_env_vars<S: std::hash::BuildHasher>(
     target: &str,
-    profiles: &HashMap<String, ProviderProfile>,
+    profiles: &HashMap<String, ProviderProfile, S>,
 ) -> Option<(String, String, String)> {
     let (prefix, model) = target.split_once('/')?;
 

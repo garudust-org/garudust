@@ -1446,12 +1446,12 @@ mod tests {
 
     #[test]
     fn providers_default_overrides_provider_and_model() {
-        let yaml = r#"
+        let yaml = "
 providers:
   default:
     name: groq
     model: llama-3.3-70b-versatile
-"#;
+";
         let mut cfg: AgentConfig = serde_yaml::from_str(yaml).unwrap();
         // Simulate the load() post-processing step.
         if let Some(default_profile) = cfg.providers.get("default") {
