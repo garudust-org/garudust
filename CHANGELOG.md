@@ -7,6 +7,29 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.7.0] — 2026-05-18
+
+### Added
+- **Named Provider Profile system** — `providers:` map in `config.yaml` replaces the flat `provider:` / `model:` fields; `providers.default` sets the primary LLM, additional named profiles (e.g. `vision`, `groq-fast`) are used for routing and per-tool overrides
+- **11 new LLM provider integrations** — Together AI, Fireworks AI, Cerebras, Perplexity, Cohere, NVIDIA NIM, Alibaba DashScope, ByteDance Doubao, Zhipu AI (GLM), Moonshot (Kimi), Baidu ERNIE — total 24 providers
+- **`GARUDUST_FALLBACK_BASE_URL` / `GARUDUST_FALLBACK_API_KEY`** — fallback model now fully resolved through the profile system; script tool subprocesses receive all 6 `GARUDUST_*` env vars (primary + fallback)
+- **Post-install env key warning** — `garudust tool install` now checks `env_required` from `tool.yaml` against `~/.garudust/.env` and prints `garudust config set <KEY> <value>` hints for any missing secrets
+- **`garudust config set tools.<name>.model`** — per-tool model override is now writable via CLI (previously documented but not implemented)
+- **Dynamic secret detection** — `garudust config set` routes any `*_API_KEY`, `*_TOKEN`, `*_SECRET`, `*_PASSWORD` key to `~/.garudust/.env` automatically without needing a hardcoded allowlist
+- Architecture section added to all 3 READMEs (EN / TH / ZH) — ASCII flow diagram + subsystem descriptions
+
+### Changed
+- Setup wizard rewritten — all providers now configured via the profile system; custom OpenAI-compatible endpoints supported in setup flow
+- `providers.default` profile resolution applied in `garudust doctor` and `garudust config show` output
+- `config.yaml.example` updated to document all fields including `providers:`, `routing:`, and per-tool model injection env vars
+
+### Fixed
+- `fallback_model` was forwarded as a raw string to script subprocesses; it is now resolved through `resolve_to_env_vars`, setting `GARUDUST_FALLBACK_BASE_URL` and `GARUDUST_FALLBACK_API_KEY` correctly
+- `garudust config set <DYNAMIC_KEY>` failed for keys not in the hardcoded `SECRET_KEYS` list (e.g. `GOOGLE_AI_API_KEY`); fixed with pattern-based detection
+- `garudust config set tools.<name>.model` printed a hint but did not persist the value; fixed with `update_yaml_tool_model`
+
+---
+
 ## [0.6.0] — 2026-05-17
 
 ### Added
