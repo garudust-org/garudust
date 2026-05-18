@@ -3,7 +3,7 @@ use std::path::Path;
 
 use crossterm::{
     cursor,
-    event::{self, Event, KeyCode, KeyEvent},
+    event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
     execute, queue,
     style::{Attribute, Print, SetAttribute},
     terminal::{self, ClearType},
@@ -616,6 +616,49 @@ fn mask_secret(s: &str) -> String {
     format!("{prefix}••••{suffix}")
 }
 
+/// Read a secret from stdin with masking — each character is displayed as `●`.
+/// Backspace erases the last character. Enter confirms. Ctrl+C aborts.
+fn read_secret() -> anyhow::Result<String> {
+    let mut buf = String::new();
+    let mut stdout = io::stdout();
+
+    terminal::enable_raw_mode()?;
+    loop {
+        if let Event::Key(KeyEvent {
+            code, modifiers, ..
+        }) = event::read()?
+        {
+            match code {
+                KeyCode::Enter => break,
+                KeyCode::Char('c') if modifiers.contains(KeyModifiers::CONTROL) => {
+                    terminal::disable_raw_mode()?;
+                    writeln!(stdout)?;
+                    return Err(anyhow::anyhow!("interrupted"));
+                }
+                KeyCode::Backspace => {
+                    if buf.pop().is_some() {
+                        queue!(
+                            stdout,
+                            cursor::MoveLeft(1),
+                            terminal::Clear(ClearType::UntilNewLine)
+                        )?;
+                        stdout.flush()?;
+                    }
+                }
+                KeyCode::Char(c) => {
+                    buf.push(c);
+                    queue!(stdout, Print("●"))?;
+                    stdout.flush()?;
+                }
+                _ => {}
+            }
+        }
+    }
+    terminal::disable_raw_mode()?;
+    writeln!(stdout)?;
+    Ok(buf)
+}
+
 /// Prompt for a potentially-sensitive value, with one-time format validation.
 /// Shows `[current: ••••]` when an existing value is present.
 /// Returns `None` (keep existing) if the user presses Enter with no input.
@@ -623,12 +666,6 @@ fn mask_secret(s: &str) -> String {
 /// On a format mismatch: warns inline and re-prompts once; accepts whatever the
 /// user enters on the second attempt so valid non-standard tokens still work.
 fn prompt_secret(var: &str, label: &str, existing: Option<&str>) -> anyhow::Result<Option<String>> {
-    let read_line = || -> anyhow::Result<String> {
-        let mut buf = String::new();
-        io::stdin().read_line(&mut buf)?;
-        Ok(buf.trim().to_string())
-    };
-
     if let Some(cur) = existing {
         print!("  {label} [current: {}]: ", mask_secret(cur));
     } else {
@@ -636,7 +673,7 @@ fn prompt_secret(var: &str, label: &str, existing: Option<&str>) -> anyhow::Resu
     }
     io::stdout().flush()?;
 
-    let first = read_line()?;
+    let first = read_secret()?;
     if first.is_empty() {
         return Ok(None);
     }
@@ -645,7 +682,7 @@ fn prompt_secret(var: &str, label: &str, existing: Option<&str>) -> anyhow::Resu
         println!("  ✗ {hint}");
         print!("  {label} (press Enter to use as-is): ");
         io::stdout().flush()?;
-        let second = read_line()?;
+        let second = read_secret()?;
         return Ok(Some(if second.is_empty() { first } else { second }));
     }
 
