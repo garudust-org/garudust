@@ -7,6 +7,17 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.7.1] — 2026-05-18
+
+### Fixed
+- **Streaming one-shot CLI** — `garudust <task>` now streams output token-by-token instead of waiting for the full response; prints `thinking...` while the model works and clears it on first token
+- **Tool call display** — tool invocations appear as `▸ tool_name` on stderr during both CLI one-shot and TUI sessions
+- **TUI tool-call status bar** — new `ToolCall(String)` event type updates the status line while tools are running
+- **Routing hint display** — CLI one-shot prints `▸ routing: <hint> → <model>` before the request when `--hint` is used
+- **Skill install message** — `garudust skill install` now shows `✓ Installed skill '<name>' → <path>` instead of a bare confirmation
+- **Setup banner** — `garudust setup` now shows an ASCII logo and a colour-coded provider menu
+- **Style/lint** — fixed `clippy::map_unwrap_or` and `rustfmt` line-length warnings that caused CI failures
+
 ## [0.7.0] — 2026-05-18
 
 ### Added
