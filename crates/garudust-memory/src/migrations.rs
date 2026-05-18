@@ -1,6 +1,6 @@
 use rusqlite::Connection;
 
-pub const SCHEMA_VERSION: u32 = 2;
+pub const SCHEMA_VERSION: u32 = 3;
 
 pub fn run(conn: &Connection) -> rusqlite::Result<()> {
     // Bootstrap: base tables and schema_meta (all idempotent).
@@ -53,6 +53,10 @@ pub fn run(conn: &Connection) -> rusqlite::Result<()> {
         migrate_to_v2(conn, version)?;
     }
 
+    if version < 3 {
+        migrate_to_v3(conn)?;
+    }
+
     Ok(())
 }
 
@@ -101,4 +105,22 @@ fn migrate_to_v2(conn: &Connection, prev_version: u32) -> rusqlite::Result<()> {
     }
 
     Ok(())
+}
+
+/// Migration to v3: add pending_tasks table for crash-recovery of in-flight agent runs.
+fn migrate_to_v3(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute_batch(
+        "
+        CREATE TABLE IF NOT EXISTS pending_tasks (
+            id          TEXT PRIMARY KEY,
+            session_key TEXT NOT NULL,
+            platform    TEXT NOT NULL,
+            chat_id     TEXT NOT NULL,
+            task        TEXT NOT NULL,
+            hint        TEXT,
+            created_at  REAL NOT NULL
+        );
+        UPDATE schema_meta SET version = 3;
+    ",
+    )
 }

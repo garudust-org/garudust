@@ -22,6 +22,17 @@ fn enable_wal_or_fallback(conn: &Connection) {
     }
 }
 
+/// A task that was in-flight when the server last shut down unexpectedly.
+/// Returned by [`SessionDb::drain_tasks`] on startup so the gateway can replay it.
+pub struct PendingTask {
+    pub id: String,
+    pub session_key: String,
+    pub platform: String,
+    pub chat_id: String,
+    pub task: String,
+    pub hint: Option<String>,
+}
+
 pub struct SessionDb {
     conn: Arc<Mutex<Connection>>,
 }
@@ -88,6 +99,69 @@ impl SessionDb {
         }
         tx.commit()?;
         Ok(())
+    }
+
+    /// Record a task as in-flight before spawning the agent run.
+    /// Call [`finish_task`] when the run completes (success or error).
+    pub fn begin_task(
+        &self,
+        id: &str,
+        session_key: &str,
+        platform: &str,
+        chat_id: &str,
+        task: &str,
+        hint: Option<&str>,
+    ) -> anyhow::Result<()> {
+        #[allow(clippy::cast_precision_loss)]
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as f64
+            / 1000.0;
+        self.conn.lock().unwrap().execute(
+            "INSERT OR IGNORE INTO pending_tasks \
+             (id, session_key, platform, chat_id, task, hint, created_at) \
+             VALUES (?1,?2,?3,?4,?5,?6,?7)",
+            params![id, session_key, platform, chat_id, task, hint, now],
+        )?;
+        Ok(())
+    }
+
+    /// Remove a pending task — call after the agent run finishes (whether success or error).
+    pub fn finish_task(&self, id: &str) -> anyhow::Result<()> {
+        self.conn
+            .lock()
+            .unwrap()
+            .execute("DELETE FROM pending_tasks WHERE id=?1", [id])?;
+        Ok(())
+    }
+
+    /// Return and delete all pending tasks for `platform`.
+    /// Called on startup to replay tasks that were interrupted by a crash/restart.
+    pub fn drain_tasks(&self, platform: &str) -> anyhow::Result<Vec<PendingTask>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, session_key, platform, chat_id, task, hint \
+             FROM pending_tasks WHERE platform=?1 ORDER BY created_at",
+        )?;
+        let tasks: Vec<PendingTask> = stmt
+            .query_map([platform], |row| {
+                Ok(PendingTask {
+                    id: row.get(0)?,
+                    session_key: row.get(1)?,
+                    platform: row.get(2)?,
+                    chat_id: row.get(3)?,
+                    task: row.get(4)?,
+                    hint: row.get(5)?,
+                })
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+        drop(stmt);
+        if !tasks.is_empty() {
+            conn.execute("DELETE FROM pending_tasks WHERE platform=?1", [platform])?;
+        }
+        Ok(tasks)
     }
 
     pub fn search(&self, query: &str, limit: usize) -> anyhow::Result<Vec<String>> {

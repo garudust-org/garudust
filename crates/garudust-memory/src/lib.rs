@@ -33,4 +33,4 @@ pub mod session_db;
 pub use bot_identity::BotIdentityStore;
 pub use doc_store::DocStore;
 pub use file_store::FileMemoryStore;
-pub use session_db::SessionDb;
+pub use session_db::{PendingTask, SessionDb};

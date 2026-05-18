@@ -7,8 +7,9 @@ use garudust_core::{
     config::AgentConfig,
     platform::{MessageHandler, PlatformAdapter},
     tool::CommandApprover,
-    types::{DocAttachment, ImageAttachment, InboundMessage, OutboundMessage},
+    types::{ChannelId, DocAttachment, ImageAttachment, InboundMessage, OutboundMessage},
 };
+use garudust_memory::SessionDb;
 
 use tokio::sync::Mutex;
 
@@ -21,6 +22,7 @@ pub struct GatewayHandler {
     sessions: Arc<SessionRegistry>,
     approver: Arc<dyn CommandApprover>,
     config: Arc<AgentConfig>,
+    session_db: Option<Arc<SessionDb>>,
     /// Files awaiting RAG ingest confirmation, keyed by session_key.
     /// Populated when a doc-only message arrives; consumed on the next text turn.
     pending_docs: Arc<DashMap<String, Vec<DocAttachment>>>,
@@ -40,6 +42,7 @@ impl GatewayHandler {
         sessions: Arc<SessionRegistry>,
         approver: Arc<dyn CommandApprover>,
         config: Arc<AgentConfig>,
+        session_db: Option<Arc<SessionDb>>,
     ) -> Self {
         Self {
             agent,
@@ -47,8 +50,71 @@ impl GatewayHandler {
             sessions,
             approver,
             config,
+            session_db,
             pending_docs: Arc::new(DashMap::new()),
             image_gates: Arc::new(DashMap::new()),
+        }
+    }
+
+    /// On startup, re-run any agent tasks that were interrupted by a server crash or restart.
+    /// Tasks are stored in SQLite before the agent run begins and deleted on completion.
+    pub async fn resume_pending(&self) {
+        let db = match &self.session_db {
+            Some(db) => db.clone(),
+            None => return,
+        };
+        let platform_name = self.platform.name().to_string();
+        let tasks = match db.drain_tasks(&platform_name) {
+            Ok(t) => t,
+            Err(e) => {
+                tracing::warn!(platform = %platform_name, "drain_tasks failed: {e}");
+                return;
+            }
+        };
+        if tasks.is_empty() {
+            return;
+        }
+        tracing::info!(
+            count = tasks.len(),
+            platform = %platform_name,
+            "resuming interrupted tasks after restart"
+        );
+        for pending in tasks {
+            let channel = ChannelId {
+                platform: pending.platform.clone(),
+                chat_id: pending.chat_id.clone(),
+                thread_id: None,
+            };
+            let agent = self.agent.clone();
+            let platform = self.platform.clone();
+            let approver = self.approver.clone();
+            let session_db = self.session_db.clone();
+            let task_id = pending.id.clone();
+            let session_key = pending.session_key.clone();
+            let task = pending.task.clone();
+            let hint = pending.hint.clone();
+            let pname = platform_name.clone();
+            tokio::spawn(async move {
+                match agent
+                    .run(&task, approver, &pname, hint.as_deref(), Some(&session_key))
+                    .await
+                {
+                    Ok(result) => {
+                        if let Some(db) = &session_db {
+                            let _ = db.finish_task(&task_id);
+                        }
+                        let _ = platform
+                            .send_message(&channel, OutboundMessage::markdown(result.output))
+                            .await;
+                    }
+                    Err(e) => {
+                        if let Some(db) = &session_db {
+                            let _ = db.finish_task(&task_id);
+                        }
+                        tracing::warn!(task_id = %task_id, "resumed task failed: {e}");
+                    }
+                }
+            });
         }
     }
 
@@ -441,18 +507,41 @@ impl MessageHandler for GatewayHandler {
 
         let task = msg.text.clone();
 
+        // Journal the task to SQLite before spawning — if the server crashes
+        // mid-run, `drain_tasks` on the next startup will replay it.
+        let task_id = uuid::Uuid::new_v4().to_string();
+        if let Some(db) = &self.session_db {
+            if let Err(e) = db.begin_task(
+                &task_id,
+                &session_key,
+                &platform_name,
+                &channel.chat_id,
+                &task,
+                None,
+            ) {
+                tracing::warn!(task_id = %task_id, "begin_task failed: {e}");
+            }
+        }
+        let session_db = self.session_db.clone();
+
         tokio::spawn(async move {
             match agent
                 .run(&task, approver, &platform_name, None, Some(&session_key))
                 .await
             {
                 Ok(result) => {
+                    if let Some(db) = &session_db {
+                        let _ = db.finish_task(&task_id);
+                    }
                     let reply = OutboundMessage::markdown(result.output);
                     if let Err(e) = platform.send_message(&channel, reply).await {
                         tracing::error!("send_message failed: {e}");
                     }
                 }
                 Err(e) => {
+                    if let Some(db) = &session_db {
+                        let _ = db.finish_task(&task_id);
+                    }
                     let reply = OutboundMessage::text(format!("Error: {e}"));
                     let _ = platform.send_message(&channel, reply).await;
                 }

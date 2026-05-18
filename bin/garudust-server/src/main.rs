@@ -242,6 +242,7 @@ async fn start_platform(
     sessions: Arc<SessionRegistry>,
     approver: Arc<dyn CommandApprover>,
     config: Arc<AgentConfig>,
+    db: Arc<SessionDb>,
 ) -> Result<()> {
     let name = platform.name();
     let handler = Arc::new(GatewayHandler::new(
@@ -250,7 +251,9 @@ async fn start_platform(
         sessions,
         approver,
         config,
+        Some(db),
     ));
+    handler.resume_pending().await;
     platform.start(handler).await?;
     tracing::info!("{name} adapter started");
     Ok(())
@@ -455,6 +458,7 @@ async fn main() -> Result<()> {
             sessions.clone(),
             approver.clone(),
             config.clone(),
+            db.clone(),
         )
         .await?;
     }
@@ -471,6 +475,7 @@ async fn main() -> Result<()> {
             sessions.clone(),
             approver.clone(),
             config.clone(),
+            db.clone(),
         )
         .await?;
     }
@@ -484,6 +489,7 @@ async fn main() -> Result<()> {
             sessions.clone(),
             approver.clone(),
             config.clone(),
+            db.clone(),
         )
         .await?;
     }
@@ -504,6 +510,7 @@ async fn main() -> Result<()> {
             sessions.clone(),
             approver.clone(),
             config.clone(),
+            db.clone(),
         )
         .await?;
     }
@@ -529,6 +536,7 @@ async fn main() -> Result<()> {
             sessions.clone(),
             approver.clone(),
             config.clone(),
+            db.clone(),
         )
         .await?;
     }
@@ -551,6 +559,7 @@ async fn main() -> Result<()> {
                 sessions.clone(),
                 approver.clone(),
                 config.clone(),
+                db.clone(),
             )
             .await?;
         } else {
@@ -580,6 +589,7 @@ async fn main() -> Result<()> {
                 sessions.clone(),
                 approver.clone(),
                 config.clone(),
+                db.clone(),
             )
             .await?;
         } else {
