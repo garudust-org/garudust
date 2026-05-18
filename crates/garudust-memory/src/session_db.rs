@@ -155,7 +155,7 @@ impl SessionDb {
                     hint: row.get(5)?,
                 })
             })?
-            .filter_map(|r| r.ok())
+            .filter_map(Result::ok)
             .collect();
         drop(stmt);
         if !tasks.is_empty() {
