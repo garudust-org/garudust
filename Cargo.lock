@@ -1941,6 +1941,7 @@ dependencies = [
  "futures",
  "garudust-agent",
  "garudust-core",
+ "garudust-memory",
  "hex",
  "hmac 0.13.0",
  "matrix-sdk",

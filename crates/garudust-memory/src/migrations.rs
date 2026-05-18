@@ -33,6 +33,15 @@ pub fn run(conn: &Connection) -> rusqlite::Result<()> {
             content    TEXT NOT NULL,
             created_at REAL NOT NULL
         );
+
+        -- Caches a chat platform bot's own immutable user id, keyed by a hash
+        -- of its channel token. Lets adapters skip a network round-trip (e.g.
+        -- LINE /v2/bot/info) on every restart; a token change yields a new
+        -- hash and triggers a one-time re-fetch.
+        CREATE TABLE IF NOT EXISTS line_bot_identity (
+            token_hash  TEXT PRIMARY KEY,
+            bot_user_id TEXT NOT NULL
+        );
     ",
     )?;
 
