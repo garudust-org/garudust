@@ -118,6 +118,59 @@ docker compose up -d                      # Docker
 
 ---
 
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  bin/garudust (CLI)            bin/garudust-server (Daemon)      │
+│  garudust [task] [--hint H]    garudust-server --port 3000       │
+└────────────────────┬───────────────────────────┬─────────────────┘
+                     │                           │
+                     ▼                           ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                    garudust-agent  (run-loop)                    │
+│                                                                  │
+│  1. Load memory.md + user_profile.md                            │
+│  2. Build system prompt — inject skills note                    │
+│  3. Resolve routing hint → transport + model                    │
+│                                                                  │
+│  LOOP (max_iterations = 90):                                     │
+│    a. LLM call (streaming) → text + tool_calls                  │
+│    b. Validate schema → check skill permissions → approval gate  │
+│    c. Execute tools (parallel where safe, with timeout)         │
+│    d. Wrap untrusted output → append results to history         │
+│    e. stop_reason == EndTurn → break                            │
+│                                                                  │
+│  4. Save conversation → ~/.garudust/conversations/{hash}.json   │
+│  5. Persist logs → SessionDb (SQLite)                           │
+└──────┬──────────────┬─────────────────┬────────────┬────────────┘
+       │              │                 │            │
+       ▼              ▼                 ▼            ▼
+┌────────────┐ ┌────────────┐ ┌──────────────┐ ┌────────────────┐
+│ garudust-  │ │ garudust-  │ │  garudust-   │ │ garudust-      │
+│ transport  │ │ tools      │ │  memory      │ │ platforms      │
+│            │ │            │ │              │ │                │
+│ 24 LLM     │ │ Built-in   │ │ memory.md    │ │ Telegram       │
+│ providers  │ │ Hub/Script │ │ user_profile │ │ Discord        │
+│ Named      │ │ MCP        │ │ sessions.db  │ │ Slack, Matrix  │
+│ profiles   │ │            │ │ docs.db(RAG) │ │ LINE, WhatsApp │
+│ Retry +    │ │            │ │              │ │ Webhook        │
+│ rotation   │ │            │ │              │ │                │
+└────────────┘ └────────────┘ └──────────────┘ └────────────────┘
+```
+
+**Transport** — `garudust-transport` resolves `providers.default` (or a named profile) to the right API client: native Anthropic SDK, OpenAI-compatible HTTP, Bedrock, or Ollama. Each client is wrapped with exponential-backoff retry and automatic credential rotation.
+
+**Tools** — three classes: *built-in* (files, terminal, browser, web, memory, git, rag, delegate, cron, notes), *hub/script* (downloaded to `~/.garudust/tools/`, any language), and *MCP* (any Model Context Protocol server). All share the same dispatch path: schema validation → permission check → approval gate → timeout execution.
+
+**Memory** — `FileMemoryStore` writes `memory.md` and `user_profile.md` (Markdown); `SessionDb` persists conversation history and tool-call logs to SQLite; `DocStore` provides FTS5 full-text search for RAG across indexed documents.
+
+**Skills** — Markdown instruction files (`~/.garudust/skills/*.md`) injected as a hint in the system prompt. `skill_view` loads a skill's full body and enforces its declared `required_tools` and `permissions` for that turn. Reusable skills are auto-generated after `auto_skill_threshold` iterations.
+
+**Routing** — `--hint <name>` maps to a `routing:` entry in `config.yaml` (`"profile/model"` or `"provider/model"`), swapping transport and model for a single task without changing the default configuration.
+
+---
+
 ## Configuration
 
 Secrets live in `~/.garudust/.env`. Everything else goes in `~/.garudust/config.yaml`. Run `garudust setup` to generate both interactively.

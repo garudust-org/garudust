@@ -118,6 +118,59 @@ docker compose up -d                         # Docker
 
 ---
 
+## 架构
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  bin/garudust (CLI)            bin/garudust-server (守护进程)    │
+│  garudust [task] [--hint H]    garudust-server --port 3000       │
+└────────────────────┬───────────────────────────┬─────────────────┘
+                     │                           │
+                     ▼                           ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                    garudust-agent  (运行循环)                    │
+│                                                                  │
+│  1. 加载 memory.md + user_profile.md                            │
+│  2. 构建 system prompt — 注入 skills 提示                       │
+│  3. 解析路由 hint → transport + model                           │
+│                                                                  │
+│  LOOP (max_iterations = 90):                                     │
+│    a. LLM 调用（流式）→ 获取 text + tool_calls                  │
+│    b. 验证 schema → 检查权限 → approval gate                    │
+│    c. 执行工具（安全时并行，含超时控制）                        │
+│    d. 包装不可信输出 → 追加结果到历史                          │
+│    e. stop_reason == EndTurn → 退出循环                         │
+│                                                                  │
+│  4. 保存对话 → ~/.garudust/conversations/{hash}.json            │
+│  5. 持久化日志 → SessionDb（SQLite）                            │
+└──────┬──────────────┬─────────────────┬────────────┬────────────┘
+       │              │                 │            │
+       ▼              ▼                 ▼            ▼
+┌────────────┐ ┌────────────┐ ┌──────────────┐ ┌────────────────┐
+│ garudust-  │ │ garudust-  │ │  garudust-   │ │ garudust-      │
+│ transport  │ │ tools      │ │  memory      │ │ platforms      │
+│            │ │            │ │              │ │                │
+│ 24 个 LLM  │ │ 内置工具   │ │ memory.md    │ │ Telegram       │
+│ 提供商     │ │ Hub/脚本   │ │ user_profile │ │ Discord        │
+│ 命名       │ │ MCP        │ │ sessions.db  │ │ Slack, Matrix  │
+│ profiles   │ │            │ │ docs.db(RAG) │ │ LINE, WhatsApp │
+│ 重试 +     │ │            │ │              │ │ Webhook        │
+│ 密钥轮换   │ │            │ │              │ │                │
+└────────────┘ └────────────┘ └──────────────┘ └────────────────┘
+```
+
+**Transport** — `garudust-transport` 将 `providers.default`（或命名 profile）解析为对应的 API 客户端：原生 Anthropic SDK、OpenAI 兼容 HTTP、Bedrock 或 Ollama。所有客户端均封装了指数退避重试和自动凭证轮换机制。
+
+**Tools** — 三种类型：*内置工具*（files、terminal、browser、web、memory、git、rag、delegate、cron、notes）、*hub/脚本工具*（下载至 `~/.garudust/tools/`，支持任意语言）和 *MCP*（任意 Model Context Protocol 服务器）。所有工具共享同一调度路径：schema 验证 → 权限检查 → approval gate → 超时执行。
+
+**Memory** — `FileMemoryStore` 将 `memory.md` 和 `user_profile.md` 写入磁盘（Markdown 格式）；`SessionDb` 将对话历史和工具调用日志持久化到 SQLite；`DocStore` 基于 FTS5 为 RAG 文档提供全文搜索能力。
+
+**Skills** — Markdown 指令文件（`~/.garudust/skills/*.md`），以提示的形式注入 system prompt。`skill_view` 加载技能的完整内容，并在当次对话中强制执行其声明的 `required_tools` 和 `permissions`。达到 `auto_skill_threshold` 次迭代后，可复用技能将被自动生成并写入磁盘。
+
+**Routing** — `--hint <name>` 映射到 `config.yaml` 的 `routing:` 条目（格式为 `"profile/model"` 或 `"provider/model"`），仅针对当前任务切换 transport 和 model，不影响默认配置。
+
+---
+
 ## 配置
 
 密钥存放在 `~/.garudust/.env`，其余配置放在 `~/.garudust/config.yaml`。运行 `garudust setup` 可交互式生成两个文件。

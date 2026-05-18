@@ -118,6 +118,59 @@ docker compose up -d                      # Docker
 
 ---
 
+## สถาปัตยกรรม
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  bin/garudust (CLI)            bin/garudust-server (Daemon)      │
+│  garudust [task] [--hint H]    garudust-server --port 3000       │
+└────────────────────┬───────────────────────────┬─────────────────┘
+                     │                           │
+                     ▼                           ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                    garudust-agent  (run-loop)                    │
+│                                                                  │
+│  1. โหลด memory.md + user_profile.md                            │
+│  2. สร้าง system prompt — แทรก skills note                      │
+│  3. Resolve routing hint → transport + model                    │
+│                                                                  │
+│  LOOP (max_iterations = 90):                                     │
+│    a. เรียก LLM (streaming) → ได้ text + tool_calls             │
+│    b. Validate schema → ตรวจ permission → approval gate         │
+│    c. Execute tools (parallel เมื่อปลอดภัย, มี timeout)         │
+│    d. ห่อ untrusted output → เพิ่มผลลัพธ์เข้า history          │
+│    e. stop_reason == EndTurn → หยุด loop                        │
+│                                                                  │
+│  4. บันทึกบทสนทนา → ~/.garudust/conversations/{hash}.json       │
+│  5. บันทึก log → SessionDb (SQLite)                             │
+└──────┬──────────────┬─────────────────┬────────────┬────────────┘
+       │              │                 │            │
+       ▼              ▼                 ▼            ▼
+┌────────────┐ ┌────────────┐ ┌──────────────┐ ┌────────────────┐
+│ garudust-  │ │ garudust-  │ │  garudust-   │ │ garudust-      │
+│ transport  │ │ tools      │ │  memory      │ │ platforms      │
+│            │ │            │ │              │ │                │
+│ 24 LLM     │ │ Built-in   │ │ memory.md    │ │ Telegram       │
+│ provider   │ │ Hub/Script │ │ user_profile │ │ Discord        │
+│ Named      │ │ MCP        │ │ sessions.db  │ │ Slack, Matrix  │
+│ profiles   │ │            │ │ docs.db(RAG) │ │ LINE, WhatsApp │
+│ Retry +    │ │            │ │              │ │ Webhook        │
+│ rotation   │ │            │ │              │ │                │
+└────────────┘ └────────────┘ └──────────────┘ └────────────────┘
+```
+
+**Transport** — `garudust-transport` resolve `providers.default` (หรือ named profile) ไปเป็น API client ที่เหมาะสม: native Anthropic SDK, OpenAI-compatible HTTP, Bedrock หรือ Ollama พร้อม retry แบบ exponential backoff และ credential rotation อัตโนมัติ
+
+**Tools** — 3 ประเภท: *built-in* (files, terminal, browser, web, memory, git, rag, delegate, cron, notes), *hub/script* (ดาวน์โหลดไปที่ `~/.garudust/tools/` ใช้ภาษาใดก็ได้) และ *MCP* (Model Context Protocol server ใดก็ได้) ทุกตัวผ่านเส้นทางเดียวกัน: validate schema → ตรวจ permission → approval gate → รันพร้อม timeout
+
+**Memory** — `FileMemoryStore` เขียน `memory.md` และ `user_profile.md` (Markdown); `SessionDb` บันทึกประวัติการสนทนาและ tool-call log ใน SQLite; `DocStore` ทำ FTS5 full-text search สำหรับ RAG
+
+**Skills** — ไฟล์ Markdown (`~/.garudust/skills/*.md`) แทรกเป็น hint ใน system prompt `skill_view` โหลดเนื้อหา skill ทั้งหมดและบังคับใช้ `required_tools` และ `permissions` ที่ประกาศไว้ในรอบนั้น skill ที่ใช้ซ้ำได้จะถูกสร้างอัตโนมัติหลัง `auto_skill_threshold` iterations
+
+**Routing** — `--hint <name>` map ไปยัง `routing:` entry ใน `config.yaml` (รูปแบบ `"profile/model"` หรือ `"provider/model"`) เปลี่ยน transport และ model เฉพาะ task นั้นโดยไม่กระทบ default
+
+---
+
 ## การตั้งค่า
 
 Secret เก็บใน `~/.garudust/.env` ส่วนการตั้งค่าอื่น ๆ อยู่ใน `~/.garudust/config.yaml` รัน `garudust setup` เพื่อสร้างทั้งสองไฟล์แบบ interactive
