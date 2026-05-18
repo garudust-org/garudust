@@ -8,7 +8,9 @@ use crossterm::{
     style::{Attribute, Print, SetAttribute},
     terminal::{self, ClearType},
 };
-use garudust_core::config::{AgentConfig, ProviderProfile, WebhookPlatformConfig};
+use garudust_core::config::{
+    AgentConfig, BuiltinProvider, ProviderProfile, WebhookPlatformConfig, BUILTIN_PROVIDERS,
+};
 
 const PLATFORMS: &[(&str, &[(&str, &str)])] = &[
     ("Telegram", &[("Telegram bot token", "TELEGRAM_TOKEN")]),
@@ -80,133 +82,185 @@ pub async fn run() -> anyhow::Result<()> {
     let ollama_detected = std::net::TcpStream::connect("127.0.0.1:11434").is_ok();
     let ollama_hint = if ollama_detected { " ✓ detected" } else { "" };
 
-    let current_num = if is_reconfigure {
-        match existing.provider.as_str() {
-            "openrouter" => "2",
-            "anthropic" => "3",
-            "vllm" => "4",
-            "thaillm" => "5",
-            "custom" => "6",
-            _ => "1",
-        }
-    } else {
-        "1"
+    // Infer current selection from providers.default, then legacy field.
+    let existing_provider = existing
+        .providers
+        .get("default")
+        .and_then(|p| p.name.as_deref())
+        .unwrap_or(existing.provider.as_str());
+    let current_choice = match existing_provider {
+        "anthropic" => "2",
+        "openrouter" => "3",
+        "groq" => "4",
+        "deepseek" => "5",
+        "gemini" => "6",
+        "openai" => "7",
+        _ => "1",
     };
 
     println!("LLM Provider:");
-    println!("  1) ollama      — local Ollama, no API key needed{ollama_hint}");
-    println!("  2) openrouter  — 200+ hosted models (openrouter.ai)");
-    println!("  3) anthropic   — Claude directly");
-    println!("  4) vllm        — self-hosted vLLM server");
-    println!("  5) thaillm     — ThaiLLM (NSTDA, thaillm.or.th)");
-    println!("  6) custom      — any OpenAI-compatible endpoint");
-    let choice = prompt("Choose provider", Some(current_num));
-    let provider = match choice.trim() {
-        "2" | "openrouter" => "openrouter",
-        "3" | "anthropic" => "anthropic",
-        "4" | "vllm" => "vllm",
-        "5" | "thaillm" => "thaillm",
-        "6" | "custom" => "custom",
-        _ => "ollama",
-    };
+    println!("  1) ollama      — local, no API key{ollama_hint}");
+    println!("  2) anthropic   — Claude (native API)");
+    println!("  3) openrouter  — 200+ hosted models");
+    println!("  4) groq        — fast inference");
+    println!("  5) deepseek    — DeepSeek");
+    println!("  6) gemini      — Google Gemini");
+    println!("  7) openai      — OpenAI GPT");
+    println!("  other          — type provider name  (mistral / xai / together / …)");
+    println!("  custom         — custom base URL");
+    let choice = prompt("Choose provider", Some(current_choice));
     println!();
 
-    // ── Credentials / endpoint ────────────────────────────────────────────────
-    // Remove legacy base-URL env vars — provider/base_url now live in config.yaml.
-    // Also clear stale entries for providers not selected so they can't override.
+    // Remove stale legacy env vars — provider/url now live in providers.default.
     for var in &["VLLM_BASE_URL", "OLLAMA_BASE_URL", "GARUDUST_MODEL"] {
         remove_env_var(&home_dir, var)?;
     }
 
-    let mut env_vars: Vec<(&'static str, String)> = Vec::new();
-    let mut custom_base_url: Option<String> = None;
+    let mut env_vars: Vec<(String, String)> = Vec::new();
 
-    match provider {
-        "anthropic" => {
+    // Collect (provider_name, api_key_env_var, custom_url) from the user's choice.
+    let (provider_name, api_key_env, custom_url): (String, String, Option<String>) = match choice
+        .trim()
+    {
+        "1" | "ollama" => {
+            let cur_url = existing
+                .providers
+                .get("default")
+                .and_then(|p| p.url.as_deref())
+                .or(existing.base_url.as_deref())
+                .unwrap_or("http://localhost:11434");
+            let url = prompt("Base URL (Ollama server)", Some(cur_url));
+            let url = if url.is_empty() {
+                cur_url.to_string()
+            } else {
+                url
+            };
+            ("ollama".into(), String::new(), Some(url))
+        }
+        "2" | "anthropic" => {
             let cur = read_env_file(&home_dir, "ANTHROPIC_API_KEY");
             if let Some(v) =
                 prompt_secret("ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY", cur.as_deref())?
             {
-                env_vars.push(("ANTHROPIC_API_KEY", v));
+                env_vars.push(("ANTHROPIC_API_KEY".into(), v));
             }
+            ("anthropic".into(), "ANTHROPIC_API_KEY".into(), None)
         }
-        "vllm" => {
-            let cur_url = existing
-                .base_url
-                .as_deref()
-                .unwrap_or("http://localhost:8000/v1");
-            let url = prompt("base_url (vLLM server)", Some(cur_url));
-            let url = if url.is_empty() {
-                cur_url.to_string()
-            } else {
-                url
-            };
-            custom_base_url = Some(url);
-
-            let cur_key = read_env_file(&home_dir, "VLLM_API_KEY");
-            if let Some(v) = prompt_secret(
-                "VLLM_API_KEY",
-                "VLLM_API_KEY (Enter to skip)",
-                cur_key.as_deref(),
-            )? {
-                env_vars.push(("VLLM_API_KEY", v));
-            }
-        }
-        "thaillm" => {
-            let cur = read_env_file(&home_dir, "THAILLM_API_KEY");
-            if let Some(v) = prompt_secret("THAILLM_API_KEY", "THAILLM_API_KEY", cur.as_deref())? {
-                env_vars.push(("THAILLM_API_KEY", v));
-            }
-        }
-        "ollama" => {
-            let cur_url = existing
-                .base_url
-                .as_deref()
-                .unwrap_or("http://localhost:11434");
-            let url = prompt("base_url (Ollama server)", Some(cur_url));
-            let url = if url.is_empty() {
-                cur_url.to_string()
-            } else {
-                url
-            };
-            custom_base_url = Some(url);
-        }
-        "custom" => {
-            let cur_url = existing.base_url.as_deref();
-            let url = prompt("Base URL (e.g. http://localhost:8000/v1)", cur_url);
-            if !url.is_empty() {
-                custom_base_url = Some(url);
-            } else if let Some(u) = existing.base_url.clone() {
-                custom_base_url = Some(u);
-            }
-            let cur_key = read_env_file(&home_dir, "OPENROUTER_API_KEY");
-            if let Some(v) = prompt_secret(
-                "OPENROUTER_API_KEY",
-                "API key (Enter to skip)",
-                cur_key.as_deref(),
-            )? {
-                env_vars.push(("OPENROUTER_API_KEY", v));
-            }
-        }
-        _ => {
+        "3" | "openrouter" => {
             let cur = read_env_file(&home_dir, "OPENROUTER_API_KEY");
             if let Some(v) =
                 prompt_secret("OPENROUTER_API_KEY", "OPENROUTER_API_KEY", cur.as_deref())?
             {
-                env_vars.push(("OPENROUTER_API_KEY", v));
+                env_vars.push(("OPENROUTER_API_KEY".into(), v));
             }
+            ("openrouter".into(), "OPENROUTER_API_KEY".into(), None)
         }
-    }
+        "4" | "groq" => {
+            let cur = read_env_file(&home_dir, "GROQ_API_KEY");
+            if let Some(v) = prompt_secret("GROQ_API_KEY", "GROQ_API_KEY", cur.as_deref())? {
+                env_vars.push(("GROQ_API_KEY".into(), v));
+            }
+            ("groq".into(), "GROQ_API_KEY".into(), None)
+        }
+        "5" | "deepseek" => {
+            let cur = read_env_file(&home_dir, "DEEPSEEK_API_KEY");
+            if let Some(v) = prompt_secret("DEEPSEEK_API_KEY", "DEEPSEEK_API_KEY", cur.as_deref())?
+            {
+                env_vars.push(("DEEPSEEK_API_KEY".into(), v));
+            }
+            ("deepseek".into(), "DEEPSEEK_API_KEY".into(), None)
+        }
+        "6" | "gemini" => {
+            let cur = read_env_file(&home_dir, "GEMINI_API_KEY");
+            if let Some(v) = prompt_secret("GEMINI_API_KEY", "GEMINI_API_KEY", cur.as_deref())? {
+                env_vars.push(("GEMINI_API_KEY".into(), v));
+            }
+            ("gemini".into(), "GEMINI_API_KEY".into(), None)
+        }
+        "7" | "openai" => {
+            let cur = read_env_file(&home_dir, "OPENAI_API_KEY");
+            if let Some(v) = prompt_secret("OPENAI_API_KEY", "OPENAI_API_KEY", cur.as_deref())? {
+                env_vars.push(("OPENAI_API_KEY".into(), v));
+            }
+            ("openai".into(), "OPENAI_API_KEY".into(), None)
+        }
+        "custom" => {
+            let cur_url = existing
+                .providers
+                .get("default")
+                .and_then(|p| p.url.as_deref())
+                .or(existing.base_url.as_deref());
+            let url = prompt("Base URL (e.g. http://localhost:8000/v1)", cur_url);
+            let url = if url.is_empty() {
+                cur_url.unwrap_or("").to_string()
+            } else {
+                url
+            };
+            let key_env = prompt("API key env var (e.g. MY_API_KEY, Enter to skip)", None);
+            if !key_env.is_empty() {
+                let cur = read_env_file(&home_dir, &key_env);
+                if let Some(v) = prompt_secret(&key_env, &key_env, cur.as_deref())? {
+                    env_vars.push((key_env.clone(), v));
+                }
+            }
+            let url = if url.is_empty() { None } else { Some(url) };
+            ("custom".into(), key_env, url)
+        }
+        other => {
+            // "other" → ask name; or user typed a provider name directly.
+            let name = if other == "other" {
+                prompt("Provider name (e.g. mistral, xai, together, thaillm)", None)
+            } else {
+                other.to_string()
+            };
+            let builtin: Option<&BuiltinProvider> =
+                BUILTIN_PROVIDERS.iter().find(|p| p.name == name.as_str());
+            let key_env = builtin
+                .map(|p| p.api_key_env.to_string())
+                .unwrap_or_default();
+            if !key_env.is_empty() {
+                let cur = read_env_file(&home_dir, &key_env);
+                if let Some(v) = prompt_secret(&key_env, &key_env, cur.as_deref())? {
+                    env_vars.push((key_env.clone(), v));
+                }
+            }
+            // Providers whose default base_url is localhost need a URL prompt.
+            let needs_url = builtin
+                .map(|p| p.base_url.starts_with("http://localhost"))
+                .unwrap_or(false);
+            let url = if needs_url {
+                let default_url = builtin.map(|p| p.base_url);
+                let u = prompt("Base URL", default_url);
+                if u.is_empty() {
+                    default_url.map(str::to_string)
+                } else {
+                    Some(u)
+                }
+            } else {
+                None
+            };
+            (name, key_env, url)
+        }
+    };
     println!();
 
     // ── Model ─────────────────────────────────────────────────────────────────
-    let default_model = if is_reconfigure && provider == existing.provider {
-        existing.model.as_str()
+    let existing_model = existing
+        .providers
+        .get("default")
+        .and_then(|p| p.model.as_deref())
+        .unwrap_or(existing.model.as_str());
+    let default_model = if is_reconfigure && existing_provider == provider_name.as_str() {
+        existing_model
     } else {
-        match provider {
+        match provider_name.as_str() {
             "ollama" => "llama3.2",
             "anthropic" => "claude-sonnet-4-6",
             "openrouter" => "anthropic/claude-sonnet-4-6",
+            "groq" => "llama-3.3-70b-versatile",
+            "deepseek" => "deepseek-chat",
+            "gemini" => "gemini-2.5-flash",
+            "openai" => "gpt-4o-mini",
             "thaillm" => "typhoon-s-thaillm-8b-instruct",
             _ => "",
         }
@@ -240,7 +294,7 @@ pub async fn run() -> anyhow::Result<()> {
             "Brave Search API key (web_search tool)",
             cur_brave.as_deref(),
         )? {
-            env_vars.push(("BRAVE_SEARCH_API_KEY", v));
+            env_vars.push(("BRAVE_SEARCH_API_KEY".into(), v));
         }
         println!();
 
@@ -276,7 +330,7 @@ pub async fn run() -> anyhow::Result<()> {
             for (label, var) in *fields {
                 let cur = read_env_file(&home_dir, var);
                 if let Some(v) = prompt_secret(var, label, cur.as_deref())? {
-                    env_vars.push((var, v));
+                    env_vars.push(((*var).into(), v));
                 }
             }
         }
@@ -345,9 +399,34 @@ pub async fn run() -> anyhow::Result<()> {
         AgentConfig::default()
     };
     new_config.home_dir = home_dir.clone();
-    new_config.provider = provider.to_string();
-    new_config.model = model;
-    new_config.base_url = custom_base_url;
+
+    // Write the primary provider as providers.default (profile-based path).
+    let default_profile = ProviderProfile {
+        name: if provider_name == "custom" {
+            None
+        } else {
+            Some(provider_name.clone())
+        },
+        url: custom_url.clone(),
+        key: if api_key_env.is_empty() {
+            None
+        } else {
+            Some(format!("${{{api_key_env}}}"))
+        },
+        model: if model.is_empty() {
+            None
+        } else {
+            Some(model.clone())
+        },
+    };
+    new_config
+        .providers
+        .insert("default".into(), default_profile);
+
+    // Keep legacy fields in sync so older code paths and doctor still work.
+    new_config.provider = provider_name.clone();
+    new_config.model = model.clone();
+    new_config.base_url = custom_url.clone();
 
     // Sync webhook-based platform adapters (LINE, WhatsApp) into yaml. Tokens
     // live in .env; this block controls whether the adapter starts and on which
@@ -382,12 +461,7 @@ pub async fn run() -> anyhow::Result<()> {
     // ── Doctor ────────────────────────────────────────────────────────────────
     let api_key = env_vars
         .iter()
-        .find(|(v, _)| {
-            matches!(
-                *v,
-                "ANTHROPIC_API_KEY" | "OPENROUTER_API_KEY" | "VLLM_API_KEY" | "THAILLM_API_KEY"
-            )
-        })
+        .find(|(v, _)| v == &api_key_env)
         .map(|(_, k)| k.clone())
         .or(existing.api_key);
     if let Some(key) = api_key {
