@@ -109,7 +109,7 @@ notify   = { version = "8", features = ["macos_fsevent"] }
 tower_governor = { version = "0.8", features = ["axum"] }
 
 # Browser / CDP
-chromiumoxide = { version = "0.7", default-features = false, features = ["tokio-runtime"] }
+chromiumoxide = { version = "0.8", default-features = false, features = ["tokio-runtime"] }
 
 # Platform SDKs (Slack / Matrix)
 tokio-tungstenite = { version = "0.29", features = ["rustls-tls-webpki-roots"] }
