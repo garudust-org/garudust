@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
@@ -15,14 +16,16 @@ use dashmap::DashMap;
 use futures::{Stream, StreamExt};
 use hmac::{Hmac, KeyInit, Mac};
 use serde::Deserialize;
-use sha2::Sha256;
+use sha2::{Digest, Sha256};
 use tokio::net::TcpListener;
+use tokio::sync::Mutex as AsyncMutex;
 
 use garudust_core::{
     error::PlatformError,
     platform::{MessageHandler, PlatformAdapter},
     types::{ChannelId, DocAttachment, ImageAttachment, InboundMessage, OutboundMessage},
 };
+use garudust_memory::BotIdentityStore;
 
 const LINE_REPLY_URL: &str = "https://api.line.me/v2/bot/message/reply";
 const LINE_PUSH_URL: &str = "https://api.line.me/v2/bot/message/push";
@@ -34,6 +37,12 @@ const REPLY_TTL: Duration = Duration::from_secs(25);
 const LINE_TEXT_LIMIT: usize = 5_000;
 /// Evict name_cache once it grows beyond this; names are cheap to re-fetch.
 const MAX_CACHE_ENTRIES: usize = 50_000;
+/// Max attempts to fetch /v2/bot/info at startup before giving up (lazy
+/// webhook re-fetch then takes over). Backoff doubles from 1s, capped at 16s.
+const BOT_INFO_RETRIES: u32 = 5;
+/// Minimum spacing between lazy /v2/bot/info re-fetch attempts triggered from
+/// the webhook path, so a sustained outage + busy group cannot hammer the API.
+const BOT_INFO_RELOOKUP_INTERVAL: Duration = Duration::from_secs(60);
 
 // ── LINE webhook deserialization ──────────────────────────────────────────────
 
@@ -129,6 +138,85 @@ struct Inner {
     /// Used to detect mentions of the bot from `event.message.mention.mentionees`.
     /// Empty when the fetch failed — gateway will fall back to text-contains matching.
     bot_self_user_id: OnceLock<String>,
+    /// sha256(channel_token) — cache key for the bot userId in state.db.
+    token_hash: String,
+    /// Persistent bot-userId cache. `None` if the DB could not be opened.
+    bot_id_store: Option<BotIdentityStore>,
+    /// Single-flight + throttle gate for lazy /bot/info re-fetch. Holds the
+    /// instant of the last attempt; `try_lock` failure means a probe is
+    /// already in flight, so callers skip.
+    botinfo_gate: AsyncMutex<Option<Instant>>,
+}
+
+impl Inner {
+    /// Record the resolved bot userId into the in-memory `OnceLock` and, on
+    /// first set, persist it to state.db so future restarts skip the network.
+    fn remember_bot_id(&self, user_id: String) {
+        if self.bot_self_user_id.set(user_id.clone()).is_ok() {
+            if let Some(store) = &self.bot_id_store {
+                match store.put(&self.token_hash, &user_id) {
+                    Ok(()) => tracing::debug!("LINE: bot userId persisted to state.db"),
+                    Err(e) => {
+                        tracing::warn!(error = %e, "LINE: failed to persist bot userId cache")
+                    }
+                }
+            }
+        }
+    }
+
+    /// Lazy, throttled, single-flight re-fetch of the bot userId. Used from the
+    /// webhook path to self-heal when the startup fetch failed, without needing
+    /// a restart and without hammering the API during a sustained outage.
+    async fn ensure_bot_id(&self) {
+        if self.bot_self_user_id.get().is_some() {
+            return;
+        }
+        // Single-flight: only one probe runs at a time; concurrent callers bail.
+        let Ok(mut gate) = self.botinfo_gate.try_lock() else {
+            return;
+        };
+        // Re-check: another probe may have resolved it while we waited.
+        if self.bot_self_user_id.get().is_some() {
+            return;
+        }
+        if let Some(last) = *gate {
+            if last.elapsed() < BOT_INFO_RELOOKUP_INTERVAL {
+                return;
+            }
+        }
+        *gate = Some(Instant::now());
+        if let Some(uid) = fetch_bot_info(&self.client, &self.channel_token).await {
+            tracing::info!("LINE: bot self userId fetched lazily — mention detection active");
+            self.remember_bot_id(uid);
+        }
+    }
+}
+
+/// Fetch the bot's own userId from LINE `/v2/bot/info`. Returns `None` on any
+/// network / parse / non-success failure; the caller decides whether to retry.
+async fn fetch_bot_info(client: &reqwest::Client, token: &str) -> Option<String> {
+    match client
+        .get(LINE_BOT_INFO_URL)
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+    {
+        Ok(resp) if resp.status().is_success() => match resp.json::<BotInfoResp>().await {
+            Ok(info) => Some(info.user_id),
+            Err(_) => {
+                tracing::warn!("LINE: /bot/info response did not parse");
+                None
+            }
+        },
+        Ok(resp) => {
+            tracing::warn!(status = %resp.status(), "LINE: /bot/info returned non-success");
+            None
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "LINE: failed to fetch /bot/info");
+            None
+        }
+    }
 }
 
 struct LineState {
@@ -224,6 +312,12 @@ async fn handle_webhook(
             state.inner.name_cache.insert(user_id.clone(), name.clone());
             name
         };
+
+        // Self-heal: if the startup fetch failed, lazily (throttled,
+        // single-flight) re-resolve the bot userId before deciding mentions.
+        if is_group {
+            state.inner.ensure_bot_id().await;
+        }
 
         // Structured mention detection: cross-reference message.mention.mentionees
         // against the bot's own userId fetched at start. Only meaningful in
@@ -502,7 +596,22 @@ impl LineAdapter {
         channel_secret: String,
         port: u16,
         webhook_path: String,
+        home_dir: PathBuf,
     ) -> Self {
+        let token_hash = Sha256::digest(channel_token.as_bytes())
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>();
+        let bot_id_store = match BotIdentityStore::open(&home_dir) {
+            Ok(s) => Some(s),
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "LINE: bot identity cache unavailable — relying on API + lazy re-fetch"
+                );
+                None
+            }
+        };
         Self {
             port,
             webhook_path,
@@ -516,6 +625,9 @@ impl LineAdapter {
                 last_sender: DashMap::new(),
                 name_cache: DashMap::new(),
                 bot_self_user_id: OnceLock::new(),
+                token_hash,
+                bot_id_store,
+                botinfo_gate: AsyncMutex::new(None),
             }),
         }
     }
@@ -595,39 +707,51 @@ impl PlatformAdapter for LineAdapter {
     }
 
     async fn start(&self, handler: Arc<dyn MessageHandler>) -> Result<(), PlatformError> {
-        // Fetch bot's own userId so we can detect @mentions of the bot from
-        // LINE's structured `mention.mentionees`. Failure is non-fatal — the
-        // gateway will fall back to text-contains matching against
-        // `platform.bot_username`.
-        match self
+        // Resolve the bot's own userId for @mention detection against LINE's
+        // structured `mention.mentionees`.
+        //
+        // 1. Prefer the persisted cache (state.db): a token's userId is
+        //    immutable, so after the first successful fetch ever no network is
+        //    needed at startup — a restart-time blip can't disable detection.
+        // 2. On a cache miss, fetch /v2/bot/info in the background with bounded
+        //    retry+backoff (so the webhook listener binds immediately).
+        // 3. If every retry fails, it stays unset; the webhook path lazily
+        //    re-fetches (throttled) and the gateway falls back to text match.
+        if let Some(uid) = self
             .inner
-            .client
-            .get(LINE_BOT_INFO_URL)
-            .header(
-                "Authorization",
-                format!("Bearer {}", self.inner.channel_token),
-            )
-            .send()
-            .await
+            .bot_id_store
+            .as_ref()
+            .and_then(|s| s.get(&self.inner.token_hash))
         {
-            Ok(resp) if resp.status().is_success() => {
-                if let Ok(info) = resp.json::<BotInfoResp>().await {
-                    let _ = self.inner.bot_self_user_id.set(info.user_id);
-                    tracing::info!("LINE: bot self userId fetched — mention detection active");
-                } else {
-                    tracing::warn!(
-                        "LINE: /bot/info response did not parse — mention detection disabled"
-                    );
+            let _ = self.inner.bot_self_user_id.set(uid);
+            tracing::info!("LINE: bot self userId loaded from cache — mention detection active");
+        } else {
+            let inner = self.inner.clone();
+            tokio::spawn(async move {
+                let mut delay = Duration::from_secs(1);
+                for attempt in 1..=BOT_INFO_RETRIES {
+                    if let Some(uid) = fetch_bot_info(&inner.client, &inner.channel_token).await {
+                        tracing::info!(
+                            "LINE: bot self userId fetched — mention detection active"
+                        );
+                        inner.remember_bot_id(uid);
+                        return;
+                    }
+                    if attempt < BOT_INFO_RETRIES {
+                        tracing::warn!(
+                            attempt,
+                            retry_in_secs = delay.as_secs(),
+                            "LINE: /bot/info fetch failed — retrying"
+                        );
+                        tokio::time::sleep(delay).await;
+                        delay = (delay * 2).min(Duration::from_secs(16));
+                    }
                 }
-            }
-            Ok(resp) => tracing::warn!(
-                status = %resp.status(),
-                "LINE: /bot/info returned non-success — mention detection disabled"
-            ),
-            Err(e) => tracing::warn!(
-                error = %e,
-                "LINE: failed to fetch /bot/info — mention detection disabled"
-            ),
+                tracing::warn!(
+                    "LINE: /bot/info failed after {BOT_INFO_RETRIES} attempts — mention \
+                     detection disabled until a later webhook re-fetch or restart"
+                );
+            });
         }
 
         let state = Arc::new(LineState {

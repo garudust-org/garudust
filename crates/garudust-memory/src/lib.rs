@@ -24,11 +24,13 @@
 //! }
 //! ```
 
+pub mod bot_identity;
 pub mod doc_store;
 pub mod file_store;
 pub mod migrations;
 pub mod session_db;
 
+pub use bot_identity::BotIdentityStore;
 pub use doc_store::DocStore;
 pub use file_store::FileMemoryStore;
 pub use session_db::SessionDb;
