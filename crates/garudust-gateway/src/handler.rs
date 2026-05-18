@@ -58,7 +58,7 @@ impl GatewayHandler {
 
     /// On startup, re-run any agent tasks that were interrupted by a server crash or restart.
     /// Tasks are stored in SQLite before the agent run begins and deleted on completion.
-    pub async fn resume_pending(&self) {
+    pub fn resume_pending(&self) {
         let db = match &self.session_db {
             Some(db) => db.clone(),
             None => return,

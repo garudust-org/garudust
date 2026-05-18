@@ -624,34 +624,40 @@ fn read_secret() -> anyhow::Result<String> {
 
     terminal::enable_raw_mode()?;
     loop {
-        if let Event::Key(KeyEvent {
-            code, modifiers, ..
-        }) = event::read()?
-        {
-            match code {
-                KeyCode::Enter => break,
-                KeyCode::Char('c') if modifiers.contains(KeyModifiers::CONTROL) => {
-                    terminal::disable_raw_mode()?;
-                    writeln!(stdout)?;
-                    return Err(anyhow::anyhow!("interrupted"));
-                }
-                KeyCode::Backspace => {
-                    if buf.pop().is_some() {
-                        queue!(
-                            stdout,
-                            cursor::MoveLeft(1),
-                            terminal::Clear(ClearType::UntilNewLine)
-                        )?;
-                        stdout.flush()?;
-                    }
-                }
-                KeyCode::Char(c) => {
-                    buf.push(c);
-                    queue!(stdout, Print("●"))?;
-                    stdout.flush()?;
-                }
-                _ => {}
+        match event::read()? {
+            Event::Key(KeyEvent {
+                code: KeyCode::Enter,
+                ..
+            }) => break,
+            Event::Key(KeyEvent {
+                code: KeyCode::Char('c'),
+                modifiers,
+                ..
+            }) if modifiers.contains(KeyModifiers::CONTROL) => {
+                terminal::disable_raw_mode()?;
+                writeln!(stdout)?;
+                return Err(anyhow::anyhow!("interrupted"));
             }
+            Event::Key(KeyEvent {
+                code: KeyCode::Backspace,
+                ..
+            }) if buf.pop().is_some() => {
+                queue!(
+                    stdout,
+                    cursor::MoveLeft(1),
+                    terminal::Clear(ClearType::UntilNewLine)
+                )?;
+                stdout.flush()?;
+            }
+            Event::Key(KeyEvent {
+                code: KeyCode::Char(c),
+                ..
+            }) => {
+                buf.push(c);
+                queue!(stdout, Print("●"))?;
+                stdout.flush()?;
+            }
+            _ => {}
         }
     }
     terminal::disable_raw_mode()?;

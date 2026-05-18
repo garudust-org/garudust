@@ -253,7 +253,7 @@ async fn start_platform(
         config,
         Some(db),
     ));
-    handler.resume_pending().await;
+    handler.resume_pending();
     platform.start(handler).await?;
     tracing::info!("{name} adapter started");
     Ok(())
