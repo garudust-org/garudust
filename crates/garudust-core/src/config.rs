@@ -251,18 +251,25 @@ impl ProviderProfile {
     }
 }
 
-/// Per-tool or per-skill configuration overrides.
+/// Per-tool configuration overrides.
 /// All fields are optional; unset fields leave the tool's own defaults intact.
 /// This struct is intentionally open-ended — new fields can be added here in
 /// future releases without breaking existing config files (serde default).
+///
+/// Both `model` and `fallback_model` accept the same `"profile/model"` or
+/// `"provider/model"` format used by the `routing:` table. When a named profile
+/// is resolved, the subprocess also receives `GARUDUST_BASE_URL` / `GARUDUST_API_KEY`
+/// (primary) or `GARUDUST_FALLBACK_BASE_URL` / `GARUDUST_FALLBACK_API_KEY` (fallback).
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ToolOverrideConfig {
-    /// Primary LLM model the tool's subprocess should use.
-    /// Forwarded as `GARUDUST_MODEL` env var. Empty string = tool's own default.
+    /// Primary model for the tool's subprocess. Accepts `"profile/model"` or
+    /// `"provider/model"`. Forwarded as `GARUDUST_MODEL` + `GARUDUST_BASE_URL` +
+    /// `GARUDUST_API_KEY`. Empty string = tool's own default.
     #[serde(default)]
     pub model: String,
-    /// Fallback model tried when the primary model fails or is unavailable.
-    /// Forwarded as `GARUDUST_FALLBACK_MODEL` env var. Empty string = tool's own default.
+    /// Fallback model tried when the primary fails. Accepts `"profile/model"` or
+    /// `"provider/model"`. Forwarded as `GARUDUST_FALLBACK_MODEL` +
+    /// `GARUDUST_FALLBACK_BASE_URL` + `GARUDUST_FALLBACK_API_KEY`. Empty = no fallback.
     #[serde(default)]
     pub fallback_model: String,
 }

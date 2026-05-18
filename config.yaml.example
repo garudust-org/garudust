@@ -68,14 +68,19 @@ providers:
 
 # ── Tool model overrides ──────────────────────────────────────────────────────
 # Set a different model for specific tools (e.g. multimodal tools).
-# model/fallback_model accept "profile/model" or bare model strings.
-# The tool subprocess receives GARUDUST_MODEL, GARUDUST_BASE_URL,
-# GARUDUST_API_KEY, and GARUDUST_FALLBACK_MODEL as env vars.
+# Both model and fallback_model accept "profile/model" or "provider/model".
+# When resolved via a named profile, the tool subprocess receives:
+#   primary:  GARUDUST_MODEL, GARUDUST_BASE_URL, GARUDUST_API_KEY
+#   fallback: GARUDUST_FALLBACK_MODEL, GARUDUST_FALLBACK_BASE_URL, GARUDUST_FALLBACK_API_KEY
 
 # tools:
 #   view_image:
-#     model: vision/gpt-4o
-#     fallback_model: openai/gpt-4o-mini
+#     model: vision/gpt-4o                          # "vision" = named profile in providers:
+#     fallback_model: openai/gpt-4o-mini            # "openai" = builtin provider name
+#
+#   view_image:                                     # example with local vLLM vision profile
+#     model: vision/gemini-flash-latest
+#     fallback_model: vision-fallback/nvidia/nemotron-nano-12b-v2-vl:free
 
 # ── Agent behaviour ───────────────────────────────────────────────────────────
 

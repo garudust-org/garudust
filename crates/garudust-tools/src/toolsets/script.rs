@@ -197,7 +197,18 @@ impl Tool for ScriptTool {
                 }
             }
             if !cfg.fallback_model.is_empty() {
-                cmd.env("GARUDUST_FALLBACK_MODEL", &cfg.fallback_model);
+                if let Some((fb_url, fb_key, fb_model)) = garudust_transport::resolve_to_env_vars(
+                    &cfg.fallback_model,
+                    &ctx.config.providers,
+                ) {
+                    cmd.env("GARUDUST_FALLBACK_MODEL", &fb_model);
+                    cmd.env("GARUDUST_FALLBACK_BASE_URL", &fb_url);
+                    if !fb_key.is_empty() {
+                        cmd.env("GARUDUST_FALLBACK_API_KEY", &fb_key);
+                    }
+                } else {
+                    cmd.env("GARUDUST_FALLBACK_MODEL", &cfg.fallback_model);
+                }
             }
         }
         let out = cmd

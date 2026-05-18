@@ -381,13 +381,16 @@ command: "curl -s wttr.in/{city}?format=3"
 # env_required: [MY_API_KEY]   # ส่ง secret เฉพาะที่ระบุจาก ~/.garudust/.env
 ```
 
-กำหนด model สำหรับแต่ละ tool ใน `config.yaml` — ค่าจะถูกส่งเป็น env var `GARUDUST_MODEL` / `GARUDUST_FALLBACK_MODEL` ให้ script:
+กำหนด model สำหรับแต่ละ tool ใน `config.yaml` ทั้ง `model` และ `fallback_model` รับรูปแบบ `"profile/model"` (named profile จาก `providers:`) หรือ `"provider/model"` (builtin) subprocess จะได้รับ `GARUDUST_MODEL` / `GARUDUST_BASE_URL` / `GARUDUST_API_KEY` สำหรับ primary และ `GARUDUST_FALLBACK_MODEL` / `GARUDUST_FALLBACK_BASE_URL` / `GARUDUST_FALLBACK_API_KEY` สำหรับ fallback:
 
 ```yaml
 tools:
   get_weather:
-    model: groq/llama-3.1-8b-instant
-    fallback_model: openrouter/meta-llama/llama-3.1-8b-instruct
+    model: groq-fast/llama-3.1-8b-instant        # "groq-fast" = named profile
+    fallback_model: openrouter/meta-llama/llama-3.1-8b-instruct  # builtin provider
+  view_image:
+    model: vision/gemini-flash-latest             # "vision" = named profile (เช่น gemini key)
+    fallback_model: vision-fallback/nvidia/nemotron-nano-12b-v2-vl:free
 ```
 
 **MCP** — เชื่อมต่อ [Model Context Protocol](https://modelcontextprotocol.io) server ใดก็ได้ใน `config.yaml`:

@@ -382,13 +382,16 @@ command: "curl -s wttr.in/{city}?format=3"
 # env_required: [MY_API_KEY]   # forward specific secrets from ~/.garudust/.env
 ```
 
-Override the model used by a tool in `config.yaml` — the values are forwarded as `GARUDUST_MODEL` / `GARUDUST_FALLBACK_MODEL` env vars to the script:
+Override the model used by a tool in `config.yaml`. Both `model` and `fallback_model` accept `"profile/model"` (named profile from `providers:`) or `"provider/model"` (builtin provider). The subprocess receives `GARUDUST_MODEL` / `GARUDUST_BASE_URL` / `GARUDUST_API_KEY` for the primary, and `GARUDUST_FALLBACK_MODEL` / `GARUDUST_FALLBACK_BASE_URL` / `GARUDUST_FALLBACK_API_KEY` for the fallback:
 
 ```yaml
 tools:
   get_weather:
-    model: groq/llama-3.1-8b-instant
-    fallback_model: openrouter/meta-llama/llama-3.1-8b-instruct
+    model: groq-fast/llama-3.1-8b-instant        # "groq-fast" = named profile
+    fallback_model: openrouter/meta-llama/llama-3.1-8b-instruct  # builtin provider
+  view_image:
+    model: vision/gemini-flash-latest             # "vision" = named profile (e.g. gemini key)
+    fallback_model: vision-fallback/nvidia/nemotron-nano-12b-v2-vl:free
 ```
 
 **MCP** — connect any [Model Context Protocol](https://modelcontextprotocol.io) server in `config.yaml`:

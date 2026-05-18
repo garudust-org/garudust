@@ -381,13 +381,16 @@ command: "curl -s wttr.in/{city}?format=3"
 # env_required: [MY_API_KEY]   # 仅将指定密钥从 ~/.garudust/.env 转发给脚本
 ```
 
-通过 `config.yaml` 为每个工具指定模型 — 以 `GARUDUST_MODEL` / `GARUDUST_FALLBACK_MODEL` 环境变量形式传递给脚本：
+通过 `config.yaml` 为每个工具指定模型。`model` 和 `fallback_model` 均支持 `"profile/model"`（`providers:` 中的命名 profile）或 `"provider/model"`（内置提供商）。子进程将收到主模型的 `GARUDUST_MODEL` / `GARUDUST_BASE_URL` / `GARUDUST_API_KEY`，以及备用模型的 `GARUDUST_FALLBACK_MODEL` / `GARUDUST_FALLBACK_BASE_URL` / `GARUDUST_FALLBACK_API_KEY`：
 
 ```yaml
 tools:
   get_weather:
-    model: groq/llama-3.1-8b-instant
-    fallback_model: openrouter/meta-llama/llama-3.1-8b-instruct
+    model: groq-fast/llama-3.1-8b-instant        # "groq-fast" = 命名 profile
+    fallback_model: openrouter/meta-llama/llama-3.1-8b-instruct  # 内置提供商
+  view_image:
+    model: vision/gemini-flash-latest             # "vision" = 命名 profile（如 gemini 密钥）
+    fallback_model: vision-fallback/nvidia/nemotron-nano-12b-v2-vl:free
 ```
 
 **MCP** — 在 `config.yaml` 中接入任意 [Model Context Protocol](https://modelcontextprotocol.io) 服务器：
