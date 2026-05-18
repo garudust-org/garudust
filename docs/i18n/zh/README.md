@@ -36,7 +36,7 @@
 - **生命周期钩子** — `AgentHooks` 回调覆盖每轮对话、压缩事件、委派及会话结束
 - **兼容 agentskills.io** — 一条命令从社区 hub 或任意 GitHub 仓库安装技能
 - **7 大平台适配器** — Telegram、Discord、Slack、Matrix、LINE、WhatsApp、Webhook，同进程运行
-- **一个环境变量切换提供商** — 支持 Anthropic、OpenAI、Gemini、Groq、Mistral、DeepSeek、xAI、Together AI、Fireworks、Cerebras、Perplexity、Cohere、NVIDIA NIM、阿里云百炼（DashScope）、字节豆包、智谱 AI、Moonshot、百度文心、OpenRouter、AWS Bedrock、Ollama、vLLM、ThaiLLM
+- **24 个 LLM 提供商，命名 profile 管理** — 支持 Anthropic、OpenAI、Gemini、Groq、Mistral、DeepSeek、xAI、Together AI、Fireworks、Cerebras、Perplexity、Cohere、NVIDIA NIM、阿里云百炼（DashScope）、字节豆包、智谱 AI、Moonshot、百度文心、OpenRouter、AWS Bedrock、Ollama、vLLM、ThaiLLM — 在 `config.yaml` 中配置命名 `providers:` profile，按任务路由
 - **提供商路由 hint** — 在 config 中将 hint 名称映射到 provider/model 对；传入 `--hint fast` 即可仅针对该任务切换到更廉价的模型，不影响默认配置
 - **按工具配置模型** — 通过 `config.yaml` 中的 `tools.<name>.model` 为每个 hub 工具或技能脚本指定模型（及备用模型）
 - **安全优先设计** — Docker 沙箱、硬性命令拦截、内存投毒防护、工具输出自动脱敏
@@ -80,7 +80,7 @@ cd garudust-agent && cargo build --release
 
 **02 — 配置**
 
-运行首次配置向导 — 自动选择提供商、输入 API 密钥并写入 `~/.garudust/.env`：
+运行首次配置向导 — 自动选择提供商、输入 API 密钥，并将 `providers.default` profile 写入 `~/.garudust/config.yaml` 和 `~/.garudust/.env`：
 
 ```bash
 garudust setup
@@ -161,10 +161,28 @@ GARUDUST_API_KEY=my-gateway-secret
 ### `~/.garudust/config.yaml`
 
 ```yaml
-# ── LLM ─────────────────────────────────────────────────────────────────────
-provider: openrouter        # anthropic | openai | gemini | groq | mistral
-                            # deepseek | xai | openrouter | ollama | vllm | thaillm | bedrock
-model: anthropic/claude-sonnet-4-6
+# ── 提供商 profile ────────────────────────────────────────────────────────────
+# providers.default 设置主 LLM。API 密钥保存在 ~/.garudust/.env。
+providers:
+  default:
+    name: anthropic          # anthropic | openai | gemini | groq | mistral | deepseek
+                             # xai | openrouter | ollama | vllm | thaillm | bedrock
+                             # together | fireworks | cerebras | perplexity | cohere
+                             # nvidia | alibaba | doubao | zhipu | moonshot | baidu
+    key: ${ANTHROPIC_API_KEY}
+    model: claude-sonnet-4-6
+
+  # 用于路由或按工具指定模型的额外命名 profile：
+  # groq-fast:
+  #   name: groq
+  #   key: ${GROQ_API_KEY}
+  #   model: llama-3.1-8b-instant
+  #
+  # local:
+  #   url: http://localhost:11434/v1   # 自定义 OpenAI 兼容端点
+  #   model: llama3.2
+
+# ── 智能体设置 ────────────────────────────────────────────────────────────────
 max_iterations: 90
 max_output_tokens: 8192
 context_window: 128000      # 小上下文模型请调低（如 32768）
@@ -177,11 +195,11 @@ tool_timeout_secs: 60
 llm_max_retries: 3
 
 # ── 提供商路由 hint（按任务切换模型）────────────────────────────────────────
-# 在 CLI 传入 --hint <name>，或在 API payload 中设置 hint: "name"，
-# 仅针对该任务切换 provider/model，不影响默认配置。
+# 在 CLI 传入 --hint <name>，或在 API payload 中设置 hint: "name"。
+# 格式：`"profile/model"`（使用命名 profile）或 `"provider/model"`（内置提供商）。
 routing:
-  fast:   groq/llama-3.1-8b-instant
-  vision: openrouter/google/gemini-flash-1.5
+  fast:   groq-fast/llama-3.1-8b-instant   # 使用上方定义的 groq-fast profile
+  vision: openai/gpt-4o                     # 内置提供商名称
   smart:  anthropic/claude-opus-4-7
 
 # ── 按工具配置模型 ────────────────────────────────────────────────────────────
@@ -293,32 +311,34 @@ mcp_servers:
 
 ## LLM 提供商
 
-| 提供商 | `config.yaml` | `.env` |
-|--------|--------------|--------|
-| Anthropic | `provider: anthropic` | `ANTHROPIC_API_KEY` |
-| OpenAI | `provider: openai` | `OPENAI_API_KEY` |
-| Google Gemini | `provider: gemini` | `GEMINI_API_KEY` |
-| Groq | `provider: groq` | `GROQ_API_KEY` |
-| Mistral | `provider: mistral` | `MISTRAL_API_KEY` |
-| DeepSeek | `provider: deepseek` | `DEEPSEEK_API_KEY` |
-| xAI (Grok) | `provider: xai` | `XAI_API_KEY` |
-| OpenRouter | `provider: openrouter` *（默认）* | `OPENROUTER_API_KEY` |
-| AWS Bedrock | `provider: bedrock` | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` |
-| Ollama | `provider: ollama` + `base_url` | *（无需）* |
-| vLLM | `provider: vllm` + `base_url` | `VLLM_API_KEY` |
-| ThaiLLM | `provider: thaillm` | `THAILLM_API_KEY` |
-| Together AI | `provider: together` | `TOGETHER_API_KEY` |
-| Fireworks AI | `provider: fireworks` | `FIREWORKS_API_KEY` |
-| Cerebras | `provider: cerebras` | `CEREBRAS_API_KEY` |
-| Perplexity | `provider: perplexity` | `PERPLEXITY_API_KEY` |
-| Cohere | `provider: cohere` | `COHERE_API_KEY` |
-| NVIDIA NIM | `provider: nvidia` | `NVIDIA_API_KEY` |
-| 阿里云百炼（DashScope） | `provider: alibaba` | `DASHSCOPE_API_KEY` |
-| 字节豆包 | `provider: doubao` | `ARK_API_KEY` |
-| 智谱 AI（GLM） | `provider: zhipu` | `ZHIPU_API_KEY` |
-| Moonshot（Kimi） | `provider: moonshot` | `MOONSHOT_API_KEY` |
-| 百度文心 | `provider: baidu` | `QIANFAN_API_KEY` |
-| 任意 OpenAI 兼容 | `provider: custom` + `base_url` | 对应 API 密钥 |
+在 `config.yaml` 中设置 `providers.default.name`，并在 `~/.garudust/.env` 中填写对应密钥：
+
+| 提供商 | `providers.default.name` | `.env` |
+|--------|--------------------------|--------|
+| Anthropic | `anthropic` | `ANTHROPIC_API_KEY` |
+| OpenAI | `openai` | `OPENAI_API_KEY` |
+| Google Gemini | `gemini` | `GEMINI_API_KEY` |
+| Groq | `groq` | `GROQ_API_KEY` |
+| Mistral | `mistral` | `MISTRAL_API_KEY` |
+| DeepSeek | `deepseek` | `DEEPSEEK_API_KEY` |
+| xAI (Grok) | `xai` | `XAI_API_KEY` |
+| OpenRouter | `openrouter` | `OPENROUTER_API_KEY` |
+| AWS Bedrock | `bedrock` | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` |
+| Ollama | `ollama` *（自定义端点请添加 `url:`）* | *（无需）* |
+| vLLM | `vllm` *（自定义端点请添加 `url:`）* | `VLLM_API_KEY` |
+| ThaiLLM | `thaillm` | `THAILLM_API_KEY` |
+| Together AI | `together` | `TOGETHER_API_KEY` |
+| Fireworks AI | `fireworks` | `FIREWORKS_API_KEY` |
+| Cerebras | `cerebras` | `CEREBRAS_API_KEY` |
+| Perplexity | `perplexity` | `PERPLEXITY_API_KEY` |
+| Cohere | `cohere` | `COHERE_API_KEY` |
+| NVIDIA NIM | `nvidia` | `NVIDIA_API_KEY` |
+| 阿里云百炼（DashScope） | `alibaba` | `DASHSCOPE_API_KEY` |
+| 字节豆包 | `doubao` | `ARK_API_KEY` |
+| 智谱 AI（GLM） | `zhipu` | `ZHIPU_API_KEY` |
+| Moonshot（Kimi） | `moonshot` | `MOONSHOT_API_KEY` |
+| 百度文心 | `baidu` | `QIANFAN_API_KEY` |
+| 任意 OpenAI 兼容 | *（省略 `name:`，在 profile 中设置 `url:`）* | 对应 API 密钥 |
 
 备用密钥：`LLM_FALLBACK_API_KEYS=key2,key3` — 鉴权失败时自动轮换
 

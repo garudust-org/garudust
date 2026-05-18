@@ -36,7 +36,7 @@ AI agent runtime แบบ self-improving เขียนด้วย Rust — b
 - **Lifecycle hooks** — `AgentHooks` callback ทุก turn, compression, delegation และ session end
 - **รองรับ agentskills.io** — ติดตั้ง skill จาก hub หรือ GitHub repo ใดก็ได้ด้วยคำสั่งเดียว
 - **7 แพลตฟอร์มในกระบวนการเดียว** — Telegram, Discord, Slack, Matrix, LINE, WhatsApp, Webhook
-- **เปลี่ยน LLM ด้วย env var เดียว** — รองรับ Anthropic, OpenAI, Gemini, Groq, Mistral, DeepSeek, xAI, Together AI, Fireworks, Cerebras, Perplexity, Cohere, NVIDIA NIM, Alibaba DashScope, ByteDance Doubao, Zhipu AI, Moonshot, Baidu ERNIE, OpenRouter, AWS Bedrock, Ollama, vLLM, ThaiLLM
+- **24 LLM provider, กำหนดเป็น named profile** — รองรับ Anthropic, OpenAI, Gemini, Groq, Mistral, DeepSeek, xAI, Together AI, Fireworks, Cerebras, Perplexity, Cohere, NVIDIA NIM, Alibaba DashScope, ByteDance Doubao, Zhipu AI, Moonshot, Baidu ERNIE, OpenRouter, AWS Bedrock, Ollama, vLLM, ThaiLLM — กำหนด `providers:` profile ใน `config.yaml` และ route ต่อ task ได้
 - **Provider routing hints** — กำหนด hint name → provider/model ใน config แล้วส่ง `--hint fast` เพื่อเปลี่ยน model เฉพาะ task นั้นโดยไม่กระทบ default
 - **กำหนด model ต่อ tool** — override model (และ fallback) ที่แต่ละ hub tool ใช้ผ่าน `tools.<name>.model` ใน `config.yaml`
 - **ปลอดภัยตั้งแต่ต้น** — Docker sandbox, บล็อคคำสั่งอันตราย, ป้องกัน memory poisoning, redact secret อัตโนมัติ
@@ -80,7 +80,7 @@ cd garudust-agent && cargo build --release
 
 **02 — ตั้งค่า**
 
-รัน wizard ครั้งแรก — เลือก provider ใส่ API key แล้วเขียน `~/.garudust/.env` ให้อัตโนมัติ:
+รัน wizard ครั้งแรก — เลือก provider ใส่ API key แล้วเขียน `~/.garudust/config.yaml` (พร้อม `providers.default` profile) และ `~/.garudust/.env` ให้อัตโนมัติ:
 
 ```bash
 garudust setup
@@ -161,10 +161,28 @@ GARUDUST_API_KEY=my-gateway-secret
 ### `~/.garudust/config.yaml`
 
 ```yaml
-# ── LLM ─────────────────────────────────────────────────────────────────────
-provider: openrouter        # anthropic | openai | gemini | groq | mistral
-                            # deepseek | xai | openrouter | ollama | vllm | thaillm | bedrock
-model: anthropic/claude-sonnet-4-6
+# ── Provider profiles ─────────────────────────────────────────────────────────
+# providers.default กำหนด LLM หลัก เก็บ API key ใน ~/.garudust/.env
+providers:
+  default:
+    name: anthropic          # anthropic | openai | gemini | groq | mistral | deepseek
+                             # xai | openrouter | ollama | vllm | thaillm | bedrock
+                             # together | fireworks | cerebras | perplexity | cohere
+                             # nvidia | alibaba | doubao | zhipu | moonshot | baidu
+    key: ${ANTHROPIC_API_KEY}
+    model: claude-sonnet-4-6
+
+  # Named profile เพิ่มเติมสำหรับ routing หรือ tool model override:
+  # groq-fast:
+  #   name: groq
+  #   key: ${GROQ_API_KEY}
+  #   model: llama-3.1-8b-instant
+  #
+  # local:
+  #   url: http://localhost:11434/v1   # OpenAI-compatible endpoint แบบกำหนดเอง
+  #   model: llama3.2
+
+# ── Agent settings ────────────────────────────────────────────────────────────
 max_iterations: 90
 max_output_tokens: 8192
 context_window: 128000      # ลดลงสำหรับ model ที่ context เล็ก เช่น 32768
@@ -178,10 +196,10 @@ llm_max_retries: 3
 
 # ── Provider routing hints (เปลี่ยน model ต่อ task) ─────────────────────────
 # ส่ง --hint <name> ที่ CLI หรือ hint: "name" ใน API payload
-# เพื่อเปลี่ยน provider/model เฉพาะ task นั้นโดยไม่กระทบ default
+# รูปแบบ: "profile/model" (ใช้ named profile) หรือ "provider/model" (builtin)
 routing:
-  fast:   groq/llama-3.1-8b-instant
-  vision: openrouter/google/gemini-flash-1.5
+  fast:   groq-fast/llama-3.1-8b-instant   # ใช้ groq-fast profile ที่กำหนดไว้
+  vision: openai/gpt-4o                     # builtin provider name
   smart:  anthropic/claude-opus-4-7
 
 # ── กำหนด model ต่อ tool ─────────────────────────────────────────────────────
@@ -293,32 +311,34 @@ mcp_servers:
 
 ## LLM Provider
 
-| Provider | `config.yaml` | `.env` |
-|----------|--------------|--------|
-| Anthropic | `provider: anthropic` | `ANTHROPIC_API_KEY` |
-| OpenAI | `provider: openai` | `OPENAI_API_KEY` |
-| Google Gemini | `provider: gemini` | `GEMINI_API_KEY` |
-| Groq | `provider: groq` | `GROQ_API_KEY` |
-| Mistral | `provider: mistral` | `MISTRAL_API_KEY` |
-| DeepSeek | `provider: deepseek` | `DEEPSEEK_API_KEY` |
-| xAI (Grok) | `provider: xai` | `XAI_API_KEY` |
-| OpenRouter | `provider: openrouter` *(default)* | `OPENROUTER_API_KEY` |
-| AWS Bedrock | `provider: bedrock` | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` |
-| Ollama | `provider: ollama` + `base_url` | *(ไม่ต้องการ)* |
-| vLLM | `provider: vllm` + `base_url` | `VLLM_API_KEY` |
-| ThaiLLM | `provider: thaillm` | `THAILLM_API_KEY` |
-| Together AI | `provider: together` | `TOGETHER_API_KEY` |
-| Fireworks AI | `provider: fireworks` | `FIREWORKS_API_KEY` |
-| Cerebras | `provider: cerebras` | `CEREBRAS_API_KEY` |
-| Perplexity | `provider: perplexity` | `PERPLEXITY_API_KEY` |
-| Cohere | `provider: cohere` | `COHERE_API_KEY` |
-| NVIDIA NIM | `provider: nvidia` | `NVIDIA_API_KEY` |
-| Alibaba DashScope | `provider: alibaba` | `DASHSCOPE_API_KEY` |
-| ByteDance Doubao | `provider: doubao` | `ARK_API_KEY` |
-| Zhipu AI (GLM) | `provider: zhipu` | `ZHIPU_API_KEY` |
-| Moonshot (Kimi) | `provider: moonshot` | `MOONSHOT_API_KEY` |
-| Baidu ERNIE | `provider: baidu` | `QIANFAN_API_KEY` |
-| OpenAI-compat อื่น ๆ | `provider: custom` + `base_url` | API key ที่เกี่ยวข้อง |
+ตั้งค่า `providers.default.name` ใน `config.yaml` และ key ที่เกี่ยวข้องใน `~/.garudust/.env`:
+
+| Provider | `providers.default.name` | `.env` |
+|----------|--------------------------|--------|
+| Anthropic | `anthropic` | `ANTHROPIC_API_KEY` |
+| OpenAI | `openai` | `OPENAI_API_KEY` |
+| Google Gemini | `gemini` | `GEMINI_API_KEY` |
+| Groq | `groq` | `GROQ_API_KEY` |
+| Mistral | `mistral` | `MISTRAL_API_KEY` |
+| DeepSeek | `deepseek` | `DEEPSEEK_API_KEY` |
+| xAI (Grok) | `xai` | `XAI_API_KEY` |
+| OpenRouter | `openrouter` | `OPENROUTER_API_KEY` |
+| AWS Bedrock | `bedrock` | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` |
+| Ollama | `ollama` *(เพิ่ม `url:` สำหรับ endpoint กำหนดเอง)* | *(ไม่ต้องการ)* |
+| vLLM | `vllm` *(เพิ่ม `url:` สำหรับ endpoint กำหนดเอง)* | `VLLM_API_KEY` |
+| ThaiLLM | `thaillm` | `THAILLM_API_KEY` |
+| Together AI | `together` | `TOGETHER_API_KEY` |
+| Fireworks AI | `fireworks` | `FIREWORKS_API_KEY` |
+| Cerebras | `cerebras` | `CEREBRAS_API_KEY` |
+| Perplexity | `perplexity` | `PERPLEXITY_API_KEY` |
+| Cohere | `cohere` | `COHERE_API_KEY` |
+| NVIDIA NIM | `nvidia` | `NVIDIA_API_KEY` |
+| Alibaba DashScope | `alibaba` | `DASHSCOPE_API_KEY` |
+| ByteDance Doubao | `doubao` | `ARK_API_KEY` |
+| Zhipu AI (GLM) | `zhipu` | `ZHIPU_API_KEY` |
+| Moonshot (Kimi) | `moonshot` | `MOONSHOT_API_KEY` |
+| Baidu ERNIE | `baidu` | `QIANFAN_API_KEY` |
+| OpenAI-compat อื่น ๆ | *(ไม่ต้องใส่ `name:` ตั้งค่า `url:` ใน profile แทน)* | API key ที่เกี่ยวข้อง |
 
 Fallback keys: `LLM_FALLBACK_API_KEYS=key2,key3` — สลับอัตโนมัติเมื่อ auth ล้มเหลว
 

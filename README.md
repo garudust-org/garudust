@@ -36,7 +36,7 @@ A self-improving AI agent runtime written in Rust — delivered as a single ~10 
 - **Lifecycle hooks** — `AgentHooks` callbacks for every turn, compression event, delegation, and session end
 - **agentskills.io compatible** — install community skills from the hub or any GitHub repo with one command
 - **7 platform adapters** — Telegram, Discord, Slack, Matrix, LINE, WhatsApp, Webhook — all in one process
-- **Swap providers with one env var** — Anthropic, OpenAI, Gemini, Groq, Mistral, DeepSeek, xAI, Together AI, Fireworks, Cerebras, Perplexity, Cohere, NVIDIA NIM, Alibaba DashScope, ByteDance Doubao, Zhipu AI, Moonshot, Baidu ERNIE, OpenRouter, AWS Bedrock, Ollama, vLLM, ThaiLLM, or any OpenAI-compatible endpoint
+- **24 LLM providers, named profiles** — Anthropic, OpenAI, Gemini, Groq, Mistral, DeepSeek, xAI, Together AI, Fireworks, Cerebras, Perplexity, Cohere, NVIDIA NIM, Alibaba DashScope, ByteDance Doubao, Zhipu AI, Moonshot, Baidu ERNIE, OpenRouter, AWS Bedrock, Ollama, vLLM, ThaiLLM, or any OpenAI-compatible endpoint — configure named `providers:` profiles in `config.yaml` and route per-task
 - **Provider routing hints** — map hint names to provider/model pairs in config; pass `--hint fast` to route a single task to a cheaper model without changing the default
 - **Per-tool model config** — override the model (and fallback) used by each hub tool or skill script via `tools.<name>.model` in `config.yaml`
 - **Secure by design** — Docker sandbox, hardline command blocks, memory-poisoning protection, automatic secret redaction
@@ -80,7 +80,7 @@ cd garudust-agent && cargo build --release
 
 **02 — Configure**
 
-Run the interactive wizard — it picks a provider, asks for an API key, and writes `~/.garudust/.env`:
+Run the interactive wizard — it picks a provider, asks for an API key, and writes `~/.garudust/config.yaml` (with a `providers.default` profile) and `~/.garudust/.env`:
 
 ```bash
 garudust setup
@@ -161,10 +161,28 @@ GARUDUST_API_KEY=my-gateway-secret
 ### `~/.garudust/config.yaml`
 
 ```yaml
-# ── LLM ─────────────────────────────────────────────────────────────────────
-provider: openrouter        # anthropic | openai | gemini | groq | mistral
-                            # deepseek | xai | openrouter | ollama | vllm | thaillm | bedrock
-model: anthropic/claude-sonnet-4-6
+# ── Provider profiles ─────────────────────────────────────────────────────────
+# providers.default sets the primary LLM. API keys stay in ~/.garudust/.env.
+providers:
+  default:
+    name: anthropic          # anthropic | openai | gemini | groq | mistral | deepseek
+                             # xai | openrouter | ollama | vllm | thaillm | bedrock
+                             # together | fireworks | cerebras | perplexity | cohere
+                             # nvidia | alibaba | doubao | zhipu | moonshot | baidu
+    key: ${ANTHROPIC_API_KEY}
+    model: claude-sonnet-4-6
+
+  # Additional named profiles for routing or per-tool model overrides:
+  # groq-fast:
+  #   name: groq
+  #   key: ${GROQ_API_KEY}
+  #   model: llama-3.1-8b-instant
+  #
+  # local:
+  #   url: http://localhost:11434/v1   # custom OpenAI-compatible endpoint
+  #   model: llama3.2
+
+# ── Agent settings ────────────────────────────────────────────────────────────
 max_iterations: 90
 max_output_tokens: 8192
 context_window: 128000      # lower for small-context models (e.g. 32768)
@@ -177,11 +195,11 @@ tool_timeout_secs: 60
 llm_max_retries: 3
 
 # ── Provider routing hints (per-task model override) ────────────────────────
-# Pass --hint <name> at the CLI, or hint: "name" in the API payload, to swap
-# provider/model for that single task without changing the default.
+# Pass --hint <name> at the CLI, or hint: "name" in the API payload.
+# Format: "profile/model" (uses a named profile) or "provider/model" (builtin).
 routing:
-  fast:   groq/llama-3.1-8b-instant
-  vision: openrouter/google/gemini-flash-1.5
+  fast:   groq-fast/llama-3.1-8b-instant   # uses the groq-fast profile above
+  vision: openai/gpt-4o                     # builtin provider name
   smart:  anthropic/claude-opus-4-7
 
 # ── Per-tool model override ──────────────────────────────────────────────────
@@ -294,32 +312,34 @@ All adapters run together in the same `garudust-server` process. Set the relevan
 
 ## LLM Providers
 
-| Provider | `config.yaml` | `.env` |
-|----------|--------------|--------|
-| Anthropic | `provider: anthropic` | `ANTHROPIC_API_KEY` |
-| OpenAI | `provider: openai` | `OPENAI_API_KEY` |
-| Google Gemini | `provider: gemini` | `GEMINI_API_KEY` |
-| Groq | `provider: groq` | `GROQ_API_KEY` |
-| Mistral | `provider: mistral` | `MISTRAL_API_KEY` |
-| DeepSeek | `provider: deepseek` | `DEEPSEEK_API_KEY` |
-| xAI (Grok) | `provider: xai` | `XAI_API_KEY` |
-| OpenRouter | `provider: openrouter` *(default)* | `OPENROUTER_API_KEY` |
-| AWS Bedrock | `provider: bedrock` | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` |
-| Ollama | `provider: ollama` + `base_url` | *(none)* |
-| vLLM | `provider: vllm` + `base_url` | `VLLM_API_KEY` |
-| ThaiLLM | `provider: thaillm` | `THAILLM_API_KEY` |
-| Together AI | `provider: together` | `TOGETHER_API_KEY` |
-| Fireworks AI | `provider: fireworks` | `FIREWORKS_API_KEY` |
-| Cerebras | `provider: cerebras` | `CEREBRAS_API_KEY` |
-| Perplexity | `provider: perplexity` | `PERPLEXITY_API_KEY` |
-| Cohere | `provider: cohere` | `COHERE_API_KEY` |
-| NVIDIA NIM | `provider: nvidia` | `NVIDIA_API_KEY` |
-| Alibaba DashScope | `provider: alibaba` | `DASHSCOPE_API_KEY` |
-| ByteDance Doubao | `provider: doubao` | `ARK_API_KEY` |
-| Zhipu AI (GLM) | `provider: zhipu` | `ZHIPU_API_KEY` |
-| Moonshot (Kimi) | `provider: moonshot` | `MOONSHOT_API_KEY` |
-| Baidu ERNIE | `provider: baidu` | `QIANFAN_API_KEY` |
-| Any OpenAI-compat | `provider: custom` + `base_url` | relevant key |
+Set `providers.default.name` in `config.yaml` and the corresponding key in `~/.garudust/.env`:
+
+| Provider | `providers.default.name` | `.env` |
+|----------|--------------------------|--------|
+| Anthropic | `anthropic` | `ANTHROPIC_API_KEY` |
+| OpenAI | `openai` | `OPENAI_API_KEY` |
+| Google Gemini | `gemini` | `GEMINI_API_KEY` |
+| Groq | `groq` | `GROQ_API_KEY` |
+| Mistral | `mistral` | `MISTRAL_API_KEY` |
+| DeepSeek | `deepseek` | `DEEPSEEK_API_KEY` |
+| xAI (Grok) | `xai` | `XAI_API_KEY` |
+| OpenRouter | `openrouter` | `OPENROUTER_API_KEY` |
+| AWS Bedrock | `bedrock` | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` |
+| Ollama | `ollama` *(add `url:` for custom endpoint)* | *(none)* |
+| vLLM | `vllm` *(add `url:` for custom endpoint)* | `VLLM_API_KEY` |
+| ThaiLLM | `thaillm` | `THAILLM_API_KEY` |
+| Together AI | `together` | `TOGETHER_API_KEY` |
+| Fireworks AI | `fireworks` | `FIREWORKS_API_KEY` |
+| Cerebras | `cerebras` | `CEREBRAS_API_KEY` |
+| Perplexity | `perplexity` | `PERPLEXITY_API_KEY` |
+| Cohere | `cohere` | `COHERE_API_KEY` |
+| NVIDIA NIM | `nvidia` | `NVIDIA_API_KEY` |
+| Alibaba DashScope | `alibaba` | `DASHSCOPE_API_KEY` |
+| ByteDance Doubao | `doubao` | `ARK_API_KEY` |
+| Zhipu AI (GLM) | `zhipu` | `ZHIPU_API_KEY` |
+| Moonshot (Kimi) | `moonshot` | `MOONSHOT_API_KEY` |
+| Baidu ERNIE | `baidu` | `QIANFAN_API_KEY` |
+| Any OpenAI-compat | *(omit `name:`, set `url:` in profile)* | relevant key |
 
 Fallback keys: `LLM_FALLBACK_API_KEYS=key2,key3` — rotated automatically on auth failure.
 
