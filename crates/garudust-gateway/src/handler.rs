@@ -384,6 +384,32 @@ impl MessageHandler for GatewayHandler {
             let _ = self.platform.send_message(&msg.channel, reply).await;
             return Ok(());
         }
+        if trimmed == "/cleargoal" {
+            self.agent.clear_goal(&msg.session_key).await;
+            let reply = OutboundMessage::text("ล้าง goal แล้ว");
+            let _ = self.platform.send_message(&msg.channel, reply).await;
+            return Ok(());
+        }
+        if trimmed == "/goal" {
+            let reply = match self.agent.get_goal(&msg.session_key).await {
+                Some(g) => OutboundMessage::text(format!("Goal ปัจจุบัน:\n{g}")),
+                None => OutboundMessage::text("ยังไม่มี goal — ตั้งด้วย /goal <เป้าหมาย>"),
+            };
+            let _ = self.platform.send_message(&msg.channel, reply).await;
+            return Ok(());
+        }
+        if let Some(goal_text) = trimmed.strip_prefix("/goal ") {
+            let goal_text = goal_text.trim();
+            if goal_text.is_empty() {
+                let reply = OutboundMessage::text("ใช้: /goal <เป้าหมาย>");
+                let _ = self.platform.send_message(&msg.channel, reply).await;
+            } else {
+                self.agent.set_goal(&msg.session_key, goal_text).await?;
+                let reply = OutboundMessage::text(format!("บันทึก goal แล้ว:\n{goal_text}"));
+                let _ = self.platform.send_message(&msg.channel, reply).await;
+            }
+            return Ok(());
+        }
 
         // Process any image or document attachments that come alongside text
         if !msg.attachments.is_empty() {

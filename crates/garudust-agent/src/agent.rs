@@ -18,7 +18,7 @@ use garudust_core::{
         TokenUsage, ToolCall, ToolResult, TransportResponse,
     },
 };
-use garudust_memory::SessionDb;
+use garudust_memory::{GoalStore, SessionDb};
 use garudust_tools::ToolRegistry;
 use serde_json::Value;
 use tokio::sync::mpsc;
@@ -198,6 +198,7 @@ pub struct Agent {
     /// Per-session conversation history: session_key → (user_input, assistant_output) pairs.
     /// Shared across Clone (same logical agent); fresh for spawn_child() (sub-agent).
     conversation_history: Arc<DashMap<String, VecDeque<(String, String)>>>,
+    goal_store: Arc<GoalStore>,
 }
 
 impl Clone for Agent {
@@ -223,6 +224,7 @@ impl Clone for Agent {
             hooks: self.hooks.clone(),
             delegation_depth: self.delegation_depth,
             conversation_history: self.conversation_history.clone(),
+            goal_store: self.goal_store.clone(),
         }
     }
 }
@@ -263,6 +265,7 @@ impl Agent {
             .clone()
             .unwrap_or_else(|| config.model.clone());
         let compressor = build_compressor(transport.clone(), comp_model, &config);
+        let goal_store = Arc::new(GoalStore::new(&config.home_dir));
         Self {
             id: Uuid::new_v4().to_string(),
             transport,
@@ -275,6 +278,7 @@ impl Agent {
             hooks: Arc::new(NoopHooks),
             delegation_depth: 0,
             conversation_history: Arc::new(DashMap::new()),
+            goal_store,
         }
     }
 
@@ -337,14 +341,30 @@ impl Agent {
             hooks: self.hooks.clone(),
             delegation_depth: self.delegation_depth + 1,
             conversation_history: Arc::new(DashMap::new()),
+            goal_store: self.goal_store.clone(),
         }
     }
 
     /// Clear the stored conversation history for a platform session (e.g. on /new or /clear).
-    /// Removes both the in-memory cache and the on-disk file.
+    /// Removes both the in-memory cache and the on-disk file, and clears any active goal.
     pub fn clear_session(&self, session_key: &str) {
         self.conversation_history.remove(session_key);
         let _ = std::fs::remove_file(session_file(&self.config.home_dir, session_key));
+        let goal_store = self.goal_store.clone();
+        let key = session_key.to_string();
+        tokio::spawn(async move { goal_store.clear(&key).await });
+    }
+
+    pub async fn set_goal(&self, session_key: &str, goal: &str) -> anyhow::Result<()> {
+        self.goal_store.set(session_key, goal).await
+    }
+
+    pub async fn get_goal(&self, session_key: &str) -> Option<String> {
+        self.goal_store.get(session_key).await
+    }
+
+    pub async fn clear_goal(&self, session_key: &str) {
+        self.goal_store.clear(session_key).await;
     }
 
     /// Inject a (user, assistant) pair directly into conversation history without
@@ -552,6 +572,25 @@ impl Agent {
         } else {
             user_msg
         };
+        // If there is an active goal for this session, prepend it so the model never
+        // loses track of it regardless of how many turns have elapsed.
+        let user_msg = if let Some(key) = session_key {
+            if let Some(goal) = self.goal_store.get(key).await {
+                let safe = goal.replace(['<', '>'], "");
+                format!(
+                    "<active_goal>\n\
+                     [System note: You are working toward this persistent goal. \
+                     Keep it in mind across all turns and make progress on it.]\n\n\
+                     {safe}\n\
+                     </active_goal>\n\n{user_msg}"
+                )
+            } else {
+                user_msg
+            }
+        } else {
+            user_msg
+        };
+
         // Load prior conversation pairs — DashMap (warm cache) first, disk fallback on miss.
         let prior_pairs: Vec<(String, String)> = if let Some(key) = session_key {
             if let Some(entry) = self.conversation_history.get(key) {
