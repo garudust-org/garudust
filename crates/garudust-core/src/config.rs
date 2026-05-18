@@ -253,25 +253,62 @@ impl ProviderProfile {
 
 /// Per-tool configuration overrides.
 /// All fields are optional; unset fields leave the tool's own defaults intact.
-/// This struct is intentionally open-ended — new fields can be added here in
-/// future releases without breaking existing config files (serde default).
 ///
-/// Both `model` and `fallback_model` accept the same `"profile/model"` or
-/// `"provider/model"` format used by the `routing:` table. When a named profile
-/// is resolved, the subprocess also receives `GARUDUST_BASE_URL` / `GARUDUST_API_KEY`
-/// (primary) or `GARUDUST_FALLBACK_BASE_URL` / `GARUDUST_FALLBACK_API_KEY` (fallback).
+/// Tools are self-contained — credentials and model are declared here directly,
+/// not via a named provider profile. This keeps tools portable across agent
+/// implementations: any runner that injects the same env vars works identically.
+///
+/// Example:
+/// ```yaml
+/// tools:
+///   view_image:
+///     model: gemini-flash-latest
+///     key: ${GOOGLE_AI_API_KEY}
+///     fallback_model: nvidia/nemotron-nano-12b-v2-vl:free
+///     fallback_key: ${OPENROUTER_API_KEY}
+///     fallback_base_url: https://openrouter.ai/api/v1
+///   generate_image:
+///     model: black-forest-labs/FLUX.1-schnell
+///     key: ${HF_TOKEN}
+///     base_url: https://router.huggingface.co/hf-inference/models
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ToolOverrideConfig {
-    /// Primary model for the tool's subprocess. Accepts `"profile/model"` or
-    /// `"provider/model"`. Forwarded as `GARUDUST_MODEL` + `GARUDUST_BASE_URL` +
-    /// `GARUDUST_API_KEY`. Empty string = tool's own default.
+    /// Primary model name. Forwarded as `GARUDUST_MODEL`. Empty = tool's own default.
     #[serde(default)]
     pub model: String,
-    /// Fallback model tried when the primary fails. Accepts `"profile/model"` or
-    /// `"provider/model"`. Forwarded as `GARUDUST_FALLBACK_MODEL` +
-    /// `GARUDUST_FALLBACK_BASE_URL` + `GARUDUST_FALLBACK_API_KEY`. Empty = no fallback.
+    /// API key literal or `${ENV_VAR}`. Forwarded as `GARUDUST_API_KEY`.
+    #[serde(default)]
+    pub key: String,
+    /// Base URL for the primary provider. Forwarded as `GARUDUST_BASE_URL`.
+    #[serde(default)]
+    pub base_url: String,
+    /// Fallback model tried when the primary fails. Forwarded as `GARUDUST_FALLBACK_MODEL`.
     #[serde(default)]
     pub fallback_model: String,
+    /// Fallback API key literal or `${ENV_VAR}`. Forwarded as `GARUDUST_FALLBACK_API_KEY`.
+    #[serde(default)]
+    pub fallback_key: String,
+    /// Base URL for the fallback provider. Forwarded as `GARUDUST_FALLBACK_BASE_URL`.
+    #[serde(default)]
+    pub fallback_base_url: String,
+}
+
+impl ToolOverrideConfig {
+    pub fn resolved_key(&self) -> String {
+        resolve_env_str(&self.key)
+    }
+    pub fn resolved_fallback_key(&self) -> String {
+        resolve_env_str(&self.fallback_key)
+    }
+}
+
+fn resolve_env_str(s: &str) -> String {
+    if let Some(var) = s.strip_prefix("${").and_then(|s| s.strip_suffix('}')) {
+        get_secret(var).unwrap_or_default()
+    } else {
+        s.to_string()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

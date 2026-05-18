@@ -179,46 +179,30 @@ impl Tool for ScriptTool {
             }
         }
         // Forward per-tool model overrides from config.yaml → subprocess env.
-        // Scripts read GARUDUST_MODEL / GARUDUST_FALLBACK_MODEL and fall back to
-        // their own hardcoded defaults when these vars are absent, preserving
-        // backward compatibility with scripts that pre-date this feature.
+        // Tools are self-contained: model, key, and base_url are declared
+        // directly in tools.<name> — no provider profile lookup required.
+        // Scripts fall back to their own hardcoded defaults when these vars
+        // are absent, preserving portability across agent implementations.
         if let Some(cfg) = ctx.config.tools.get(self.name()) {
             if !cfg.model.is_empty() {
-                if let Some((base_url, api_key, model)) =
-                    garudust_transport::resolve_to_env_vars(&cfg.model, &ctx.config.providers)
-                {
-                    cmd.env("GARUDUST_MODEL", &model);
-                    cmd.env("GARUDUST_BASE_URL", &base_url);
-                    if !api_key.is_empty() {
-                        cmd.env("GARUDUST_API_KEY", &api_key);
-                    }
-                } else {
-                    cmd.env("GARUDUST_MODEL", &cfg.model);
-                }
+                cmd.env("GARUDUST_MODEL", &cfg.model);
             }
-            // Symmetric with `model`: resolve the profile prefix. The prefix
-            // (e.g. `vision-fallback/`) is the routing key and MUST name a
-            // defined provider profile. `split_once('/')` removes only that
-            // first segment, so an OpenRouter `vendor/model:tag` id that
-            // follows (e.g. `nvidia/nemotron-…:free`) is preserved intact —
-            // the profile prefix is what shields a `vendor` segment from
-            // colliding with a builtin provider name. A bare prefix-less
-            // value resolves to None and is forwarded verbatim (so a vendor
-            // that happens to match a builtin would be mis-split — fallbacks
-            // are required to carry a profile prefix).
+            let key = cfg.resolved_key();
+            if !key.is_empty() {
+                cmd.env("GARUDUST_API_KEY", &key);
+            }
+            if !cfg.base_url.is_empty() {
+                cmd.env("GARUDUST_BASE_URL", &cfg.base_url);
+            }
             if !cfg.fallback_model.is_empty() {
-                if let Some((fb_url, fb_key, fb_model)) = garudust_transport::resolve_to_env_vars(
-                    &cfg.fallback_model,
-                    &ctx.config.providers,
-                ) {
-                    cmd.env("GARUDUST_FALLBACK_MODEL", &fb_model);
-                    cmd.env("GARUDUST_FALLBACK_BASE_URL", &fb_url);
-                    if !fb_key.is_empty() {
-                        cmd.env("GARUDUST_FALLBACK_API_KEY", &fb_key);
-                    }
-                } else {
-                    cmd.env("GARUDUST_FALLBACK_MODEL", &cfg.fallback_model);
-                }
+                cmd.env("GARUDUST_FALLBACK_MODEL", &cfg.fallback_model);
+            }
+            let fb_key = cfg.resolved_fallback_key();
+            if !fb_key.is_empty() {
+                cmd.env("GARUDUST_FALLBACK_API_KEY", &fb_key);
+            }
+            if !cfg.fallback_base_url.is_empty() {
+                cmd.env("GARUDUST_FALLBACK_BASE_URL", &cfg.fallback_base_url);
             }
         }
         let out = cmd
