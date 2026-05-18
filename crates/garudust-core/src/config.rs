@@ -234,6 +234,21 @@ impl ProviderProfile {
             Some(k.to_string())
         }
     }
+
+    /// Effective base URL for this profile: an explicit `url:`, otherwise the
+    /// built-in default for `name:`. Returns `None` for special transports
+    /// (anthropic / ollama / bedrock) that have no entry in `BUILTIN_PROVIDERS`
+    /// and for profiles with neither a `url` nor a recognised `name`.
+    pub fn resolved_base_url(&self) -> Option<String> {
+        if let Some(url) = &self.url {
+            return Some(url.clone());
+        }
+        let name = self.name.as_deref()?;
+        BUILTIN_PROVIDERS
+            .iter()
+            .find(|p| p.name == name)
+            .map(|p| p.base_url.to_string())
+    }
 }
 
 /// Per-tool or per-skill configuration overrides.
@@ -864,6 +879,31 @@ pub(crate) fn detect_provider_from_env(config: &mut AgentConfig, dotenv: &HashMa
 }
 
 impl AgentConfig {
+    /// Effective transport base URL, honouring the new `providers.default`
+    /// profile first (its `url:` or the built-in default for its `name:`),
+    /// then falling back to the legacy top-level `base_url:` field.
+    /// `None` means "use the provider's built-in default" — callers that need
+    /// a concrete URL (doctor, `config show`) supply their own provider match.
+    pub fn effective_base_url(&self) -> Option<String> {
+        if let Some(p) = self.providers.get("default") {
+            if let Some(url) = p.resolved_base_url() {
+                return Some(url);
+            }
+        }
+        self.base_url.clone()
+    }
+
+    /// Effective API key, honouring the `providers.default` profile's resolved
+    /// `key:` first, then the legacy `api_key` field populated by `load()`.
+    pub fn effective_api_key(&self) -> Option<String> {
+        if let Some(p) = self.providers.get("default") {
+            if let Some(k) = p.resolved_key() {
+                return Some(k);
+            }
+        }
+        self.api_key.clone()
+    }
+
     /// Canonical ~/.garudust directory.
     pub fn garudust_dir() -> PathBuf {
         dirs::home_dir()

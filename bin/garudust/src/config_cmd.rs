@@ -140,8 +140,10 @@ pub fn show(config: &AgentConfig) {
     println!("model           : {}", config.model);
     println!("max_iterations  : {}", config.max_iterations);
     println!("tool_delay_ms   : {}", config.tool_delay_ms);
-    let effective_url = config
-        .base_url
+    // Honour `providers.default` (its `url:` or built-in default for `name:`)
+    // before the legacy `base_url:` field.
+    let effective_url_owned = config.effective_base_url();
+    let effective_url = effective_url_owned
         .as_deref()
         .unwrap_or(match config.provider.as_str() {
             "anthropic" => "https://api.anthropic.com/v1/messages (native)",
@@ -154,14 +156,23 @@ pub fn show(config: &AgentConfig) {
         });
     println!("base_url        : {effective_url}");
     println!("approval_mode   : {}", config.security.approval_mode);
-    let source_env = match config.provider.as_str() {
+    // Prefer the `${ENV_VAR}` named in the default profile's `key:`; otherwise
+    // fall back to the conventional per-provider env var.
+    let profile_env = config
+        .providers
+        .get("default")
+        .and_then(|p| p.key.as_deref())
+        .and_then(|k| k.strip_prefix("${").and_then(|s| s.strip_suffix('}')))
+        .map(str::to_string);
+    let source_env = profile_env.as_deref().or(match config.provider.as_str() {
         "vllm" => Some("VLLM_API_KEY"),
         "anthropic" => Some("ANTHROPIC_API_KEY"),
         "thaillm" => Some("THAILLM_API_KEY"),
         "openrouter" => Some("OPENROUTER_API_KEY"),
         _ => None,
-    };
-    let key_display = match (&config.api_key, source_env) {
+    });
+    let api_key = config.effective_api_key();
+    let key_display = match (&api_key, source_env) {
         (Some(k), Some(env)) if k.len() > 10 => {
             format!("{}…{} (from {env})", &k[..6], &k[k.len() - 4..])
         }
