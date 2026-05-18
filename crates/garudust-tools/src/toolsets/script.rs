@@ -196,8 +196,29 @@ impl Tool for ScriptTool {
                     cmd.env("GARUDUST_MODEL", &cfg.model);
                 }
             }
+            // Symmetric with `model`: resolve the profile prefix. The prefix
+            // (e.g. `vision-fallback/`) is the routing key and MUST name a
+            // defined provider profile. `split_once('/')` removes only that
+            // first segment, so an OpenRouter `vendor/model:tag` id that
+            // follows (e.g. `nvidia/nemotron-…:free`) is preserved intact —
+            // the profile prefix is what shields a `vendor` segment from
+            // colliding with a builtin provider name. A bare prefix-less
+            // value resolves to None and is forwarded verbatim (so a vendor
+            // that happens to match a builtin would be mis-split — fallbacks
+            // are required to carry a profile prefix).
             if !cfg.fallback_model.is_empty() {
-                cmd.env("GARUDUST_FALLBACK_MODEL", &cfg.fallback_model);
+                if let Some((base_url, api_key, model)) = garudust_transport::resolve_to_env_vars(
+                    &cfg.fallback_model,
+                    &ctx.config.providers,
+                ) {
+                    cmd.env("GARUDUST_FALLBACK_MODEL", &model);
+                    cmd.env("GARUDUST_FALLBACK_BASE_URL", &base_url);
+                    if !api_key.is_empty() {
+                        cmd.env("GARUDUST_FALLBACK_API_KEY", &api_key);
+                    }
+                } else {
+                    cmd.env("GARUDUST_FALLBACK_MODEL", &cfg.fallback_model);
+                }
             }
         }
         let out = cmd

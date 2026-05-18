@@ -10,6 +10,8 @@ use garudust_core::{
     types::{DocAttachment, ImageAttachment, InboundMessage, OutboundMessage},
 };
 
+use tokio::sync::Mutex;
+
 use crate::sessions::SessionRegistry;
 
 /// Routes inbound platform messages to an agent and sends the reply back.
@@ -22,6 +24,13 @@ pub struct GatewayHandler {
     /// Files awaiting RAG ingest confirmation, keyed by session_key.
     /// Populated when a doc-only message arrives; consumed on the next text turn.
     pending_docs: Arc<DashMap<String, Vec<DocAttachment>>>,
+    /// Per-session gate held for the full duration of image analysis. A
+    /// follow-up text question about the image arrives as a *separate*
+    /// platform event (separate `handle()` call); it waits on this gate so
+    /// the agent answers against the real image description rather than the
+    /// still-pending "[analysing…]" placeholder. Without it the text turn
+    /// can win the race and reply "[ไม่สามารถวิเคราะห์ภาพได้]".
+    image_gates: Arc<DashMap<String, Arc<Mutex<()>>>>,
 }
 
 impl GatewayHandler {
@@ -39,7 +48,17 @@ impl GatewayHandler {
             approver,
             config,
             pending_docs: Arc::new(DashMap::new()),
+            image_gates: Arc::new(DashMap::new()),
         }
+    }
+
+    /// Get-or-create the per-session image-analysis gate. One `Mutex` per
+    /// session; the count is bounded by the number of distinct sessions.
+    fn image_gate(&self, session_key: &str) -> Arc<Mutex<()>> {
+        self.image_gates
+            .entry(session_key.to_string())
+            .or_insert_with(|| Arc::new(Mutex::new(())))
+            .clone()
     }
 
     /// Analyse image attachments via the registered view_image tool and inject
@@ -51,6 +70,11 @@ impl GatewayHandler {
         seq_start: usize,
         user_name: &str,
     ) {
+        // Held for the whole analysis so a follow-up text question on the
+        // same session blocks until every description is in history.
+        let gate = self.image_gate(session_key);
+        let _gate_guard = gate.lock().await;
+
         let view_image_installed = self.agent.has_tool("view_image");
 
         for (i, att) in attachments.iter().enumerate() {
@@ -254,7 +278,14 @@ impl MessageHandler for GatewayHandler {
                 Some(b) => b,
                 None => {
                     if pcfg.bot_username.is_empty() {
-                        true
+                        // Native detection unavailable and no bot_username to
+                        // match against — we genuinely cannot tell if the bot
+                        // was addressed. The operator explicitly set
+                        // require_mention, so fail closed (stay silent) rather
+                        // than reply to every group message. This window is
+                        // rare: the LINE adapter caches/retries/lazily
+                        // re-fetches its userId so `bot_mentioned` is Some.
+                        false
                     } else {
                         let mention = format!("@{}", pcfg.bot_username);
                         msg.text.to_lowercase().contains(&mention.to_lowercase())
@@ -392,6 +423,20 @@ impl MessageHandler for GatewayHandler {
                     .await;
                 return Ok(());
             }
+        }
+
+        // A question about an image arrives as a separate platform event from
+        // the image itself. If that image is still being analysed, wait for
+        // its description to land in history before answering — otherwise the
+        // model sees only the "[analysing…]" placeholder and wrongly reports
+        // it cannot read the image. `.get()` (not get-or-create) avoids
+        // allocating a gate for pure-text sessions.
+        if let Some(gate) = self
+            .image_gates
+            .get(&msg.session_key)
+            .map(|g| Arc::clone(g.value()))
+        {
+            drop(gate.lock().await);
         }
 
         let task = msg.text.clone();
