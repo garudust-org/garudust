@@ -12,6 +12,28 @@ use garudust_core::config::{
     AgentConfig, BuiltinProvider, ProviderProfile, WebhookPlatformConfig, BUILTIN_PROVIDERS,
 };
 
+const C_RESET: &str = "\x1b[0m";
+const C_BOLD: &str = "\x1b[1m";
+const C_DIM: &str = "\x1b[2m";
+const C_CYAN: &str = "\x1b[38;5;117m";
+const C_GREEN: &str = "\x1b[38;5;82m";
+const C_YELLOW: &str = "\x1b[38;5;220m";
+const C_GRAY: &str = "\x1b[38;5;245m";
+const C_WHITE: &str = "\x1b[38;5;255m";
+
+fn print_banner() {
+    println!("{C_BOLD}{C_WHITE}  ██████╗  █████╗ ██████╗ ██╗   ██╗██████╗ ██╗   ██╗███████╗████████╗{C_RESET}");
+    println!("{C_BOLD}{C_CYAN} ██╔════╝ ██╔══██╗██╔══██╗██║   ██║██╔══██╗██║   ██║██╔════╝╚══██╔══╝{C_RESET}");
+    println!("{C_BOLD}{C_CYAN} ██║  ███╗███████║██████╔╝██║   ██║██║  ██║██║   ██║███████╗   ██║{C_RESET}   ");
+    println!("{C_BOLD}{C_CYAN} ██║   ██║██╔══██║██╔══██╗██║   ██║██║  ██║██║   ██║╚════██║   ██║{C_RESET}   ");
+    println!("{C_BOLD}{C_CYAN} ╚██████╔╝██║  ██║██║  ██║╚██████╔╝██████╔╝╚██████╔╝███████║   ██║{C_RESET}   ");
+    println!("{C_BOLD}{C_CYAN}  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝  ╚═════╝ ╚══════╝   ╚═╝{C_RESET}   ");
+    println!();
+    println!("{C_BOLD}{C_WHITE}Welcome to Garudust setup!{C_RESET}");
+    println!("{C_GRAY}This will create ~/.garudust/config.yaml and ~/.garudust/.env{C_RESET}");
+    println!();
+}
+
 const PLATFORMS: &[(&str, &[(&str, &str)])] = &[
     ("Telegram", &[("Telegram bot token", "TELEGRAM_TOKEN")]),
     ("Discord", &[("Discord bot token", "DISCORD_TOKEN")]),
@@ -61,19 +83,18 @@ pub async fn run() -> anyhow::Result<()> {
     let existing = AgentConfig::load();
     let is_reconfigure = home_dir.join("config.yaml").exists();
 
-    println!("Garudust Setup");
-    println!("{}", "─".repeat(48));
+    print_banner();
     if is_reconfigure {
-        println!("Existing configuration found.");
-        println!("Press Enter to keep the current value, or type a new one.\n");
+        println!("{C_YELLOW}Existing configuration found.{C_RESET}");
+        println!("{C_GRAY}Press Enter to keep the current value, or type a new one.{C_RESET}\n");
     } else {
-        println!("Press Enter to accept the [default] value.\n");
+        println!("{C_GRAY}Press Enter to accept the [default] value.{C_RESET}\n");
     }
 
     // ── Mode ──────────────────────────────────────────────────────────────────
-    println!("Setup mode:");
-    println!("  1) Quick — provider + model only");
-    println!("  2) Full  — provider, model, and platform adapters");
+    println!("{C_BOLD}{C_YELLOW}Setup mode:{C_RESET}");
+    println!("  {C_CYAN}1){C_RESET}  Quick {C_DIM}— provider + model only{C_RESET}");
+    println!("  {C_CYAN}2){C_RESET}  Full  {C_DIM}— provider, model, and platform adapters{C_RESET}");
     let mode = prompt("Choose mode", Some("1"));
     let full = matches!(mode.trim(), "2" | "full");
     println!();
@@ -98,16 +119,16 @@ pub async fn run() -> anyhow::Result<()> {
         _ => "1",
     };
 
-    println!("LLM Provider:");
-    println!("  1) ollama      — local, no API key{ollama_hint}");
-    println!("  2) anthropic   — Claude (native API)");
-    println!("  3) openrouter  — 200+ hosted models");
-    println!("  4) groq        — fast inference");
-    println!("  5) deepseek    — DeepSeek");
-    println!("  6) gemini      — Google Gemini");
-    println!("  7) openai      — OpenAI GPT");
-    println!("  other          — type provider name  (mistral / xai / together / …)");
-    println!("  custom         — custom base URL");
+    println!("{C_BOLD}{C_YELLOW}LLM Provider:{C_RESET}");
+    println!("  {C_CYAN}1){C_RESET}  ollama      {C_DIM}— local, no API key{ollama_hint:<15}{C_RESET}  {C_GRAY}llama3.2{C_RESET}");
+    println!("  {C_CYAN}2){C_RESET}  anthropic   {C_DIM}— Claude (native API)          {C_RESET}  {C_GRAY}claude-sonnet-4-6{C_RESET}");
+    println!("  {C_CYAN}3){C_RESET}  openrouter  {C_DIM}— 200+ hosted models           {C_RESET}  {C_GRAY}any model{C_RESET}");
+    println!("  {C_CYAN}4){C_RESET}  groq        {C_DIM}— fast inference               {C_RESET}  {C_GRAY}llama-3.3-70b-versatile{C_RESET}");
+    println!("  {C_CYAN}5){C_RESET}  deepseek    {C_DIM}— DeepSeek                     {C_RESET}  {C_GRAY}deepseek-chat{C_RESET}");
+    println!("  {C_CYAN}6){C_RESET}  gemini      {C_DIM}— Google Gemini                {C_RESET}  {C_GRAY}gemini-2.5-flash{C_RESET}");
+    println!("  {C_CYAN}7){C_RESET}  openai      {C_DIM}— OpenAI GPT                   {C_RESET}  {C_GRAY}gpt-4o-mini{C_RESET}");
+    println!("  {C_DIM}other       — type provider name  (mistral / xai / together / …){C_RESET}");
+    println!("  {C_DIM}custom      — custom base URL{C_RESET}");
     let choice = prompt("Choose provider", Some(current_choice));
     println!();
 
@@ -285,7 +306,7 @@ pub async fn run() -> anyhow::Result<()> {
     let mut webhook_platform_selections: Option<Vec<(&'static str, bool)>> = None;
     let mut custom_profiles: Vec<(String, ProviderProfile)> = Vec::new();
     if full {
-        println!("Optional Tools (Enter to keep current / skip):");
+        println!("{C_BOLD}{C_YELLOW}Optional Tools{C_RESET} {C_GRAY}(Enter to keep current / skip){C_RESET}");
         let cur_brave = read_env_file(&home_dir, "BRAVE_SEARCH_API_KEY");
         if let Some(v) = prompt_secret(
             "BRAVE_SEARCH_API_KEY",
@@ -306,8 +327,8 @@ pub async fn run() -> anyhow::Result<()> {
             })
             .collect();
 
-        println!("Platform Adapters:");
-        println!("  ↑↓ to move  ·  Space to select  ·  Enter to confirm\n");
+        println!("{C_BOLD}{C_YELLOW}Platform Adapters:{C_RESET}");
+        println!("  {C_GRAY}↑↓ to move  ·  Space to select  ·  Enter to confirm{C_RESET}\n");
 
         let names: Vec<&str> = PLATFORMS.iter().map(|(name, _)| *name).collect();
         let selected = multi_select(&names, &preselected)?;
@@ -335,8 +356,8 @@ pub async fn run() -> anyhow::Result<()> {
         println!();
 
         // ── Custom Provider Profiles ──────────────────────────────────────────
-        println!("Custom Provider Profiles (optional — for routing: or tool model overrides):");
-        println!("  Leave profile name blank to skip.\n");
+        println!("{C_BOLD}{C_YELLOW}Custom Provider Profiles{C_RESET} {C_GRAY}(optional — for routing: or tool model overrides){C_RESET}");
+        println!("  {C_GRAY}Leave profile name blank to skip.{C_RESET}\n");
         loop {
             let alias = prompt("Profile alias (e.g. groq-backup, local)", None);
             if alias.is_empty() {
@@ -453,7 +474,12 @@ pub async fn run() -> anyhow::Result<()> {
 
     new_config.save_yaml()?;
 
-    println!("Configuration saved to {}", home_dir.display());
+    println!("{C_GREEN}✓{C_RESET} Wrote {C_BOLD}providers.default{C_RESET} profile to {C_GRAY}{}/.garudust/config.yaml{C_RESET}", home_dir.display());
+    if !env_vars.is_empty() {
+        for (var, _) in &env_vars {
+            println!("{C_GREEN}✓{C_RESET} Wrote {C_BOLD}{var}{C_RESET} to {C_GRAY}~/.garudust/.env{C_RESET}");
+        }
+    }
     println!();
 
     // ── Doctor ────────────────────────────────────────────────────────────────
