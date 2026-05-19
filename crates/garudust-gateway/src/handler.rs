@@ -1,17 +1,17 @@
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use async_trait::async_trait;
 use dashmap::DashMap;
 use garudust_agent::{Agent, RolesApprover};
 use garudust_core::{
-    config::AgentConfig,
+    config::{AgentConfig, RolesConfig},
     platform::{MessageHandler, PlatformAdapter},
     tool::CommandApprover,
     types::{ChannelId, DocAttachment, ImageAttachment, InboundMessage, OutboundMessage},
 };
 use garudust_memory::SessionDb;
 
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 use crate::sessions::SessionRegistry;
 
@@ -34,9 +34,12 @@ pub struct GatewayHandler {
     /// Users who sent a DM but have no role yet: "platform:user_id" → (name, time).
     /// In-memory only — lost on restart, user just needs to send again.
     pending_roles: Arc<DashMap<String, PendingEntry>>,
+    /// Live, in-memory roles config — updated immediately on every /role change
+    /// so the new permissions take effect without a restart.
+    live_roles: Arc<RwLock<RolesConfig>>,
     /// Mutex that serialises the bootstrap write so two simultaneous DMs cannot
     /// both see "no admin" and both get promoted.
-    bootstrap_lock: Arc<RwLock<()>>,
+    bootstrap_lock: Arc<tokio::sync::RwLock<()>>,
 }
 
 impl GatewayHandler {
@@ -48,6 +51,7 @@ impl GatewayHandler {
         config: Arc<AgentConfig>,
         session_db: Option<Arc<SessionDb>>,
     ) -> Self {
+        let live_roles = Arc::new(RwLock::new(config.roles.clone()));
         Self {
             agent,
             platform,
@@ -58,7 +62,8 @@ impl GatewayHandler {
             pending_docs: Arc::new(DashMap::new()),
             image_gates: Arc::new(DashMap::new()),
             pending_roles: Arc::new(DashMap::new()),
-            bootstrap_lock: Arc::new(RwLock::new(())),
+            live_roles,
+            bootstrap_lock: Arc::new(tokio::sync::RwLock::new(())),
         }
     }
 
@@ -66,29 +71,32 @@ impl GatewayHandler {
 
     /// Build a per-request approver based on the sender's configured role.
     fn approver_for(&self, platform: &str, user_id: &str) -> Arc<dyn CommandApprover> {
+        let roles = self.live_roles.read().unwrap();
         RolesApprover::for_user(
             platform,
             user_id,
             None,
-            &self.config,
+            &roles,
+            &self.config.security.approval_mode,
             self.agent.tools(),
         )
     }
 
     /// Notify every admin on the same platform that `requester` is pending.
     async fn notify_admins_pending(&self, platform: &str, requester_id: &str, requester_name: &str) {
-        let admins: Vec<String> = self
-            .config
-            .roles
-            .users
-            .get(platform)
-            .map(|m| {
-                m.iter()
-                    .filter(|(_, role)| role.as_str() == "admin")
-                    .map(|(id, _)| id.clone())
-                    .collect()
-            })
-            .unwrap_or_default();
+        let admins: Vec<String> = {
+            let roles = self.live_roles.read().unwrap();
+            roles
+                .users
+                .get(platform)
+                .map(|m| {
+                    m.iter()
+                        .filter(|(_, role)| role.as_str() == "admin")
+                        .map(|(id, _)| id.clone())
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
 
         if admins.is_empty() {
             return;
@@ -121,12 +129,13 @@ impl GatewayHandler {
         let user_id = &msg.user_id;
 
         if trimmed == "/whoami" {
-            let role = self
-                .config
-                .roles
-                .lookup_role(platform, user_id, None)
-                .or_else(|| self.config.roles.default_role.clone())
-                .unwrap_or_else(|| "pending".to_string());
+            let role = {
+                let roles = self.live_roles.read().unwrap();
+                roles
+                    .lookup_role(platform, user_id, None)
+                    .or_else(|| roles.default_role.clone())
+                    .unwrap_or_else(|| "pending".to_string())
+            };
             let reply = OutboundMessage::text(format!(
                 "id: {platform}:{user_id}\nrole: {role}"
             ));
@@ -136,8 +145,9 @@ impl GatewayHandler {
 
         // All /role sub-commands require admin.
         let is_admin = self
-            .config
-            .roles
+            .live_roles
+            .read()
+            .unwrap()
             .lookup_role(platform, user_id, None)
             .as_deref()
             == Some("admin");
@@ -150,14 +160,16 @@ impl GatewayHandler {
                     .await;
                 return Ok(true);
             }
-            let users = self.config.roles.users.get(platform.as_str());
-            let lines = match users {
-                None => "ยังไม่มีผู้ใช้ที่กำหนดสิทธิ์".to_string(),
-                Some(map) => map
-                    .iter()
-                    .map(|(id, role)| format!("{id} → {role}"))
-                    .collect::<Vec<_>>()
-                    .join("\n"),
+            let lines = {
+                let roles = self.live_roles.read().unwrap();
+                match roles.users.get(platform.as_str()) {
+                    None => "ยังไม่มีผู้ใช้ที่กำหนดสิทธิ์".to_string(),
+                    Some(map) => map
+                        .iter()
+                        .map(|(id, role)| format!("{id} → {role}"))
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                }
             };
             // Also show pending
             let pending: Vec<String> = self
@@ -285,11 +297,7 @@ impl GatewayHandler {
             }
             let target = rest.trim();
             if let Some((tplatform, tid)) = target.split_once(':') {
-                let mut cfg = (*self.config).clone();
-                let removed = cfg.roles.remove_user(tplatform, tid);
-                if removed {
-                    let _ = cfg.save_yaml();
-                }
+                let removed = self.remove_role(tplatform, tid);
                 let reply = if removed {
                     format!("ลบ {target} ออกแล้ว")
                 } else {
@@ -341,11 +349,25 @@ impl GatewayHandler {
         Ok(false)
     }
 
-    /// Atomically write a new role assignment to config.yaml.
+    /// Update a role in-memory and persist to config.yaml atomically.
     fn save_role(&self, platform: &str, user_id: &str, role: &str) -> std::io::Result<()> {
+        let mut roles = self.live_roles.write().unwrap();
+        roles.set_user_role(platform, user_id, role);
         let mut cfg = (*self.config).clone();
-        cfg.roles.set_user_role(platform, user_id, role);
+        cfg.roles = roles.clone();
         cfg.save_yaml()
+    }
+
+    /// Remove a role in-memory and persist to config.yaml atomically.
+    fn remove_role(&self, platform: &str, user_id: &str) -> bool {
+        let mut roles = self.live_roles.write().unwrap();
+        let removed = roles.remove_user(platform, user_id);
+        if removed {
+            let mut cfg = (*self.config).clone();
+            cfg.roles = roles.clone();
+            let _ = cfg.save_yaml();
+        }
+        removed
     }
 
     /// Bootstrap: if no admin exists yet and this is a DM, make the sender admin.
@@ -355,12 +377,12 @@ impl GatewayHandler {
             return false;
         }
         // Fast path without lock: admin already exists.
-        if self.config.roles.has_any_admin() {
+        if self.live_roles.read().unwrap().has_any_admin() {
             return false;
         }
         let _guard = self.bootstrap_lock.write().await;
         // Re-check under lock (another task may have written by now).
-        if self.config.roles.has_any_admin() {
+        if self.live_roles.read().unwrap().has_any_admin() {
             return false;
         }
         let platform = &msg.channel.platform;
@@ -648,13 +670,15 @@ impl MessageHandler for GatewayHandler {
 
         // Pending approval: unknown user with no default_role.
         {
-            let roles = &self.config.roles;
-            let has_roles_configured =
-                !roles.definitions.is_empty() || roles.default_role.is_some();
-            if has_roles_configured {
+            let (has_roles_configured, effective) = {
+                let roles = self.live_roles.read().unwrap();
+                let configured = !roles.definitions.is_empty() || roles.default_role.is_some();
                 let role = roles.lookup_role(&msg.channel.platform, &msg.user_id, None);
-                let effective = role.or_else(|| roles.default_role.clone());
-                if effective.is_none() {
+                let eff = role.or_else(|| roles.default_role.clone());
+                (configured, eff)
+            };
+            if has_roles_configured && effective.is_none() {
+                {
                     // First time seeing this user — add to pending and notify admins.
                     let key = format!("{}:{}", msg.channel.platform, msg.user_id);
                     let is_new = !self.pending_roles.contains_key(&key);
@@ -679,7 +703,7 @@ impl MessageHandler for GatewayHandler {
                         .await;
                     return Ok(());
                 }
-            }
+        }
         }
 
         // Image-only or doc-only messages bypass the mention gate.

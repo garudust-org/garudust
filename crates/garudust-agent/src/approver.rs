@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use garudust_core::{
-    config::{AgentConfig, RoleDefinition},
+    config::{RoleDefinition, RolesConfig},
     tool::{ApprovalDecision, CommandApprover},
 };
 
@@ -66,20 +66,20 @@ pub struct RolesApprover {
 
 impl RolesApprover {
     /// Build a per-request approver for the given (platform, user_id) pair.
-    /// Falls back to the global `security.approval_mode` when no roles are configured
-    /// or the user has no role assignment.
+    ///
+    /// `roles` is the live in-memory `RolesConfig` (read from the RwLock before calling).
+    /// `approval_mode` is the global fallback from `security.approval_mode`.
     pub fn for_user(
         platform: &str,
         user_id: &str,
         username: Option<&str>,
-        config: &AgentConfig,
+        roles: &RolesConfig,
+        approval_mode: &str,
         registry: &garudust_tools::ToolRegistry,
     ) -> Arc<dyn CommandApprover> {
-        let roles = &config.roles;
-
         // No roles configured → use global approver unchanged.
         if roles.definitions.is_empty() && roles.users.is_empty() && roles.default_role.is_none() {
-            return mode_to_approver(&config.security.approval_mode);
+            return mode_to_approver(approval_mode);
         }
 
         let role_name = roles
@@ -96,10 +96,7 @@ impl RolesApprover {
             return Arc::new(DenyApprover);
         };
 
-        let mode = def
-            .approval_mode
-            .as_deref()
-            .unwrap_or(&config.security.approval_mode);
+        let mode = def.approval_mode.as_deref().unwrap_or(approval_mode);
         let inner = mode_to_approver(mode);
         let allowed_tools = expand_allowed_tools(def, registry);
         let denied_tools = def.denied_tools.iter().cloned().collect();
@@ -160,7 +157,7 @@ mod tests {
 
     use async_trait::async_trait;
     use garudust_core::{
-        config::{AgentConfig, RoleDefinition, RolesConfig},
+        config::{RoleDefinition, RolesConfig},
         error::ToolError,
         tool::{ApprovalDecision, CommandApprover, Tool, ToolContext},
         types::ToolResult,
@@ -197,29 +194,22 @@ mod tests {
         r
     }
 
-    fn config_with_roles(roles: RolesConfig) -> AgentConfig {
-        use garudust_core::config::SecurityConfig;
-        AgentConfig {
-            roles,
-            security: SecurityConfig {
-                approval_mode: "auto".to_string(),
-                ..Default::default()
-            },
-            ..Default::default()
-        }
-    }
+    const AUTO: &str = "auto";
 
     async fn decide(approver: &Arc<dyn CommandApprover>, tool: &str) -> ApprovalDecision {
         approver.approve(tool, "{}", "test_user").await
+    }
+
+    fn make(roles: RolesConfig, reg: &ToolRegistry, platform: &str, user_id: &str) -> Arc<dyn CommandApprover> {
+        RolesApprover::for_user(platform, user_id, None, &roles, AUTO, reg)
     }
 
     // ── Tests ────────────────────────────────────────────────────────────────
 
     #[tokio::test]
     async fn no_roles_configured_uses_global_auto() {
-        let cfg = config_with_roles(RolesConfig::default());
         let reg = registry_with(&[]);
-        let approver = RolesApprover::for_user("telegram", "111", None, &cfg, &reg);
+        let approver = make(RolesConfig::default(), &reg, "telegram", "111");
         assert_eq!(decide(&approver, "any_tool").await, ApprovalDecision::Approved);
     }
 
@@ -232,10 +222,9 @@ mod tests {
         });
         roles.set_user_role("telegram", "999", "admin");
 
-        let cfg = config_with_roles(roles);
         let reg = registry_with(&[]);
         // user "555" has no role, no default_role
-        let approver = RolesApprover::for_user("telegram", "555", None, &cfg, &reg);
+        let approver = make(roles, &reg, "telegram", "555");
         assert_eq!(decide(&approver, "any_tool").await, ApprovalDecision::Denied);
     }
 
@@ -248,9 +237,8 @@ mod tests {
         });
         roles.default_role = Some("readonly".into());
 
-        let cfg = config_with_roles(roles);
         let reg = registry_with(&[]);
-        let approver = RolesApprover::for_user("telegram", "stranger", None, &cfg, &reg);
+        let approver = make(roles, &reg, "telegram", "stranger");
         assert_eq!(decide(&approver, "read_file").await, ApprovalDecision::Approved);
     }
 
@@ -263,9 +251,8 @@ mod tests {
         });
         roles.set_user_role("telegram", "111", "readonly");
 
-        let cfg = config_with_roles(roles);
         let reg = registry_with(&[]);
-        let approver = RolesApprover::for_user("telegram", "111", None, &cfg, &reg);
+        let approver = make(roles, &reg, "telegram", "111");
         assert_eq!(decide(&approver, "bash").await, ApprovalDecision::Denied);
     }
 
@@ -278,9 +265,8 @@ mod tests {
         });
         roles.set_user_role("telegram", "111", "admin");
 
-        let cfg = config_with_roles(roles);
         let reg = registry_with(&[]);
-        let approver = RolesApprover::for_user("telegram", "111", None, &cfg, &reg);
+        let approver = make(roles, &reg, "telegram", "111");
         assert_eq!(decide(&approver, "bash").await, ApprovalDecision::Approved);
     }
 
@@ -294,9 +280,8 @@ mod tests {
         });
         roles.set_user_role("telegram", "111", "member");
 
-        let cfg = config_with_roles(roles);
         let reg = registry_with(&[("search_web", "web"), ("bash", "terminal")]);
-        let approver = RolesApprover::for_user("telegram", "111", None, &cfg, &reg);
+        let approver = make(roles, &reg, "telegram", "111");
 
         assert_eq!(decide(&approver, "search_web").await, ApprovalDecision::Approved);
         assert_eq!(decide(&approver, "bash").await, ApprovalDecision::Denied);
@@ -312,9 +297,8 @@ mod tests {
         });
         roles.set_user_role("telegram", "111", "member");
 
-        let cfg = config_with_roles(roles);
         let reg = registry_with(&[("read_file", "files"), ("bash", "terminal")]);
-        let approver = RolesApprover::for_user("telegram", "111", None, &cfg, &reg);
+        let approver = make(roles, &reg, "telegram", "111");
 
         assert_eq!(decide(&approver, "read_file").await, ApprovalDecision::Approved);
         assert_eq!(decide(&approver, "bash").await, ApprovalDecision::Denied);
@@ -331,11 +315,8 @@ mod tests {
         });
         roles.set_user_role("telegram", "111", "member");
 
-        let cfg = config_with_roles(roles);
         let reg = registry_with(&[("search_web", "web")]);
-        let approver = RolesApprover::for_user("telegram", "111", None, &cfg, &reg);
-
-        // search_web is in allowed toolset but also in denied_tools → denied
+        let approver = make(roles, &reg, "telegram", "111");
         assert_eq!(decide(&approver, "search_web").await, ApprovalDecision::Denied);
     }
 
@@ -345,9 +326,8 @@ mod tests {
         // user has role "ghost" but "ghost" has no definition
         roles.set_user_role("telegram", "111", "ghost");
 
-        let cfg = config_with_roles(roles);
         let reg = registry_with(&[]);
-        let approver = RolesApprover::for_user("telegram", "111", None, &cfg, &reg);
+        let approver = make(roles, &reg, "telegram", "111");
         assert_eq!(decide(&approver, "any_tool").await, ApprovalDecision::Denied);
     }
 
@@ -362,9 +342,8 @@ mod tests {
         });
         roles.set_user_role("telegram", "111", "admin");
 
-        let cfg = config_with_roles(roles);
         let reg = registry_with(&[("bash", "terminal"), ("search_web", "web")]);
-        let approver = RolesApprover::for_user("telegram", "111", None, &cfg, &reg);
+        let approver = make(roles, &reg, "telegram", "111");
 
         assert_eq!(decide(&approver, "bash").await, ApprovalDecision::Approved);
         assert_eq!(decide(&approver, "search_web").await, ApprovalDecision::Approved);
