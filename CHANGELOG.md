@@ -7,6 +7,19 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.8.1] — 2026-05-19
+
+### Added
+- **Webhook HMAC verification** — `WebhookAdapter` now validates `X-Hub-Signature-256` when `hmac_secret` is configured in `webhook.hmac_secret`; uses constant-time comparison to prevent timing attacks
+- **CI test job** — `cargo test --workspace` added to GitHub Actions pipeline between the `check` and `fmt` jobs
+- **`TOOL_PARAMS` env injection** — hub tool subprocesses receive the full JSON params as `TOOL_PARAMS` env var, enabling complex multi-field tools without positional-arg fragility
+- **Unit tests** — added tests for `agent::scrub_tag_block`, `agent::SessionStore`, `ContextCompressor::should_compress`, and 19 tests in `web.rs` covering SSRF guards, `strip_html_tags`, `percent_decode`, `floor_char_boundary`, and `parse_ddg_html`
+
+### Fixed
+- **`AutoApprover` audit log** — every auto-approved tool call now emits a structured `tracing::info!` event with `tool` and `params` fields
+
+---
+
 ## [0.8.0] — 2026-05-18
 
 ### Added
