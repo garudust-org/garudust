@@ -29,6 +29,7 @@
 //! ```
 
 pub mod handler;
+pub mod handler_tests;
 pub mod metrics;
 pub mod router;
 pub mod sessions;

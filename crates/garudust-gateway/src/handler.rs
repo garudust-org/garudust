@@ -33,10 +33,10 @@ pub struct GatewayHandler {
     image_gates: Arc<DashMap<String, Arc<Mutex<()>>>>,
     /// Users who sent a DM but have no role yet: "platform:user_id" → (name, time).
     /// In-memory only — lost on restart, user just needs to send again.
-    pending_roles: Arc<DashMap<String, PendingEntry>>,
+    pub(crate) pending_roles: Arc<DashMap<String, PendingEntry>>,
     /// Live, in-memory roles config — updated immediately on every /role change
     /// so the new permissions take effect without a restart.
-    live_roles: Arc<RwLock<RolesConfig>>,
+    pub(crate) live_roles: Arc<RwLock<RolesConfig>>,
     /// Mutex that serialises the bootstrap write so two simultaneous DMs cannot
     /// both see "no admin" and both get promoted.
     bootstrap_lock: Arc<tokio::sync::RwLock<()>>,

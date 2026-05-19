@@ -40,3 +40,4 @@ tower              = { version = "0.5", features = ["util"] }
 http-body-util     = "0.1"
 garudust-tools     = { path = "../garudust-tools", version = "0.8.1" }
 uuid               = { workspace = true }
+tempfile           = { workspace = true }
