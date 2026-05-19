@@ -20,9 +20,25 @@
 
 A self-improving AI agent runtime written in Rust — delivered as a single ~10 MB binary with no runtime dependencies. Chat in the terminal, reply across 7 platforms, or expose a REST + WebSocket API. Connect any MCP server, let the agent write its own reusable skills, and swap LLM providers with a single env var. No telemetry. No lock-in.
 
+### Demo
+
 <div align="center">
   <img src="assets/demo.svg" alt="Garudust demo"/>
 </div>
+
+### TUI keyboard shortcuts
+
+<div align="center">
+  <img src="assets/demo-tui.png" alt="Garudust TUI" width="800"/>
+</div>
+
+| Key | Action |
+|-----|--------|
+| `Enter` | Send message |
+| `↑ ↓` | Scroll history |
+| `/new` | Start a fresh session |
+| `/model <name>` | Switch model on the fly |
+| `Ctrl+C` | Quit |
 
 ---
 
@@ -99,22 +115,6 @@ garudust --hint fast "is this correct?"   # route to cheaper model
 garudust-server --port 3000               # headless server (REST + WS)
 docker compose up -d                      # Docker
 ```
-
----
-
-### TUI keyboard shortcuts
-
-<div align="center">
-  <img src="assets/demo-tui.png" alt="Garudust TUI" width="800"/>
-</div>
-
-| Key | Action |
-|-----|--------|
-| `Enter` | Send message |
-| `↑ ↓` | Scroll history |
-| `/new` | Start a fresh session |
-| `/model <name>` | Switch model on the fly |
-| `Ctrl+C` | Quit |
 
 ---
 
