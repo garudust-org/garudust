@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use dashmap::DashMap;
-use garudust_agent::Agent;
+use garudust_agent::{Agent, RolesApprover};
 use garudust_core::{
     config::AgentConfig,
     platform::{MessageHandler, PlatformAdapter},
@@ -11,28 +11,32 @@ use garudust_core::{
 };
 use garudust_memory::SessionDb;
 
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 use crate::sessions::SessionRegistry;
+
+/// Pending role request: (user_name, timestamp).
+type PendingEntry = (String, std::time::Instant);
 
 /// Routes inbound platform messages to an agent and sends the reply back.
 pub struct GatewayHandler {
     agent: Arc<Agent>,
     platform: Arc<dyn PlatformAdapter>,
     sessions: Arc<SessionRegistry>,
+    /// Global fallback approver used when no roles are configured.
     approver: Arc<dyn CommandApprover>,
     config: Arc<AgentConfig>,
     session_db: Option<Arc<SessionDb>>,
     /// Files awaiting RAG ingest confirmation, keyed by session_key.
-    /// Populated when a doc-only message arrives; consumed on the next text turn.
     pending_docs: Arc<DashMap<String, Vec<DocAttachment>>>,
-    /// Per-session gate held for the full duration of image analysis. A
-    /// follow-up text question about the image arrives as a *separate*
-    /// platform event (separate `handle()` call); it waits on this gate so
-    /// the agent answers against the real image description rather than the
-    /// still-pending "[analysing…]" placeholder. Without it the text turn
-    /// can win the race and reply "[ไม่สามารถวิเคราะห์ภาพได้]".
+    /// Per-session gate held for the full duration of image analysis.
     image_gates: Arc<DashMap<String, Arc<Mutex<()>>>>,
+    /// Users who sent a DM but have no role yet: "platform:user_id" → (name, time).
+    /// In-memory only — lost on restart, user just needs to send again.
+    pending_roles: Arc<DashMap<String, PendingEntry>>,
+    /// Mutex that serialises the bootstrap write so two simultaneous DMs cannot
+    /// both see "no admin" and both get promoted.
+    bootstrap_lock: Arc<RwLock<()>>,
 }
 
 impl GatewayHandler {
@@ -53,7 +57,329 @@ impl GatewayHandler {
             session_db,
             pending_docs: Arc::new(DashMap::new()),
             image_gates: Arc::new(DashMap::new()),
+            pending_roles: Arc::new(DashMap::new()),
+            bootstrap_lock: Arc::new(RwLock::new(())),
         }
+    }
+
+    // ── Role helpers ─────────────────────────────────────────────────────────
+
+    /// Build a per-request approver based on the sender's configured role.
+    fn approver_for(&self, platform: &str, user_id: &str) -> Arc<dyn CommandApprover> {
+        RolesApprover::for_user(
+            platform,
+            user_id,
+            None,
+            &self.config,
+            self.agent.tools(),
+        )
+    }
+
+    /// Notify every admin on the same platform that `requester` is pending.
+    async fn notify_admins_pending(&self, platform: &str, requester_id: &str, requester_name: &str) {
+        let admins: Vec<String> = self
+            .config
+            .roles
+            .users
+            .get(platform)
+            .map(|m| {
+                m.iter()
+                    .filter(|(_, role)| role.as_str() == "admin")
+                    .map(|(id, _)| id.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        if admins.is_empty() {
+            return;
+        }
+
+        let msg = format!(
+            "📋 ผู้ใช้ใหม่ขอเข้าใช้งาน\nชื่อ: {requester_name}\nID: {platform}:{requester_id}\n\n\
+             /role approve {platform}:{requester_id} member\n\
+             /role deny {platform}:{requester_id}"
+        );
+
+        for admin_id in admins {
+            // Build a temporary channel to the admin's DM.
+            let channel = ChannelId {
+                platform: platform.to_string(),
+                chat_id: admin_id.clone(),
+                thread_id: None,
+            };
+            let _ = self
+                .platform
+                .send_message(&channel, OutboundMessage::text(msg.clone()))
+                .await;
+        }
+    }
+
+    /// Handle /whoami, /role … commands. Returns true if the command was handled.
+    async fn handle_role_command(&self, msg: &InboundMessage) -> anyhow::Result<bool> {
+        let trimmed = msg.text.trim();
+        let platform = &msg.channel.platform;
+        let user_id = &msg.user_id;
+
+        if trimmed == "/whoami" {
+            let role = self
+                .config
+                .roles
+                .lookup_role(platform, user_id, None)
+                .or_else(|| self.config.roles.default_role.clone())
+                .unwrap_or_else(|| "pending".to_string());
+            let reply = OutboundMessage::text(format!(
+                "id: {platform}:{user_id}\nrole: {role}"
+            ));
+            let _ = self.platform.send_message(&msg.channel, reply).await;
+            return Ok(true);
+        }
+
+        // All /role sub-commands require admin.
+        let is_admin = self
+            .config
+            .roles
+            .lookup_role(platform, user_id, None)
+            .as_deref()
+            == Some("admin");
+
+        if trimmed == "/role list" {
+            if !is_admin {
+                let _ = self
+                    .platform
+                    .send_message(&msg.channel, OutboundMessage::text("ต้องการสิทธิ์ admin"))
+                    .await;
+                return Ok(true);
+            }
+            let users = self.config.roles.users.get(platform.as_str());
+            let lines = match users {
+                None => "ยังไม่มีผู้ใช้ที่กำหนดสิทธิ์".to_string(),
+                Some(map) => map
+                    .iter()
+                    .map(|(id, role)| format!("{id} → {role}"))
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            };
+            // Also show pending
+            let pending: Vec<String> = self
+                .pending_roles
+                .iter()
+                .filter(|e| e.key().starts_with(&format!("{platform}:")))
+                .map(|e| format!("{} (รอ)", e.key().trim_start_matches(&format!("{platform}:"))))
+                .collect();
+            let full = if pending.is_empty() {
+                lines
+            } else {
+                format!("{lines}\n\n⏳ รออนุมัติ:\n{}", pending.join("\n"))
+            };
+            let _ = self
+                .platform
+                .send_message(&msg.channel, OutboundMessage::text(full))
+                .await;
+            return Ok(true);
+        }
+
+        // /role approve <platform:id> <role>
+        if let Some(rest) = trimmed.strip_prefix("/role approve ") {
+            if !is_admin {
+                let _ = self
+                    .platform
+                    .send_message(&msg.channel, OutboundMessage::text("ต้องการสิทธิ์ admin"))
+                    .await;
+                return Ok(true);
+            }
+            let parts: Vec<&str> = rest.trim().splitn(2, ' ').collect();
+            if parts.len() != 2 {
+                let _ = self
+                    .platform
+                    .send_message(
+                        &msg.channel,
+                        OutboundMessage::text("ใช้: /role approve <platform:id> <role>"),
+                    )
+                    .await;
+                return Ok(true);
+            }
+            let (target, role_name) = (parts[0], parts[1].trim());
+            if let Some((tplatform, tid)) = target.split_once(':') {
+                if self.save_role(tplatform, tid, role_name).is_ok() {
+                    self.pending_roles.remove(target);
+                    // Notify the approved user if they're on the same platform.
+                    let ch = ChannelId {
+                        platform: tplatform.to_string(),
+                        chat_id: tid.to_string(),
+                        thread_id: None,
+                    };
+                    let _ = self
+                        .platform
+                        .send_message(
+                            &ch,
+                            OutboundMessage::text(format!(
+                                "✅ คำขอได้รับการอนุมัติ — สิทธิ์: {role_name}"
+                            )),
+                        )
+                        .await;
+                    let _ = self
+                        .platform
+                        .send_message(
+                            &msg.channel,
+                            OutboundMessage::text(format!("อนุมัติ {target} เป็น {role_name} แล้ว")),
+                        )
+                        .await;
+                } else {
+                    let _ = self
+                        .platform
+                        .send_message(&msg.channel, OutboundMessage::text("บันทึกสิทธิ์ไม่สำเร็จ"))
+                        .await;
+                }
+            } else {
+                let _ = self
+                    .platform
+                    .send_message(
+                        &msg.channel,
+                        OutboundMessage::text("รูปแบบ ID ไม่ถูกต้อง ต้องเป็น platform:id เช่น telegram:123456"),
+                    )
+                    .await;
+            }
+            return Ok(true);
+        }
+
+        // /role deny <platform:id>
+        if let Some(rest) = trimmed.strip_prefix("/role deny ") {
+            if !is_admin {
+                let _ = self
+                    .platform
+                    .send_message(&msg.channel, OutboundMessage::text("ต้องการสิทธิ์ admin"))
+                    .await;
+                return Ok(true);
+            }
+            let target = rest.trim();
+            self.pending_roles.remove(target);
+            if let Some((tplatform, tid)) = target.split_once(':') {
+                let ch = ChannelId {
+                    platform: tplatform.to_string(),
+                    chat_id: tid.to_string(),
+                    thread_id: None,
+                };
+                let _ = self
+                    .platform
+                    .send_message(&ch, OutboundMessage::text("❌ คำขอถูกปฏิเสธ"))
+                    .await;
+            }
+            let _ = self
+                .platform
+                .send_message(
+                    &msg.channel,
+                    OutboundMessage::text(format!("ปฏิเสธ {target} แล้ว")),
+                )
+                .await;
+            return Ok(true);
+        }
+
+        // /role remove <platform:id>
+        if let Some(rest) = trimmed.strip_prefix("/role remove ") {
+            if !is_admin {
+                let _ = self
+                    .platform
+                    .send_message(&msg.channel, OutboundMessage::text("ต้องการสิทธิ์ admin"))
+                    .await;
+                return Ok(true);
+            }
+            let target = rest.trim();
+            if let Some((tplatform, tid)) = target.split_once(':') {
+                let mut cfg = (*self.config).clone();
+                let removed = cfg.roles.remove_user(tplatform, tid);
+                if removed {
+                    let _ = cfg.save_yaml();
+                }
+                let reply = if removed {
+                    format!("ลบ {target} ออกแล้ว")
+                } else {
+                    format!("ไม่พบ {target}")
+                };
+                let _ = self
+                    .platform
+                    .send_message(&msg.channel, OutboundMessage::text(reply))
+                    .await;
+            }
+            return Ok(true);
+        }
+
+        // /role add <platform:id> <role>
+        if let Some(rest) = trimmed.strip_prefix("/role add ") {
+            if !is_admin {
+                let _ = self
+                    .platform
+                    .send_message(&msg.channel, OutboundMessage::text("ต้องการสิทธิ์ admin"))
+                    .await;
+                return Ok(true);
+            }
+            let parts: Vec<&str> = rest.trim().splitn(2, ' ').collect();
+            if parts.len() != 2 {
+                let _ = self
+                    .platform
+                    .send_message(
+                        &msg.channel,
+                        OutboundMessage::text("ใช้: /role add <platform:id> <role>"),
+                    )
+                    .await;
+                return Ok(true);
+            }
+            let (target, role_name) = (parts[0], parts[1].trim());
+            if let Some((tplatform, tid)) = target.split_once(':') {
+                let reply = if self.save_role(tplatform, tid, role_name).is_ok() {
+                    format!("เพิ่ม {target} เป็น {role_name} แล้ว")
+                } else {
+                    "บันทึกสิทธิ์ไม่สำเร็จ".to_string()
+                };
+                let _ = self
+                    .platform
+                    .send_message(&msg.channel, OutboundMessage::text(reply))
+                    .await;
+            }
+            return Ok(true);
+        }
+
+        Ok(false)
+    }
+
+    /// Atomically write a new role assignment to config.yaml.
+    fn save_role(&self, platform: &str, user_id: &str, role: &str) -> std::io::Result<()> {
+        let mut cfg = (*self.config).clone();
+        cfg.roles.set_user_role(platform, user_id, role);
+        cfg.save_yaml()
+    }
+
+    /// Bootstrap: if no admin exists yet and this is a DM, make the sender admin.
+    /// Uses a write-lock to prevent two simultaneous DMs from both getting admin.
+    async fn maybe_bootstrap_admin(&self, msg: &InboundMessage) -> bool {
+        if msg.is_group {
+            return false;
+        }
+        // Fast path without lock: admin already exists.
+        if self.config.roles.has_any_admin() {
+            return false;
+        }
+        let _guard = self.bootstrap_lock.write().await;
+        // Re-check under lock (another task may have written by now).
+        if self.config.roles.has_any_admin() {
+            return false;
+        }
+        let platform = &msg.channel.platform;
+        let user_id = &msg.user_id;
+        if self.save_role(platform, user_id, "admin").is_ok() {
+            tracing::info!(platform, user_id, "roles: bootstrap — first DM user promoted to admin");
+            let _ = self
+                .platform
+                .send_message(
+                    &msg.channel,
+                    OutboundMessage::text(
+                        "🎉 คุณได้รับสิทธิ์ admin เนื่องจากเป็นผู้ใช้คนแรก\n\
+                         ใช้ /role approve <platform:id> <role> เพื่อเพิ่มผู้ใช้คนอื่น",
+                    ),
+                )
+                .await;
+            return true;
+        }
+        false
     }
 
     /// On startup, re-run any agent tasks that were interrupted by a server crash or restart.
@@ -292,11 +618,14 @@ impl MessageHandler for GatewayHandler {
     async fn handle(&self, mut msg: InboundMessage) -> Result<(), anyhow::Error> {
         let pcfg = &self.config.platform;
 
-        // Whitelist: silently drop messages from unlisted users
+        // Whitelist: silently drop messages from unlisted users (legacy allowed_user_ids).
         if !pcfg.allowed_user_ids.is_empty() && !pcfg.allowed_user_ids.contains(&msg.user_id) {
             tracing::debug!(user_id = %msg.user_id, "message dropped: user not in whitelist");
             return Ok(());
         }
+
+        // Bootstrap: first DM user becomes admin automatically (no-op if admin exists).
+        self.maybe_bootstrap_admin(&msg).await;
 
         // Per-user session isolation — only for non-group (DM) chats.
         // In group chats every member shares one session so that images sent by
@@ -309,6 +638,48 @@ impl MessageHandler for GatewayHandler {
                 "{}:{}:{}",
                 msg.channel.platform, msg.channel.chat_id, msg.user_id
             );
+        }
+
+        // Role check: handle /whoami and /role commands before anything else
+        // (including the mention gate) so they always work.
+        if self.handle_role_command(&msg).await? {
+            return Ok(());
+        }
+
+        // Pending approval: unknown user with no default_role.
+        {
+            let roles = &self.config.roles;
+            let has_roles_configured =
+                !roles.definitions.is_empty() || roles.default_role.is_some();
+            if has_roles_configured {
+                let role = roles.lookup_role(&msg.channel.platform, &msg.user_id, None);
+                let effective = role.or_else(|| roles.default_role.clone());
+                if effective.is_none() {
+                    // First time seeing this user — add to pending and notify admins.
+                    let key = format!("{}:{}", msg.channel.platform, msg.user_id);
+                    let is_new = !self.pending_roles.contains_key(&key);
+                    self.pending_roles
+                        .insert(key, (msg.user_name.clone(), std::time::Instant::now()));
+                    if is_new {
+                        self.notify_admins_pending(
+                            &msg.channel.platform,
+                            &msg.user_id,
+                            &msg.user_name,
+                        )
+                        .await;
+                    }
+                    let _ = self
+                        .platform
+                        .send_message(
+                            &msg.channel,
+                            OutboundMessage::text(
+                                "⏳ คำขอของคุณถูกส่งถึง admin แล้ว กรุณารอการอนุมัติ",
+                            ),
+                        )
+                        .await;
+                    return Ok(());
+                }
+            }
         }
 
         // Image-only or doc-only messages bypass the mention gate.
@@ -331,7 +702,7 @@ impl MessageHandler for GatewayHandler {
                     &msg.session_key,
                     &msg.user_name,
                     &msg.channel,
-                    self.approver.clone(),
+                    self.approver_for(&msg.channel.platform, &msg.user_id),
                 )
                 .await;
             }
@@ -435,8 +806,9 @@ impl MessageHandler for GatewayHandler {
         let channel = msg.channel.clone();
         let agent = self.agent.clone();
         let platform = self.platform.clone();
-        let approver = self.approver.clone();
+        let approver = self.approver_for(&msg.channel.platform, &msg.user_id);
         let platform_name = msg.channel.platform.clone();
+        let user_id = msg.user_id.clone();
         let session_key = msg.session_key.clone();
 
         // If files are waiting for RAG confirmation, handle this turn
@@ -552,7 +924,7 @@ impl MessageHandler for GatewayHandler {
 
         tokio::spawn(async move {
             match agent
-                .run(&task, approver, &platform_name, None, Some(&session_key))
+                .run_for_user(&task, approver, &platform_name, None, Some(&session_key), &user_id)
                 .await
             {
                 Ok(result) => {

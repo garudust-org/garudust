@@ -292,6 +292,10 @@ impl Agent {
         self
     }
 
+    pub fn tools(&self) -> &garudust_tools::ToolRegistry {
+        &self.tools
+    }
+
     pub fn has_tool(&self, name: &str) -> bool {
         self.tools.has_tool(name)
     }
@@ -416,6 +420,7 @@ impl Agent {
         let ctx = ToolContext {
             session_id: uuid::Uuid::new_v4().to_string(),
             conv_key: conv_key.to_string(),
+            user_id: String::new(),
             agent_id: "gateway".to_string(),
             iteration: 1,
             budget: Arc::new(IterationBudget::new(1)),
@@ -445,10 +450,24 @@ impl Agent {
         hint: Option<&str>,
         session_key: Option<&str>,
     ) -> Result<AgentResult, AgentError> {
-        self.run_inner(task, approver, platform, None, None, hint, session_key)
+        self.run_inner(task, approver, platform, None, None, hint, session_key, "")
             .await
     }
 
+    pub async fn run_for_user(
+        &self,
+        task: &str,
+        approver: Arc<dyn garudust_core::tool::CommandApprover>,
+        platform: &str,
+        hint: Option<&str>,
+        session_key: Option<&str>,
+        user_id: &str,
+    ) -> Result<AgentResult, AgentError> {
+        self.run_inner(task, approver, platform, None, None, hint, session_key, user_id)
+            .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub async fn run_streaming(
         &self,
         task: &str,
@@ -467,10 +486,12 @@ impl Agent {
             tool_tx,
             hint,
             session_key,
+            "",
         )
         .await
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn run_inner(
         &self,
         task: &str,
@@ -480,6 +501,7 @@ impl Agent {
         tool_tx: Option<mpsc::UnboundedSender<String>>,
         hint: Option<&str>,
         session_key: Option<&str>,
+        user_id: &str,
     ) -> Result<AgentResult, AgentError> {
         let session_id = Uuid::new_v4().to_string();
         // Stable key for scoping persistent tool storage (e.g. RAG doc store).
@@ -875,6 +897,7 @@ impl Agent {
             let ctx = Arc::new(ToolContext {
                 session_id: session_id.clone(),
                 conv_key: conv_key.clone(),
+                user_id: user_id.to_string(),
                 agent_id: self.id.clone(),
                 iteration: iters,
                 // Tool calls themselves (web_fetch, terminal, etc.) count against
@@ -1226,6 +1249,7 @@ async fn reflect_and_save_skill(
         let ctx = ToolContext {
             session_id: Uuid::new_v4().to_string(),
             conv_key: String::new(),
+            user_id: String::new(),
             agent_id: "skill-reflection".to_string(),
             iteration: 1,
             budget: Arc::new(garudust_core::budget::IterationBudget::new(

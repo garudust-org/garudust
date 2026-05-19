@@ -112,7 +112,7 @@ impl ToolRegistry {
 
         // Property-based approval gate for destructive tools.
         if tool.is_destructive_for(&params) {
-            let decision = ctx.approver.approve(name, &params.to_string()).await;
+            let decision = ctx.approver.approve(name, &params.to_string(), &ctx.user_id).await;
             tracing::info!(
                 session_id = %ctx.session_id,
                 tool       = %name,
@@ -279,7 +279,7 @@ mod tests {
     struct DenyAll;
     #[async_trait]
     impl CommandApprover for DenyAll {
-        async fn approve(&self, _tool_name: &str, _params: &str) -> ApprovalDecision {
+        async fn approve(&self, _tool_name: &str, _params: &str, _user_id: &str) -> ApprovalDecision {
             ApprovalDecision::Denied
         }
     }
@@ -310,6 +310,7 @@ mod tests {
         ToolContext {
             session_id: "s".into(),
             conv_key: String::new(),
+            user_id: String::new(),
             agent_id: "a".into(),
             iteration: 0,
             budget: Arc::new(IterationBudget::new(10)),

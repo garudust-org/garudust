@@ -84,7 +84,7 @@ impl MemoryStore for NopMemory {
 struct AutoApprove;
 #[async_trait]
 impl CommandApprover for AutoApprove {
-    async fn approve(&self, _: &str, _: &str) -> ApprovalDecision {
+    async fn approve(&self, _: &str, _: &str, _: &str) -> ApprovalDecision {
         ApprovalDecision::Approved
     }
 }

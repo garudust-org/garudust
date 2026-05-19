@@ -469,7 +469,7 @@ mod tests {
 
     #[async_trait]
     impl CommandApprover for AutoApprove {
-        async fn approve(&self, _: &str, _: &str) -> ApprovalDecision {
+        async fn approve(&self, _: &str, _: &str, _: &str) -> ApprovalDecision {
             ApprovalDecision::Approved
         }
     }
@@ -487,6 +487,7 @@ mod tests {
         ToolContext {
             session_id: "test".into(),
             conv_key: String::new(),
+            user_id: String::new(),
             agent_id: "test".into(),
             iteration: 0,
             budget: Arc::new(IterationBudget::new(10)),

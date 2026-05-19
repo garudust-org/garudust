@@ -431,6 +431,9 @@ pub struct AgentConfig {
     /// `--memory-expiry-cron`) and the corresponding env vars take precedence.
     #[serde(default)]
     pub cron: CronConfig,
+    /// Role-based access control — who can use which tools.
+    #[serde(default)]
+    pub roles: RolesConfig,
 }
 
 /// Default model used when no `config.yaml`, env override, or routing hint applies.
@@ -617,6 +620,111 @@ pub struct PlatformConfig {
 
 fn default_true() -> bool {
     true
+}
+
+/// One role definition: approval mode, allowed toolsets, and tool-level overrides.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct RoleDefinition {
+    /// Approval mode for this role: "auto" | "smart" | "deny".
+    /// Falls back to global `security.approval_mode` when absent.
+    #[serde(default)]
+    pub approval_mode: Option<String>,
+
+    /// Toolset names this role may use. Empty = all toolsets allowed.
+    #[serde(default)]
+    pub allowed_toolsets: Vec<String>,
+
+    /// Individual tool names allowed in addition to `allowed_toolsets`.
+    #[serde(default)]
+    pub allowed_tools: Vec<String>,
+
+    /// Tool names always denied, regardless of `allowed_toolsets`/`allowed_tools`.
+    #[serde(default)]
+    pub denied_tools: Vec<String>,
+}
+
+/// Role-based access control.
+///
+/// Example config.yaml:
+/// ```yaml
+/// roles:
+///   default_role: readonly
+///   definitions:
+///     admin:
+///       approval_mode: auto
+///     member:
+///       approval_mode: smart
+///       allowed_toolsets: [web, files, memory]
+///     readonly:
+///       approval_mode: deny
+///       allowed_toolsets: [web]
+///   users:
+///     telegram:
+///       "123456789": admin
+///       "@somchai": member
+///     line:
+///       "Uxxxxxxxxx": member
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct RolesConfig {
+    /// Role definitions keyed by role name.
+    #[serde(default)]
+    pub definitions: std::collections::HashMap<String, RoleDefinition>,
+
+    /// Per-platform user → role mapping.
+    /// Keys are platform names: "telegram", "discord", "line", "slack", "matrix", "whatsapp", "webhook".
+    /// Values map user ID (or @username for Telegram) → role name.
+    #[serde(default)]
+    pub users: std::collections::HashMap<String, std::collections::HashMap<String, String>>,
+
+    /// Role assigned to unknown users. `None` = pending approval required.
+    #[serde(default)]
+    pub default_role: Option<String>,
+}
+
+impl RolesConfig {
+    /// Returns true if any user has the "admin" role on any platform.
+    pub fn has_any_admin(&self) -> bool {
+        self.users.values().any(|m| m.values().any(|r| r == "admin"))
+    }
+
+    /// Look up the role for a (platform, user_id) pair.
+    /// For Telegram, also checks @username if numeric ID does not match.
+    pub fn lookup_role(&self, platform: &str, user_id: &str, username: Option<&str>) -> Option<String> {
+        let map = self.users.get(platform)?;
+        if let Some(role) = map.get(user_id) {
+            return Some(role.clone());
+        }
+        if platform == "telegram" {
+            if let Some(uname) = username {
+                let with_at = if uname.starts_with('@') {
+                    uname.to_string()
+                } else {
+                    format!("@{uname}")
+                };
+                if let Some(role) = map.get(&with_at) {
+                    return Some(role.clone());
+                }
+            }
+        }
+        None
+    }
+
+    /// Add or update a user's role and return the updated config for saving.
+    pub fn set_user_role(&mut self, platform: &str, user_id: &str, role: &str) {
+        self.users
+            .entry(platform.to_string())
+            .or_default()
+            .insert(user_id.to_string(), role.to_string());
+    }
+
+    /// Remove a user from all role mappings on a given platform.
+    pub fn remove_user(&mut self, platform: &str, user_id: &str) -> bool {
+        if let Some(map) = self.users.get_mut(platform) {
+            return map.remove(user_id).is_some();
+        }
+        false
+    }
 }
 
 impl Default for PlatformConfig {
@@ -823,6 +931,7 @@ impl Default for AgentConfig {
             },
             server: ServerConfig::default(),
             cron: CronConfig::default(),
+            roles: RolesConfig::default(),
         }
     }
 }
@@ -1045,11 +1154,15 @@ impl AgentConfig {
         config
     }
 
-    /// Save non-secret settings to ~/.garudust/config.yaml.
+    /// Save non-secret settings to ~/.garudust/config.yaml atomically.
+    /// Writes to a `.tmp` file first, then renames — preventing partial writes
+    /// from corrupting the config on crash or power loss.
     pub fn save_yaml(&self) -> std::io::Result<()> {
         std::fs::create_dir_all(&self.home_dir)?;
         let yaml = serde_yaml::to_string(self).map_err(std::io::Error::other)?;
-        std::fs::write(self.home_dir.join("config.yaml"), yaml)
+        let tmp = self.home_dir.join("config.yaml.tmp");
+        std::fs::write(&tmp, yaml)?;
+        std::fs::rename(tmp, self.home_dir.join("config.yaml"))
     }
 
     /// Write or update a KEY=VALUE line in ~/.garudust/.env.

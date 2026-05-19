@@ -59,4 +59,4 @@ pub mod prompt_builder;
 mod tests;
 
 pub use agent::Agent;
-pub use approver::{AutoApprover, ConstitutionalApprover, DenyApprover};
+pub use approver::{AutoApprover, ConstitutionalApprover, DenyApprover, RolesApprover};

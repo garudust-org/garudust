@@ -101,6 +101,9 @@ pub struct ToolContext {
     /// (e.g. "line:Cxxxxxxx", "cli", "webhook:room1"). This is what tools
     /// should use when scoping persistent storage like the RAG doc store.
     pub conv_key: String,
+    /// Platform user identity (e.g. "123456789" for Telegram). Empty for
+    /// internal tool calls (cron, sub-agents, gateway image pipeline).
+    pub user_id: String,
     pub agent_id: String,
     pub iteration: u32,
     pub budget: Arc<IterationBudget>,
@@ -121,7 +124,8 @@ pub trait CommandApprover: Send + Sync + 'static {
     /// Called by ToolRegistry::dispatch() for every destructive tool before
     /// execute(). `tool_name` is the registered tool name; `params` is the
     /// JSON-serialised parameter object passed by the model.
-    async fn approve(&self, tool_name: &str, params: &str) -> ApprovalDecision;
+    /// `user_id` is the platform user identity (empty for internal calls).
+    async fn approve(&self, tool_name: &str, params: &str, user_id: &str) -> ApprovalDecision;
 }
 
 #[derive(Debug, Clone, PartialEq)]
