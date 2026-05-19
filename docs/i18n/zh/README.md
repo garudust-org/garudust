@@ -52,7 +52,7 @@
 | macOS Apple Silicon | `garudust-*-aarch64-apple-darwin.tar.gz` |
 | macOS Intel | `garudust-*-x86_64-apple-darwin.tar.gz` |
 | Linux x86_64 | `garudust-*-x86_64-unknown-linux-musl.tar.gz` |
-| Linux ARM64 | `garudust-*-aarch64-unknown-linux-musl.tar.gz` |
+| Linux ARM64（Raspberry Pi 4/5、Jetson） | `garudust-*-aarch64-unknown-linux-musl.tar.gz` |
 | Windows | `garudust-*-x86_64-pc-windows-msvc.zip` |
 
 ---
@@ -64,7 +64,11 @@
 从 [GitHub Releases](https://github.com/garudust-org/garudust-agent/releases/latest) 下载预构建 binary：
 
 ```bash
-curl -LO https://github.com/garudust-org/garudust-agent/releases/latest/download/garudust-linux-x64.tar.gz
+# 自动检测架构（x86_64 或 ARM64 — Raspberry Pi 4/5、Jetson）
+ARCH=$(uname -m)
+[ "$ARCH" = "aarch64" ] && TARGET="aarch64-unknown-linux-musl" || TARGET="x86_64-unknown-linux-musl"
+VER=$(curl -s https://api.github.com/repos/garudust-org/garudust-agent/releases/latest | grep tag_name | cut -d'"' -f4)
+curl -LO "https://github.com/garudust-org/garudust-agent/releases/latest/download/garudust-${VER}-${TARGET}.tar.gz"
 tar -xzf garudust-*.tar.gz
 sudo mv garudust garudust-server /usr/local/bin/
 ```
