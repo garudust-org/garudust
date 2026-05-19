@@ -189,20 +189,32 @@ impl Tool for ScriptTool {
                     if let Some(model) = &profile.model {
                         if !model.is_empty() {
                             cmd.env(
-                                if fb { "GARUDUST_FALLBACK_MODEL" } else { "GARUDUST_MODEL" },
+                                if fb {
+                                    "GARUDUST_FALLBACK_MODEL"
+                                } else {
+                                    "GARUDUST_MODEL"
+                                },
                                 model,
                             );
                         }
                     }
                     if let Some(url) = profile.resolved_base_url() {
                         cmd.env(
-                            if fb { "GARUDUST_FALLBACK_BASE_URL" } else { "GARUDUST_BASE_URL" },
+                            if fb {
+                                "GARUDUST_FALLBACK_BASE_URL"
+                            } else {
+                                "GARUDUST_BASE_URL"
+                            },
                             &url,
                         );
                     }
                     if let Some(key) = profile.resolved_key() {
                         cmd.env(
-                            if fb { "GARUDUST_FALLBACK_API_KEY" } else { "GARUDUST_API_KEY" },
+                            if fb {
+                                "GARUDUST_FALLBACK_API_KEY"
+                            } else {
+                                "GARUDUST_API_KEY"
+                            },
                             &key,
                         );
                     }

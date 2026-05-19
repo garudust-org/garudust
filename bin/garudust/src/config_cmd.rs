@@ -357,7 +357,11 @@ fn update_yaml_tool_model(
     config.home_dir = home_dir.to_path_buf();
     let slots = config.tools.entry(tool_name.to_string()).or_default();
     // "model" → primary slot, "fallback_model" → fallback slot; value = provider name
-    let slot_name = if field == "fallback_model" { "model-fallback" } else { "model" };
+    let slot_name = if field == "fallback_model" {
+        "model-fallback"
+    } else {
+        "model"
+    };
     slots.insert(slot_name.to_string(), value.to_string());
     config.save_yaml()?;
     Ok(())

@@ -251,7 +251,6 @@ impl ProviderProfile {
     }
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentConfig {
     #[serde(skip)]
