@@ -7,6 +7,21 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.8.0] — 2026-05-18
+
+### Added
+- **Ralph loop** — agent persists an active goal across turns via `GoalStore` (file-backed, per-session); goal is injected as `<active_goal>` context before every request. Slash commands: `/goal <text>` to set, `/goal` to view, `/cleargoal` to dismiss
+- **TTS hub tool** — `tts` in [garudust-hub](https://github.com/garudust-org/garudust-hub) converts text to speech via a pluggable provider profile (iApp Thai TTS pre-configured); returns a WAV file path; raw PCM responses are wrapped in a RIFF header automatically
+
+### Changed
+- **Provider profile resolution for hub tools** — `tools.<name>.model` in `config.yaml` now references a named `providers:` profile (e.g. `tts-iapp`) instead of inline `key`/`base_url`; `GARUDUST_BASE_URL` and `GARUDUST_API_KEY` are injected into the tool subprocess from the resolved profile
+
+### Fixed
+- `clippy::unused_async` on `resume_pending` — function had no `.await`; removed `async`
+- `clippy::collapsible_match` in TUI setup — collapsed nested `if let + inner match` into a single match arm with guard
+
+---
+
 ## [0.7.1] — 2026-05-18
 
 ### Fixed

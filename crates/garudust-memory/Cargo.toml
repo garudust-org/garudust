@@ -12,7 +12,7 @@ keywords     = ["ai", "agent", "memory", "sqlite", "persistence"]
 categories   = ["development-tools", "database"]
 
 [dependencies]
-garudust-core = { path = "../garudust-core", version = "0.7.1" }
+garudust-core = { path = "../garudust-core", version = "0.8.0" }
 async-trait   = { workspace = true }
 rusqlite      = { workspace = true }
 serde         = { workspace = true }

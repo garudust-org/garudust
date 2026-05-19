@@ -12,9 +12,9 @@ keywords     = ["ai", "agent", "gateway", "api", "server"]
 categories   = ["web-programming::http-server", "asynchronous"]
 
 [dependencies]
-garudust-core      = { path = "../garudust-core",   version = "0.7.1" }
-garudust-agent     = { path = "../garudust-agent",  version = "0.7.1" }
-garudust-memory    = { path = "../garudust-memory", version = "0.7.1" }
+garudust-core      = { path = "../garudust-core",   version = "0.8.0" }
+garudust-agent     = { path = "../garudust-agent",  version = "0.8.0" }
+garudust-memory    = { path = "../garudust-memory", version = "0.8.0" }
 async-trait        = { workspace = true }
 axum               = { workspace = true }
 tower              = { workspace = true }
@@ -38,5 +38,5 @@ dashmap            = { workspace = true }
 [dev-dependencies]
 tower              = { version = "0.5", features = ["util"] }
 http-body-util     = "0.1"
-garudust-tools     = { path = "../garudust-tools", version = "0.7.1" }
+garudust-tools     = { path = "../garudust-tools", version = "0.8.0" }
 uuid               = { workspace = true }

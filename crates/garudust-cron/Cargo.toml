@@ -12,8 +12,8 @@ keywords     = ["ai", "agent", "cron", "scheduler", "automation"]
 categories   = ["development-tools", "asynchronous"]
 
 [dependencies]
-garudust-core  = { path = "../garudust-core",  version = "0.7.1" }
-garudust-agent = { path = "../garudust-agent", version = "0.7.1" }
+garudust-core  = { path = "../garudust-core",  version = "0.8.0" }
+garudust-agent = { path = "../garudust-agent", version = "0.8.0" }
 tokio-cron-scheduler = { workspace = true }
 async-trait    = { workspace = true }
 uuid           = { workspace = true }
