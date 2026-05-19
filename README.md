@@ -234,6 +234,16 @@ providers:
   # local:
   #   url: http://localhost:11434/v1   # custom OpenAI-compatible endpoint
   #   model: llama3.2
+  #
+  # vision:                            # primary model for view_image tool
+  #   name: google
+  #   key: ${GOOGLE_AI_API_KEY}
+  #   model: google/gemini-2.5-pro
+  #
+  # vision-fallback:                   # fallback when vision quota/rate-limit hit
+  #   name: openrouter
+  #   key: ${OPENROUTER_API_KEY}
+  #   model: nvidia/nemotron-nano-12b-v2-vl:free
 
 # ── Agent settings ────────────────────────────────────────────────────────────
 max_iterations: 90
@@ -259,10 +269,10 @@ routing:
 # Each slot value is a named entry from providers: above.
 # Slot names containing "fallback" inject GARUDUST_FALLBACK_* env vars;
 # all others inject GARUDUST_* (primary).
-tools:
-  view_image:
-    model: vision              # references providers.vision profile
-    model-fallback: vision-fallback
+# tools:
+#   view_image:
+#     model: vision              # references providers.vision profile (define above)
+#     model-fallback: vision-fallback
 
 # ── Disable tools / toolsets ────────────────────────────────────────────────
 # disabled_toolsets: [browser, git, notes]
