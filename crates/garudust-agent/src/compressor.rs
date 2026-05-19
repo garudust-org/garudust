@@ -207,7 +207,7 @@ mod tests {
         }
     }
 
-    fn compressor(context_limit: usize, threshold: f32) -> ContextCompressor {
+    fn compressor(context_limit: usize) -> ContextCompressor {
         ContextCompressor::new(Arc::new(NullTransport), "null".into())
             .with_context_limit(context_limit)
     }
@@ -224,34 +224,34 @@ mod tests {
     #[test]
     fn should_compress_empty_messages() {
         // 0 estimated tokens — never triggers compression
-        assert!(!compressor(1_000, 0.80).should_compress(&[]));
+        assert!(!compressor(1_000).should_compress(&[]));
     }
 
     #[test]
     fn should_compress_small_history() {
         // 300 chars ÷ 3 ≈ 100 tokens; threshold = 1000 × 0.80 = 800 → no compress
         let msgs = vec![msg(&"x".repeat(300))];
-        assert!(!compressor(1_000, 0.80).should_compress(&msgs));
+        assert!(!compressor(1_000).should_compress(&msgs));
     }
 
     #[test]
     fn should_compress_large_history() {
         // 3000 chars ÷ 3 = 1000 tokens; threshold = 1000 × 0.80 = 800 → compress
         let msgs = vec![msg(&"x".repeat(3_000))];
-        assert!(compressor(1_000, 0.80).should_compress(&msgs));
+        assert!(compressor(1_000).should_compress(&msgs));
     }
 
     #[test]
     fn should_compress_exactly_at_threshold_does_not_trigger() {
         // 2400 chars ÷ 3 = 800 tokens == threshold (not strictly >) → no compress
         let msgs = vec![msg(&"x".repeat(2_400))];
-        assert!(!compressor(1_000, 0.80).should_compress(&msgs));
+        assert!(!compressor(1_000).should_compress(&msgs));
     }
 
     #[test]
     fn should_compress_one_over_threshold_triggers() {
         // 2403 chars ÷ 3 = 801 tokens > 800 → compress
         let msgs = vec![msg(&"x".repeat(2_403))];
-        assert!(compressor(1_000, 0.80).should_compress(&msgs));
+        assert!(compressor(1_000).should_compress(&msgs));
     }
 }
