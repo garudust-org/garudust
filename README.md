@@ -256,12 +256,13 @@ routing:
   smart:  anthropic/claude-opus-4-7
 
 # ── Per-tool model override ──────────────────────────────────────────────────
-# Forwarded as GARUDUST_MODEL / GARUDUST_FALLBACK_MODEL to the tool subprocess.
-# Tools that don't read these vars are unaffected (full backward compat).
+# Each slot value is a named entry from providers: above.
+# Slot names containing "fallback" inject GARUDUST_FALLBACK_* env vars;
+# all others inject GARUDUST_* (primary).
 tools:
   view_image:
-    model: openrouter/google/gemini-flash-1.5
-    fallback_model: google/gemini-1.5-flash
+    model: vision              # references providers.vision profile
+    model-fallback: vision-fallback
 
 # ── Disable tools / toolsets ────────────────────────────────────────────────
 # disabled_toolsets: [browser, git, notes]
@@ -435,16 +436,23 @@ command: "curl -s wttr.in/{city}?format=3"
 # env_required: [MY_API_KEY]   # forward specific secrets from ~/.garudust/.env
 ```
 
-Override the model used by a tool in `config.yaml`. Both `model` and `fallback_model` accept `"profile/model"` (named profile from `providers:`) or `"provider/model"` (builtin provider). The subprocess receives `GARUDUST_MODEL` / `GARUDUST_BASE_URL` / `GARUDUST_API_KEY` for the primary, and `GARUDUST_FALLBACK_MODEL` / `GARUDUST_FALLBACK_BASE_URL` / `GARUDUST_FALLBACK_API_KEY` for the fallback:
+Override the model used by a tool in `config.yaml`. Slot values are named entries from `providers:`. Slots whose name contains `"fallback"` inject `GARUDUST_FALLBACK_*` env vars; all others inject `GARUDUST_*` (primary). The subprocess receives `GARUDUST_MODEL` / `GARUDUST_BASE_URL` / `GARUDUST_API_KEY` and `GARUDUST_FALLBACK_MODEL` / `GARUDUST_FALLBACK_BASE_URL` / `GARUDUST_FALLBACK_API_KEY`:
 
 ```yaml
+providers:
+  vision:
+    name: google
+    key: ${GOOGLE_AI_API_KEY}
+    model: google/gemini-2.5-pro
+  vision-fallback:
+    name: openrouter
+    key: ${OPENROUTER_API_KEY}
+    model: nvidia/nemotron-nano-12b-v2-vl:free
+
 tools:
-  get_weather:
-    model: groq-fast/llama-3.1-8b-instant        # "groq-fast" = named profile
-    fallback_model: openrouter/meta-llama/llama-3.1-8b-instruct  # builtin provider
   view_image:
-    model: vision/gemini-flash-latest             # "vision" = named profile (e.g. gemini key)
-    fallback_model: vision-fallback/nvidia/nemotron-nano-12b-v2-vl:free
+    model: vision              # references providers.vision profile
+    model-fallback: vision-fallback
 ```
 
 **MCP** — connect any [Model Context Protocol](https://modelcontextprotocol.io) server in `config.yaml`:
