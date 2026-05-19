@@ -173,6 +173,10 @@ impl Tool for ScriptTool {
         // Forward only declared env keys (capability allowlist). Tools that
         // predate `env_required` keep working as long as their tool.yaml lists
         // every secret they read.
+        cmd.env(
+            "TOOL_PARAMS",
+            serde_json::to_string(&params).unwrap_or_default(),
+        );
         for key in &self.env_required {
             if let Some((_, v)) = dotenv_vars.iter().find(|(k, _)| k == key) {
                 cmd.env(key, v);
