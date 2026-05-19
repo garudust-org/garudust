@@ -478,63 +478,17 @@ mcp_servers:
 
 ## RAG (Document Search)
 
-Send a document to the bot and ask questions about it. The agent indexes the file locally and searches it automatically when you ask a relevant question.
+Index a document and ask questions about it — the agent searches it automatically when relevant.
 
 **Supported formats:** PDF, TXT, CSV, MD, JSON, DOCX, DOC, XLSX, XLS
 
-### Via chat platforms (LINE, Telegram, Discord, …)
+**Via chat platforms** — send a file, confirm when the bot asks, then ask questions naturally.
 
-Send a document file → the bot asks for confirmation in your language → reply to confirm → the file is indexed and searchable.
+**Via CLI** — say: `Index /home/user/report.pdf`
 
-```
-[You send price_list.pdf]
-Bot: You sent "price_list.pdf". Would you like me to index it so I can answer questions about it?
-You: Yes
-Bot: Indexed 12 chunks from price_list.pdf.
-You: What is the price of item B?
-Bot: According to price_list.pdf, item B costs 250 baht.
-```
+The agent calls `doc_search` automatically. Use `doc_list` to see indexed files and `doc_forget` to remove them. Each session has its own isolated index.
 
-### Via CLI or agent
-
-Mention the file path and the agent will ingest it:
-
-```
-You: Read and index /home/user/report.pdf so I can ask questions about it.
-```
-
-### Searching
-
-Ask questions naturally — the agent calls `doc_search` automatically:
-
-```
-You: What was the total revenue in Q3?
-You: Summarise the key points from the uploaded document.
-```
-
-### Listing indexed documents
-
-```
-You: Which documents have been indexed?
-Agent: [calls doc_list — returns file names, chunk counts, and ingest time]
-```
-
-### Removing documents
-
-Remove by file name, exact path, or clear everything:
-
-```
-You: Forget price_list.pdf
-You: Remove all indexed documents
-```
-
-### Data isolation
-
-Each group chat, DM, and platform session has its own isolated document index — documents indexed in one chat are never visible in another.
-
-### Disabling RAG
-
-RAG is enabled by default. To disable it:
+To disable, add to `config.yaml`:
 
 ```yaml
 disabled_toolsets: ["rag"]
