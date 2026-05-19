@@ -83,39 +83,30 @@ pub async fn install(tool_name: &str, tools_dir: &Path, hub: &str) -> Result<()>
         eprintln!("Warning: this tool requires '{requires}' which was not found on PATH.");
     }
 
-    // Write default model hints from tool.yaml into config.yaml (only if not already set).
+    // Print model hints from tool.yaml so the user knows what providers to set up.
     let (model, fallback_model) = hub::read_tool_model_defaults(tools_dir, tool_name).await;
-    let mut cfg = AgentConfig::load();
     if !model.is_empty() || !fallback_model.is_empty() {
-        let slots = cfg.tools.entry(tool_name.to_string()).or_default();
-        let mut updated = false;
-        if !model.is_empty() && !slots.contains_key("model") {
-            slots.insert(
-                "model".to_string(),
-                garudust_core::config::ProviderProfile {
-                    model: Some(model.clone()),
-                    ..Default::default()
-                },
-            );
-            updated = true;
+        println!("\nThis tool uses a vision/LLM model. Add a provider entry and reference it:");
+        println!("  # ~/.garudust/config.yaml");
+        println!("  providers:");
+        if !model.is_empty() {
+            println!("    my-provider:");
+            println!("      name: <google|openrouter|…>");
+            println!("      key: ${{MY_API_KEY}}");
+            println!("      model: {model}");
         }
-        if !fallback_model.is_empty() && !slots.contains_key("fallback") {
-            slots.insert(
-                "fallback".to_string(),
-                garudust_core::config::ProviderProfile {
-                    model: Some(fallback_model.clone()),
-                    ..Default::default()
-                },
-            );
-            updated = true;
+        println!("  tools:");
+        println!("    {tool_name}:");
+        if !model.is_empty() {
+            println!("      model: my-provider");
         }
-        if updated && cfg.save_yaml().is_ok() {
-            println!("Configured default model hints for '{tool_name}' in config.yaml.");
-            println!("  Add key: and name:/url: fields to each slot as needed.");
+        if !fallback_model.is_empty() {
+            println!("      model-fallback: my-fallback-provider  # model: {fallback_model}");
         }
     }
 
     // Warn about any env_required keys not yet present in ~/.garudust/.env.
+    let cfg = AgentConfig::load();
     let env_required = hub::read_tool_env_required(tools_dir, tool_name).await;
     if !env_required.is_empty() {
         let env_path = cfg.home_dir.join(".env");

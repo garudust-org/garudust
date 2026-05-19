@@ -179,32 +179,33 @@ impl Tool for ScriptTool {
             }
         }
         // Forward per-tool model overrides from config.yaml → subprocess env.
-        // Each tool has named slots (HashMap<slot_name, ProviderProfile>).
-        // Slots whose name contains "fallback" inject GARUDUST_FALLBACK_* vars;
-        // all others inject GARUDUST_* (primary). Scripts fall back to their
-        // own hardcoded defaults when these vars are absent.
+        // Each slot value is a provider name; the agent looks it up in providers:
+        // and injects the resolved credentials. Slot names containing "fallback"
+        // inject GARUDUST_FALLBACK_* vars; all others inject GARUDUST_* (primary).
         if let Some(slots) = ctx.config.tools.get(self.name()) {
-            for (slot, profile) in slots {
+            for (slot, provider_name) in slots {
                 let fb = slot.contains("fallback");
-                if let Some(model) = &profile.model {
-                    if !model.is_empty() {
+                if let Some(profile) = ctx.config.providers.get(provider_name) {
+                    if let Some(model) = &profile.model {
+                        if !model.is_empty() {
+                            cmd.env(
+                                if fb { "GARUDUST_FALLBACK_MODEL" } else { "GARUDUST_MODEL" },
+                                model,
+                            );
+                        }
+                    }
+                    if let Some(url) = profile.resolved_base_url() {
                         cmd.env(
-                            if fb { "GARUDUST_FALLBACK_MODEL" } else { "GARUDUST_MODEL" },
-                            model,
+                            if fb { "GARUDUST_FALLBACK_BASE_URL" } else { "GARUDUST_BASE_URL" },
+                            &url,
                         );
                     }
-                }
-                if let Some(url) = profile.resolved_base_url() {
-                    cmd.env(
-                        if fb { "GARUDUST_FALLBACK_BASE_URL" } else { "GARUDUST_BASE_URL" },
-                        &url,
-                    );
-                }
-                if let Some(key) = profile.resolved_key() {
-                    cmd.env(
-                        if fb { "GARUDUST_FALLBACK_API_KEY" } else { "GARUDUST_API_KEY" },
-                        &key,
-                    );
+                    if let Some(key) = profile.resolved_key() {
+                        cmd.env(
+                            if fb { "GARUDUST_FALLBACK_API_KEY" } else { "GARUDUST_API_KEY" },
+                            &key,
+                        );
+                    }
                 }
             }
         }

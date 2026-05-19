@@ -301,34 +301,33 @@ pub struct AgentConfig {
     /// builds an appropriate transport, and overrides the model for that task only.
     #[serde(default)]
     pub routing: std::collections::HashMap<String, String>,
-    /// Per-tool model configuration, keyed by tool name → named provider slot.
-    /// Each slot is a `ProviderProfile` (name/url/key/model). Slots whose name
-    /// contains `"fallback"` are injected as `GARUDUST_FALLBACK_*` env vars;
-    /// all others as `GARUDUST_*` (primary).
+    /// Per-tool model configuration: tool name → slot name → provider name.
+    /// Each slot value references a named entry in `providers:`.
+    /// Slot names containing `"fallback"` inject `GARUDUST_FALLBACK_*` env vars;
+    /// all others inject `GARUDUST_*` (primary).
     ///
     /// Example:
     /// ```yaml
+    /// providers:
+    ///   vision:
+    ///     name: google
+    ///     key: ${GOOGLE_AI_API_KEY}
+    ///     model: gemini-flash-latest
+    ///   vision-fallback:
+    ///     name: openrouter
+    ///     key: ${OPENROUTER_API_KEY}
+    ///     model: nvidia/nemotron-nano-12b-v2-vl:free
+    ///
     /// tools:
     ///   view_image:
-    ///     vision:
-    ///       name: google
-    ///       key: ${GOOGLE_AI_API_KEY}
-    ///       model: gemini-flash-latest
-    ///     vision-fallback:
-    ///       name: openrouter
-    ///       key: ${OPENROUTER_API_KEY}
-    ///       model: nvidia/nemotron-nano-12b-v2-vl:free
-    ///   generate_image:
-    ///     gen:
-    ///       url: https://router.huggingface.co/hf-inference/models
-    ///       key: ${HF_TOKEN}
-    ///       model: black-forest-labs/FLUX.1-schnell
+    ///     model: vision
+    ///     model-fallback: vision-fallback
     /// ```
     #[serde(default)]
-    pub tools: std::collections::HashMap<String, std::collections::HashMap<String, ProviderProfile>>,
-    /// Per-skill model configuration — same named-slot format as `tools`.
+    pub tools: std::collections::HashMap<String, std::collections::HashMap<String, String>>,
+    /// Per-skill model configuration — same provider-reference format as `tools`.
     #[serde(default)]
-    pub skills: std::collections::HashMap<String, std::collections::HashMap<String, ProviderProfile>>,
+    pub skills: std::collections::HashMap<String, std::collections::HashMap<String, String>>,
     #[serde(skip)]
     pub api_key: Option<String>,
     /// Fallback API keys tried in order when the primary key returns 401/403.
