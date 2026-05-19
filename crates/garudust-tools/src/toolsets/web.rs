@@ -803,4 +803,178 @@ mod tests {
             "foo bar"
         );
     }
+
+    #[test]
+    fn strip_html_tags_empty_string() {
+        assert_eq!(strip_html_tags(""), "");
+    }
+
+    #[test]
+    fn strip_html_tags_only_tags() {
+        assert_eq!(strip_html_tags("<div><span></span></div>"), "");
+    }
+
+    #[test]
+    fn strip_html_tags_unclosed_eats_remainder() {
+        // Once '<' is seen the in_tag flag stays true until '>' or end-of-string.
+        assert_eq!(strip_html_tags("before<unclosed"), "before");
+    }
+
+    // ── percent_decode edge cases ─────────────────────────────────────────────
+
+    #[test]
+    fn percent_decode_empty() {
+        assert_eq!(percent_decode(""), "");
+    }
+
+    #[test]
+    fn percent_decode_no_encoding() {
+        assert_eq!(percent_decode("plain"), "plain");
+    }
+
+    #[test]
+    fn percent_decode_trailing_percent() {
+        // Trailing '%' without two hex digits must pass through as-is.
+        assert_eq!(percent_decode("hello%"), "hello%");
+    }
+
+    #[test]
+    fn percent_decode_partial_hex() {
+        // '%2' only has one hex digit — pass through unchanged.
+        assert_eq!(percent_decode("a%2b"), "a+");
+        assert_eq!(percent_decode("a%2"), "a%2");
+    }
+
+    // ── floor_char_boundary ───────────────────────────────────────────────────
+
+    #[test]
+    fn floor_char_boundary_ascii() {
+        let s = "hello world";
+        assert_eq!(super::super::floor_char_boundary(s, 5), 5);
+    }
+
+    #[test]
+    fn floor_char_boundary_zero() {
+        assert_eq!(super::super::floor_char_boundary("hello", 0), 0);
+    }
+
+    #[test]
+    fn floor_char_boundary_beyond_len_clamps() {
+        assert_eq!(super::super::floor_char_boundary("hello", 100), 5);
+    }
+
+    #[test]
+    fn floor_char_boundary_multibyte_snaps_back() {
+        // "ก" = U+0E01, UTF-8: 3 bytes (0xE0 0xB8 0x81)
+        let s = "กข"; // 6 bytes
+        assert_eq!(super::super::floor_char_boundary(s, 1), 0); // inside first char → snap to 0
+        assert_eq!(super::super::floor_char_boundary(s, 3), 3); // exact start of second char
+        assert_eq!(super::super::floor_char_boundary(s, 6), 6); // end of string
+    }
+
+    // ── WebFetch SSRF protection ──────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn web_fetch_rejects_private_ip() {
+        let ctx = make_ctx();
+        let err = WebFetch
+            .execute(json!({ "url": "http://10.0.0.1/secret" }), &ctx)
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            ToolError::InvalidArgs(_) | ToolError::Execution(_)
+        ));
+    }
+
+    #[tokio::test]
+    async fn web_fetch_rejects_localhost() {
+        let ctx = make_ctx();
+        let err = WebFetch
+            .execute(json!({ "url": "http://127.0.0.1/secret" }), &ctx)
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            ToolError::InvalidArgs(_) | ToolError::Execution(_)
+        ));
+    }
+
+    #[tokio::test]
+    async fn web_fetch_missing_url_returns_error() {
+        let ctx = make_ctx();
+        let err = WebFetch.execute(json!({}), &ctx).await.unwrap_err();
+        assert!(matches!(err, ToolError::InvalidArgs(_)));
+    }
+
+    // ── HttpRequest additional validation ─────────────────────────────────────
+
+    #[tokio::test]
+    async fn http_request_missing_url_returns_error() {
+        let ctx = make_ctx();
+        let err = HttpRequest
+            .execute(json!({ "method": "GET" }), &ctx)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ToolError::InvalidArgs(_)));
+    }
+
+    #[tokio::test]
+    async fn http_request_rejects_link_local_ip() {
+        let ctx = make_ctx();
+        let err = HttpRequest
+            .execute(
+                json!({ "method": "GET", "url": "http://169.254.169.254/latest/meta-data/" }),
+                &ctx,
+            )
+            .await
+            .unwrap_err();
+        // 169.254.x.x is the AWS instance metadata endpoint — must be blocked.
+        assert!(matches!(
+            err,
+            ToolError::InvalidArgs(_) | ToolError::Execution(_)
+        ));
+    }
+
+    #[tokio::test]
+    async fn http_request_rejects_ipv6_loopback() {
+        let ctx = make_ctx();
+        let err = HttpRequest
+            .execute(
+                json!({ "method": "GET", "url": "http://[::1]/secret" }),
+                &ctx,
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            ToolError::InvalidArgs(_) | ToolError::Execution(_)
+        ));
+    }
+
+    // ── parse_ddg_html additional cases ──────────────────────────────────────
+
+    #[test]
+    fn parse_ddg_html_direct_href_without_uddg() {
+        // href with no DDG redirect wrapper — raw URL used as-is.
+        let html = r#"
+            <div class="result__title">
+              <a href="https://example.com/page">Direct Link</a>
+            </div>
+        "#;
+        let results = parse_ddg_html(html, 5);
+        assert_eq!(results.len(), 1);
+        assert!(results[0].contains("https://example.com/page"));
+        assert!(results[0].contains("Direct Link"));
+    }
+
+    #[test]
+    fn parse_ddg_html_zero_limit_returns_empty() {
+        let html = r#"
+            <div class="result__title">
+              <a href="https://example.com">Title</a>
+            </div>
+        "#;
+        assert!(parse_ddg_html(html, 0).is_empty());
+    }
 }
