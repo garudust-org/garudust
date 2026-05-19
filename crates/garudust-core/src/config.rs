@@ -1210,13 +1210,120 @@ impl Default for CompressionConfig {
 mod tests {
     use std::collections::HashMap;
 
-    use super::{detect_provider_from_env, resolve_key_for_provider, AgentConfig};
+    use super::{detect_provider_from_env, resolve_key_for_provider, AgentConfig, RolesConfig};
 
     fn dotenv(pairs: &[(&str, &str)]) -> HashMap<String, String> {
         pairs
             .iter()
             .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
             .collect()
+    }
+
+    // ── RolesConfig ──────────────────────────────────────────────────────────
+
+    fn roles_with_admin() -> RolesConfig {
+        let mut r = RolesConfig::default();
+        r.set_user_role("telegram", "111", "admin");
+        r
+    }
+
+    #[test]
+    fn roles_has_any_admin_false_when_empty() {
+        assert!(!RolesConfig::default().has_any_admin());
+    }
+
+    #[test]
+    fn roles_has_any_admin_true() {
+        assert!(roles_with_admin().has_any_admin());
+    }
+
+    #[test]
+    fn roles_has_any_admin_member_not_counted() {
+        let mut r = RolesConfig::default();
+        r.set_user_role("telegram", "222", "member");
+        assert!(!r.has_any_admin());
+    }
+
+    #[test]
+    fn roles_lookup_by_id() {
+        let r = roles_with_admin();
+        assert_eq!(r.lookup_role("telegram", "111", None), Some("admin".into()));
+    }
+
+    #[test]
+    fn roles_lookup_no_match_returns_none() {
+        let r = roles_with_admin();
+        assert_eq!(r.lookup_role("telegram", "999", None), None);
+    }
+
+    #[test]
+    fn roles_lookup_wrong_platform_returns_none() {
+        let r = roles_with_admin();
+        assert_eq!(r.lookup_role("discord", "111", None), None);
+    }
+
+    #[test]
+    fn roles_lookup_telegram_username_with_at() {
+        let mut r = RolesConfig::default();
+        r.set_user_role("telegram", "@somchai", "member");
+        assert_eq!(
+            r.lookup_role("telegram", "0", Some("@somchai")),
+            Some("member".into())
+        );
+    }
+
+    #[test]
+    fn roles_lookup_telegram_username_without_at() {
+        let mut r = RolesConfig::default();
+        r.set_user_role("telegram", "@somchai", "member");
+        assert_eq!(
+            r.lookup_role("telegram", "0", Some("somchai")),
+            Some("member".into())
+        );
+    }
+
+    #[test]
+    fn roles_lookup_username_only_works_on_telegram() {
+        let mut r = RolesConfig::default();
+        r.set_user_role("discord", "@somchai", "member");
+        // Discord does not fall back to @username lookup
+        assert_eq!(r.lookup_role("discord", "0", Some("somchai")), None);
+    }
+
+    #[test]
+    fn roles_set_creates_new_entry() {
+        let mut r = RolesConfig::default();
+        r.set_user_role("line", "Uabc", "member");
+        assert_eq!(r.lookup_role("line", "Uabc", None), Some("member".into()));
+    }
+
+    #[test]
+    fn roles_set_updates_existing_entry() {
+        let mut r = roles_with_admin();
+        r.set_user_role("telegram", "111", "member");
+        assert_eq!(
+            r.lookup_role("telegram", "111", None),
+            Some("member".into())
+        );
+    }
+
+    #[test]
+    fn roles_remove_user_returns_true_when_found() {
+        let mut r = roles_with_admin();
+        assert!(r.remove_user("telegram", "111"));
+        assert!(!r.has_any_admin());
+    }
+
+    #[test]
+    fn roles_remove_user_returns_false_when_missing() {
+        let mut r = roles_with_admin();
+        assert!(!r.remove_user("telegram", "999"));
+    }
+
+    #[test]
+    fn roles_remove_user_wrong_platform_returns_false() {
+        let mut r = roles_with_admin();
+        assert!(!r.remove_user("discord", "111"));
     }
 
     // ── resolve_key_for_provider ──────────────────────────────────────────────

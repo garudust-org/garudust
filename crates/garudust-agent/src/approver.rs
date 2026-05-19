@@ -153,3 +153,220 @@ fn expand_allowed_tools(
     }
     Some(tools)
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use async_trait::async_trait;
+    use garudust_core::{
+        config::{AgentConfig, RoleDefinition, RolesConfig},
+        error::ToolError,
+        tool::{ApprovalDecision, CommandApprover, Tool, ToolContext},
+        types::ToolResult,
+    };
+    use garudust_tools::ToolRegistry;
+
+    use super::RolesApprover;
+
+    // ── Minimal mock tool ────────────────────────────────────────────────────
+
+    struct MockTool {
+        name: &'static str,
+        toolset: &'static str,
+    }
+
+    #[async_trait]
+    impl Tool for MockTool {
+        fn name(&self) -> &str { self.name }
+        fn description(&self) -> &str { "mock" }
+        fn toolset(&self) -> &str { self.toolset }
+        fn schema(&self) -> serde_json::Value {
+            serde_json::json!({ "type": "object", "properties": {} })
+        }
+        async fn execute(&self, _p: serde_json::Value, _ctx: &ToolContext) -> Result<ToolResult, ToolError> {
+            Ok(ToolResult::ok("id", "ok"))
+        }
+    }
+
+    fn registry_with(tools: &[(&'static str, &'static str)]) -> ToolRegistry {
+        let mut r = ToolRegistry::new();
+        for (name, toolset) in tools {
+            r.register(MockTool { name, toolset });
+        }
+        r
+    }
+
+    fn config_with_roles(roles: RolesConfig) -> AgentConfig {
+        use garudust_core::config::SecurityConfig;
+        AgentConfig {
+            roles,
+            security: SecurityConfig {
+                approval_mode: "auto".to_string(),
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
+    async fn decide(approver: &Arc<dyn CommandApprover>, tool: &str) -> ApprovalDecision {
+        approver.approve(tool, "{}", "test_user").await
+    }
+
+    // ── Tests ────────────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn no_roles_configured_uses_global_auto() {
+        let cfg = config_with_roles(RolesConfig::default());
+        let reg = registry_with(&[]);
+        let approver = RolesApprover::for_user("telegram", "111", None, &cfg, &reg);
+        assert_eq!(decide(&approver, "any_tool").await, ApprovalDecision::Approved);
+    }
+
+    #[tokio::test]
+    async fn unknown_user_no_default_role_is_denied() {
+        let mut roles = RolesConfig::default();
+        roles.definitions.insert("admin".into(), RoleDefinition {
+            approval_mode: Some("auto".into()),
+            ..Default::default()
+        });
+        roles.set_user_role("telegram", "999", "admin");
+
+        let cfg = config_with_roles(roles);
+        let reg = registry_with(&[]);
+        // user "555" has no role, no default_role
+        let approver = RolesApprover::for_user("telegram", "555", None, &cfg, &reg);
+        assert_eq!(decide(&approver, "any_tool").await, ApprovalDecision::Denied);
+    }
+
+    #[tokio::test]
+    async fn default_role_applied_to_unknown_user() {
+        let mut roles = RolesConfig::default();
+        roles.definitions.insert("readonly".into(), RoleDefinition {
+            approval_mode: Some("auto".into()),
+            ..Default::default()
+        });
+        roles.default_role = Some("readonly".into());
+
+        let cfg = config_with_roles(roles);
+        let reg = registry_with(&[]);
+        let approver = RolesApprover::for_user("telegram", "stranger", None, &cfg, &reg);
+        assert_eq!(decide(&approver, "read_file").await, ApprovalDecision::Approved);
+    }
+
+    #[tokio::test]
+    async fn role_with_approval_mode_deny_blocks_all() {
+        let mut roles = RolesConfig::default();
+        roles.definitions.insert("readonly".into(), RoleDefinition {
+            approval_mode: Some("deny".into()),
+            ..Default::default()
+        });
+        roles.set_user_role("telegram", "111", "readonly");
+
+        let cfg = config_with_roles(roles);
+        let reg = registry_with(&[]);
+        let approver = RolesApprover::for_user("telegram", "111", None, &cfg, &reg);
+        assert_eq!(decide(&approver, "bash").await, ApprovalDecision::Denied);
+    }
+
+    #[tokio::test]
+    async fn role_with_approval_mode_auto_approves_all() {
+        let mut roles = RolesConfig::default();
+        roles.definitions.insert("admin".into(), RoleDefinition {
+            approval_mode: Some("auto".into()),
+            ..Default::default()
+        });
+        roles.set_user_role("telegram", "111", "admin");
+
+        let cfg = config_with_roles(roles);
+        let reg = registry_with(&[]);
+        let approver = RolesApprover::for_user("telegram", "111", None, &cfg, &reg);
+        assert_eq!(decide(&approver, "bash").await, ApprovalDecision::Approved);
+    }
+
+    #[tokio::test]
+    async fn allowed_toolset_permits_tools_in_set() {
+        let mut roles = RolesConfig::default();
+        roles.definitions.insert("member".into(), RoleDefinition {
+            approval_mode: Some("auto".into()),
+            allowed_toolsets: vec!["web".into()],
+            ..Default::default()
+        });
+        roles.set_user_role("telegram", "111", "member");
+
+        let cfg = config_with_roles(roles);
+        let reg = registry_with(&[("search_web", "web"), ("bash", "terminal")]);
+        let approver = RolesApprover::for_user("telegram", "111", None, &cfg, &reg);
+
+        assert_eq!(decide(&approver, "search_web").await, ApprovalDecision::Approved);
+        assert_eq!(decide(&approver, "bash").await, ApprovalDecision::Denied);
+    }
+
+    #[tokio::test]
+    async fn individual_allowed_tool_passes_without_toolset() {
+        let mut roles = RolesConfig::default();
+        roles.definitions.insert("member".into(), RoleDefinition {
+            approval_mode: Some("auto".into()),
+            allowed_tools: vec!["read_file".into()],
+            ..Default::default()
+        });
+        roles.set_user_role("telegram", "111", "member");
+
+        let cfg = config_with_roles(roles);
+        let reg = registry_with(&[("read_file", "files"), ("bash", "terminal")]);
+        let approver = RolesApprover::for_user("telegram", "111", None, &cfg, &reg);
+
+        assert_eq!(decide(&approver, "read_file").await, ApprovalDecision::Approved);
+        assert_eq!(decide(&approver, "bash").await, ApprovalDecision::Denied);
+    }
+
+    #[tokio::test]
+    async fn denied_tools_wins_over_allowlist() {
+        let mut roles = RolesConfig::default();
+        roles.definitions.insert("member".into(), RoleDefinition {
+            approval_mode: Some("auto".into()),
+            allowed_toolsets: vec!["web".into()],
+            denied_tools: vec!["search_web".into()],
+            ..Default::default()
+        });
+        roles.set_user_role("telegram", "111", "member");
+
+        let cfg = config_with_roles(roles);
+        let reg = registry_with(&[("search_web", "web")]);
+        let approver = RolesApprover::for_user("telegram", "111", None, &cfg, &reg);
+
+        // search_web is in allowed toolset but also in denied_tools → denied
+        assert_eq!(decide(&approver, "search_web").await, ApprovalDecision::Denied);
+    }
+
+    #[tokio::test]
+    async fn undefined_role_name_is_denied() {
+        let mut roles = RolesConfig::default();
+        // user has role "ghost" but "ghost" has no definition
+        roles.set_user_role("telegram", "111", "ghost");
+
+        let cfg = config_with_roles(roles);
+        let reg = registry_with(&[]);
+        let approver = RolesApprover::for_user("telegram", "111", None, &cfg, &reg);
+        assert_eq!(decide(&approver, "any_tool").await, ApprovalDecision::Denied);
+    }
+
+    #[tokio::test]
+    async fn empty_allowed_toolsets_means_unrestricted() {
+        let mut roles = RolesConfig::default();
+        roles.definitions.insert("admin".into(), RoleDefinition {
+            approval_mode: Some("auto".into()),
+            allowed_toolsets: vec![],
+            allowed_tools: vec![],
+            ..Default::default()
+        });
+        roles.set_user_role("telegram", "111", "admin");
+
+        let cfg = config_with_roles(roles);
+        let reg = registry_with(&[("bash", "terminal"), ("search_web", "web")]);
+        let approver = RolesApprover::for_user("telegram", "111", None, &cfg, &reg);
+
+        assert_eq!(decide(&approver, "bash").await, ApprovalDecision::Approved);
+        assert_eq!(decide(&approver, "search_web").await, ApprovalDecision::Approved);
+    }
+}
