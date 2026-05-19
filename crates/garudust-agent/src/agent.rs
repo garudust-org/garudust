@@ -1250,3 +1250,120 @@ async fn reflect_and_save_skill(
         break; // only one skill per reflection
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::VecDeque;
+    use tempfile::TempDir;
+
+    // ── scrub_tag_block ───────────────────────────────────────────────────────
+
+    #[test]
+    fn scrub_removes_single_block() {
+        // trim_end/trim_start consume the spaces adjacent to the removed block.
+        let s = "before <recalled_memory>secret</recalled_memory> after";
+        assert_eq!(
+            scrub_tag_block(s, "<recalled_memory>", "</recalled_memory>"),
+            "beforeafter"
+        );
+    }
+
+    #[test]
+    fn scrub_removes_multiple_blocks() {
+        let s = "<recalled_memory>a</recalled_memory> mid <recalled_memory>b</recalled_memory>";
+        assert_eq!(
+            scrub_tag_block(s, "<recalled_memory>", "</recalled_memory>"),
+            "mid"
+        );
+    }
+
+    #[test]
+    fn scrub_unclosed_tag_truncates() {
+        let s = "before <recalled_memory>unclosed content";
+        assert_eq!(
+            scrub_tag_block(s, "<recalled_memory>", "</recalled_memory>"),
+            "before"
+        );
+    }
+
+    #[test]
+    fn scrub_no_tags_unchanged() {
+        let s = "just normal text";
+        assert_eq!(
+            scrub_tag_block(s, "<recalled_memory>", "</recalled_memory>"),
+            "just normal text"
+        );
+    }
+
+    #[test]
+    fn scrub_empty_string() {
+        assert_eq!(
+            scrub_tag_block("", "<recalled_memory>", "</recalled_memory>"),
+            ""
+        );
+    }
+
+    #[test]
+    fn scrub_only_tags_leaves_empty() {
+        let s = "<recalled_memory>secret</recalled_memory>";
+        assert_eq!(
+            scrub_tag_block(s, "<recalled_memory>", "</recalled_memory>"),
+            ""
+        );
+    }
+
+    #[test]
+    fn scrub_recalled_memory_removes_both_tag_types() {
+        // Each removal trims adjacent whitespace, so inter-word spaces collapse.
+        let s = "a <recalled_memory>m</recalled_memory> b <untrusted_memory>u</untrusted_memory> c";
+        assert_eq!(scrub_recalled_memory(s), "abc");
+    }
+
+    // ── session persistence ───────────────────────────────────────────────────
+
+    #[test]
+    fn session_round_trip() {
+        let dir = TempDir::new().unwrap();
+        let mut pairs: VecDeque<(String, String)> = VecDeque::new();
+        pairs.push_back(("hello".into(), "world".into()));
+        pairs.push_back(("foo".into(), "bar".into()));
+
+        save_conv_to_disk(dir.path(), "test-session", &pairs);
+        let loaded = load_conv_from_disk(dir.path(), "test-session");
+        assert_eq!(loaded, pairs);
+    }
+
+    #[test]
+    fn session_missing_file_returns_empty() {
+        let dir = TempDir::new().unwrap();
+        let loaded = load_conv_from_disk(dir.path(), "nonexistent-session");
+        assert!(loaded.is_empty());
+    }
+
+    #[test]
+    fn session_different_keys_are_isolated() {
+        let dir = TempDir::new().unwrap();
+        let mut pairs: VecDeque<(String, String)> = VecDeque::new();
+        pairs.push_back(("only-in-a".into(), "value".into()));
+
+        save_conv_to_disk(dir.path(), "session-a", &pairs);
+        let loaded = load_conv_from_disk(dir.path(), "session-b");
+        assert!(loaded.is_empty());
+    }
+
+    #[test]
+    fn session_overwrite_replaces_data() {
+        let dir = TempDir::new().unwrap();
+        let mut first: VecDeque<(String, String)> = VecDeque::new();
+        first.push_back(("q1".into(), "a1".into()));
+        save_conv_to_disk(dir.path(), "sess", &first);
+
+        let mut second: VecDeque<(String, String)> = VecDeque::new();
+        second.push_back(("q2".into(), "a2".into()));
+        save_conv_to_disk(dir.path(), "sess", &second);
+
+        let loaded = load_conv_from_disk(dir.path(), "sess");
+        assert_eq!(loaded, second);
+    }
+}

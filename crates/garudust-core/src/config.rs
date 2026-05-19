@@ -650,6 +650,14 @@ pub struct WebhookPlatformConfig {
     pub port: u16,
     /// HTTP path the adapter listens on (e.g. `/webhooks/line`).
     pub webhook_path: String,
+    /// Optional HMAC-SHA256 secret for the generic webhook adapter.
+    /// When set every incoming request must include the header
+    /// `X-Hub-Signature-256: sha256=<hex>` with a valid HMAC-SHA256 signature
+    /// of the raw request body. Requests with a missing or wrong signature are
+    /// rejected with HTTP 401. Not used by the LINE or WhatsApp adapters (they
+    /// have their own verification).
+    #[serde(default)]
+    pub hmac_secret: Option<String>,
 }
 
 /// Container for all webhook-based platform settings.
@@ -732,6 +740,7 @@ impl WebhookPlatformConfig {
             enabled: true,
             port: 3001,
             webhook_path: "/webhook".to_string(),
+            hmac_secret: None,
         }
     }
 
@@ -743,6 +752,7 @@ impl WebhookPlatformConfig {
             enabled: true,
             port: 3002,
             webhook_path: "/line".to_string(),
+            hmac_secret: None,
         }
     }
 
@@ -752,6 +762,7 @@ impl WebhookPlatformConfig {
             enabled: true,
             port: 3003,
             webhook_path: "/whatsapp".to_string(),
+            hmac_secret: None,
         }
     }
 }

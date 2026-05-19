@@ -339,6 +339,7 @@ fn platform_or_insert<'a>(
         enabled: false,
         port: default_port,
         webhook_path: default_path.into(),
+        hmac_secret: None,
     })
 }
 

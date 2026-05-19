@@ -481,8 +481,11 @@ async fn main() -> Result<()> {
     }
 
     if let Some(cfg) = enabled_platform(config.platforms.webhook.as_ref(), "webhook") {
-        let platform: Arc<dyn PlatformAdapter> =
-            Arc::new(WebhookAdapter::new(cfg.port, cfg.webhook_path.clone()));
+        let platform: Arc<dyn PlatformAdapter> = Arc::new(WebhookAdapter::new(
+            cfg.port,
+            cfg.webhook_path.clone(),
+            cfg.hmac_secret.clone(),
+        ));
         start_platform(
             platform,
             agent.load_full(),

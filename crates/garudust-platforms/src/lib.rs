@@ -25,7 +25,7 @@
 //!
 //! async fn start(handler: Arc<dyn MessageHandler>) -> anyhow::Result<()> {
 //!     let tg = TelegramAdapter::new(std::env::var("TELEGRAM_TOKEN")?);
-//!     let wh = WebhookAdapter::new(3001, "/webhook".to_string());
+//!     let wh = WebhookAdapter::new(3001, "/webhook".to_string(), None);
 //!     tg.start(handler.clone()).await?;
 //!     wh.start(handler).await?;
 //!     Ok(())
