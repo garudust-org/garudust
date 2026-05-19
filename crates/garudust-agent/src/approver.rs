@@ -6,7 +6,8 @@ pub struct AutoApprover;
 
 #[async_trait]
 impl CommandApprover for AutoApprover {
-    async fn approve(&self, _tool: &str, _params: &str) -> ApprovalDecision {
+    async fn approve(&self, tool: &str, params: &str) -> ApprovalDecision {
+        tracing::info!(tool, params, "auto-approved tool call");
         ApprovalDecision::Approved
     }
 }
