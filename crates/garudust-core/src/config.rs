@@ -251,28 +251,6 @@ impl ProviderProfile {
     }
 }
 
-/// Per-tool configuration overrides.
-/// All fields are optional; unset fields leave the tool's own defaults intact.
-/// This struct is intentionally open-ended — new fields can be added here in
-/// future releases without breaking existing config files (serde default).
-///
-/// Both `model` and `fallback_model` accept the same `"profile/model"` or
-/// `"provider/model"` format used by the `routing:` table. When a named profile
-/// is resolved, the subprocess also receives `GARUDUST_BASE_URL` / `GARUDUST_API_KEY`
-/// (primary) or `GARUDUST_FALLBACK_BASE_URL` / `GARUDUST_FALLBACK_API_KEY` (fallback).
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ToolOverrideConfig {
-    /// Primary model for the tool's subprocess. Accepts `"profile/model"` or
-    /// `"provider/model"`. Forwarded as `GARUDUST_MODEL` + `GARUDUST_BASE_URL` +
-    /// `GARUDUST_API_KEY`. Empty string = tool's own default.
-    #[serde(default)]
-    pub model: String,
-    /// Fallback model tried when the primary fails. Accepts `"profile/model"` or
-    /// `"provider/model"`. Forwarded as `GARUDUST_FALLBACK_MODEL` +
-    /// `GARUDUST_FALLBACK_BASE_URL` + `GARUDUST_FALLBACK_API_KEY`. Empty = no fallback.
-    #[serde(default)]
-    pub fallback_model: String,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentConfig {
@@ -323,18 +301,34 @@ pub struct AgentConfig {
     /// builds an appropriate transport, and overrides the model for that task only.
     #[serde(default)]
     pub routing: std::collections::HashMap<String, String>,
-    /// Per-tool configuration overrides, keyed by tool name.
+    /// Per-tool model configuration, keyed by tool name → named provider slot.
+    /// Each slot is a `ProviderProfile` (name/url/key/model). Slots whose name
+    /// contains `"fallback"` are injected as `GARUDUST_FALLBACK_*` env vars;
+    /// all others as `GARUDUST_*` (primary).
+    ///
     /// Example:
     /// ```yaml
     /// tools:
     ///   view_image:
-    ///     model: "openrouter/google/gemini-flash-1.5"
-    ///     fallback_model: "google/gemini-1.5-flash"
+    ///     vision:
+    ///       name: google
+    ///       key: ${GOOGLE_AI_API_KEY}
+    ///       model: gemini-flash-latest
+    ///     vision-fallback:
+    ///       name: openrouter
+    ///       key: ${OPENROUTER_API_KEY}
+    ///       model: nvidia/nemotron-nano-12b-v2-vl:free
+    ///   generate_image:
+    ///     gen:
+    ///       url: https://router.huggingface.co/hf-inference/models
+    ///       key: ${HF_TOKEN}
+    ///       model: black-forest-labs/FLUX.1-schnell
     /// ```
-    /// Values are forwarded as `GARUDUST_MODEL` / `GARUDUST_FALLBACK_MODEL` env vars
-    /// to the tool's subprocess. Tools that do not read these vars are unaffected.
     #[serde(default)]
-    pub tools: std::collections::HashMap<String, ToolOverrideConfig>,
+    pub tools: std::collections::HashMap<String, std::collections::HashMap<String, ProviderProfile>>,
+    /// Per-skill model configuration — same named-slot format as `tools`.
+    #[serde(default)]
+    pub skills: std::collections::HashMap<String, std::collections::HashMap<String, ProviderProfile>>,
     #[serde(skip)]
     pub api_key: Option<String>,
     /// Fallback API keys tried in order when the primary key returns 401/403.
@@ -780,6 +774,7 @@ impl Default for AgentConfig {
             providers: std::collections::HashMap::new(),
             routing: std::collections::HashMap::new(),
             tools: std::collections::HashMap::new(),
+            skills: std::collections::HashMap::new(),
             api_key: None,
             fallback_api_keys: Vec::new(),
             compression: CompressionConfig::default(),

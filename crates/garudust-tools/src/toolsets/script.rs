@@ -179,45 +179,32 @@ impl Tool for ScriptTool {
             }
         }
         // Forward per-tool model overrides from config.yaml → subprocess env.
-        // Scripts read GARUDUST_MODEL / GARUDUST_FALLBACK_MODEL and fall back to
-        // their own hardcoded defaults when these vars are absent, preserving
-        // backward compatibility with scripts that pre-date this feature.
-        if let Some(cfg) = ctx.config.tools.get(self.name()) {
-            if !cfg.model.is_empty() {
-                if let Some((base_url, api_key, model)) =
-                    garudust_transport::resolve_to_env_vars(&cfg.model, &ctx.config.providers)
-                {
-                    cmd.env("GARUDUST_MODEL", &model);
-                    cmd.env("GARUDUST_BASE_URL", &base_url);
-                    if !api_key.is_empty() {
-                        cmd.env("GARUDUST_API_KEY", &api_key);
+        // Each tool has named slots (HashMap<slot_name, ProviderProfile>).
+        // Slots whose name contains "fallback" inject GARUDUST_FALLBACK_* vars;
+        // all others inject GARUDUST_* (primary). Scripts fall back to their
+        // own hardcoded defaults when these vars are absent.
+        if let Some(slots) = ctx.config.tools.get(self.name()) {
+            for (slot, profile) in slots {
+                let fb = slot.contains("fallback");
+                if let Some(model) = &profile.model {
+                    if !model.is_empty() {
+                        cmd.env(
+                            if fb { "GARUDUST_FALLBACK_MODEL" } else { "GARUDUST_MODEL" },
+                            model,
+                        );
                     }
-                } else {
-                    cmd.env("GARUDUST_MODEL", &cfg.model);
                 }
-            }
-            // Symmetric with `model`: resolve the profile prefix. The prefix
-            // (e.g. `vision-fallback/`) is the routing key and MUST name a
-            // defined provider profile. `split_once('/')` removes only that
-            // first segment, so an OpenRouter `vendor/model:tag` id that
-            // follows (e.g. `nvidia/nemotron-…:free`) is preserved intact —
-            // the profile prefix is what shields a `vendor` segment from
-            // colliding with a builtin provider name. A bare prefix-less
-            // value resolves to None and is forwarded verbatim (so a vendor
-            // that happens to match a builtin would be mis-split — fallbacks
-            // are required to carry a profile prefix).
-            if !cfg.fallback_model.is_empty() {
-                if let Some((fb_url, fb_key, fb_model)) = garudust_transport::resolve_to_env_vars(
-                    &cfg.fallback_model,
-                    &ctx.config.providers,
-                ) {
-                    cmd.env("GARUDUST_FALLBACK_MODEL", &fb_model);
-                    cmd.env("GARUDUST_FALLBACK_BASE_URL", &fb_url);
-                    if !fb_key.is_empty() {
-                        cmd.env("GARUDUST_FALLBACK_API_KEY", &fb_key);
-                    }
-                } else {
-                    cmd.env("GARUDUST_FALLBACK_MODEL", &cfg.fallback_model);
+                if let Some(url) = profile.resolved_base_url() {
+                    cmd.env(
+                        if fb { "GARUDUST_FALLBACK_BASE_URL" } else { "GARUDUST_BASE_URL" },
+                        &url,
+                    );
+                }
+                if let Some(key) = profile.resolved_key() {
+                    cmd.env(
+                        if fb { "GARUDUST_FALLBACK_API_KEY" } else { "GARUDUST_API_KEY" },
+                        &key,
+                    );
                 }
             }
         }

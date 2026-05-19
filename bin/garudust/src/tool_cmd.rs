@@ -83,29 +83,35 @@ pub async fn install(tool_name: &str, tools_dir: &Path, hub: &str) -> Result<()>
         eprintln!("Warning: this tool requires '{requires}' which was not found on PATH.");
     }
 
-    // Write default model config from tool.yaml into config.yaml (only if not already set).
+    // Write default model hints from tool.yaml into config.yaml (only if not already set).
     let (model, fallback_model) = hub::read_tool_model_defaults(tools_dir, tool_name).await;
     let mut cfg = AgentConfig::load();
     if !model.is_empty() || !fallback_model.is_empty() {
-        let entry = cfg.tools.entry(tool_name.to_string()).or_default();
+        let slots = cfg.tools.entry(tool_name.to_string()).or_default();
         let mut updated = false;
-        if entry.model.is_empty() && !model.is_empty() {
-            entry.model.clone_from(&model);
+        if !model.is_empty() && !slots.contains_key("model") {
+            slots.insert(
+                "model".to_string(),
+                garudust_core::config::ProviderProfile {
+                    model: Some(model.clone()),
+                    ..Default::default()
+                },
+            );
             updated = true;
         }
-        if entry.fallback_model.is_empty() && !fallback_model.is_empty() {
-            entry.fallback_model.clone_from(&fallback_model);
+        if !fallback_model.is_empty() && !slots.contains_key("fallback") {
+            slots.insert(
+                "fallback".to_string(),
+                garudust_core::config::ProviderProfile {
+                    model: Some(fallback_model.clone()),
+                    ..Default::default()
+                },
+            );
             updated = true;
         }
         if updated && cfg.save_yaml().is_ok() {
-            println!("Configured default model for '{tool_name}':");
-            if !model.is_empty() {
-                println!("  model:          {model}");
-            }
-            if !fallback_model.is_empty() {
-                println!("  fallback_model: {fallback_model}");
-            }
-            println!("  (override: garudust config set tools.{tool_name}.model <profile/model>)");
+            println!("Configured default model hints for '{tool_name}' in config.yaml.");
+            println!("  Add key: and name:/url: fields to each slot as needed.");
         }
     }
 

@@ -355,12 +355,10 @@ fn update_yaml_tool_model(
         AgentConfig::default()
     };
     config.home_dir = home_dir.to_path_buf();
-    let entry = config.tools.entry(tool_name.to_string()).or_default();
-    match field {
-        "model" => entry.model = value.into(),
-        "fallback_model" => entry.fallback_model = value.into(),
-        _ => unreachable!(),
-    }
+    let slots = config.tools.entry(tool_name.to_string()).or_default();
+    // "model" → primary slot, "fallback_model" → fallback slot
+    let slot_name = if field == "fallback_model" { "fallback" } else { "model" };
+    slots.entry(slot_name.to_string()).or_default().model = Some(value.into());
     config.save_yaml()?;
     Ok(())
 }
