@@ -178,6 +178,7 @@ mod tests {
     }
 
     #[async_trait]
+    #[allow(clippy::unnecessary_literal_bound)]
     impl Tool for MockTool {
         fn name(&self) -> &str {
             self.name
@@ -215,12 +216,12 @@ mod tests {
     }
 
     fn make(
-        roles: RolesConfig,
+        roles: &RolesConfig,
         reg: &ToolRegistry,
         platform: &str,
         user_id: &str,
     ) -> Arc<dyn CommandApprover> {
-        RolesApprover::for_user(platform, user_id, None, &roles, AUTO, reg)
+        RolesApprover::for_user(platform, user_id, None, roles, AUTO, reg)
     }
 
     // ── Tests ────────────────────────────────────────────────────────────────
@@ -228,7 +229,7 @@ mod tests {
     #[tokio::test]
     async fn no_roles_configured_uses_global_auto() {
         let reg = registry_with(&[]);
-        let approver = make(RolesConfig::default(), &reg, "telegram", "111");
+        let approver = make(&RolesConfig::default(), &reg, "telegram", "111");
         assert_eq!(
             decide(&approver, "any_tool").await,
             ApprovalDecision::Approved
@@ -249,7 +250,7 @@ mod tests {
 
         let reg = registry_with(&[]);
         // user "555" has no role, no default_role
-        let approver = make(roles, &reg, "telegram", "555");
+        let approver = make(&roles, &reg, "telegram", "555");
         assert_eq!(
             decide(&approver, "any_tool").await,
             ApprovalDecision::Denied
@@ -269,7 +270,7 @@ mod tests {
         roles.default_role = Some("readonly".into());
 
         let reg = registry_with(&[]);
-        let approver = make(roles, &reg, "telegram", "stranger");
+        let approver = make(&roles, &reg, "telegram", "stranger");
         assert_eq!(
             decide(&approver, "read_file").await,
             ApprovalDecision::Approved
@@ -289,7 +290,7 @@ mod tests {
         roles.set_user_role("telegram", "111", "readonly");
 
         let reg = registry_with(&[]);
-        let approver = make(roles, &reg, "telegram", "111");
+        let approver = make(&roles, &reg, "telegram", "111");
         assert_eq!(decide(&approver, "bash").await, ApprovalDecision::Denied);
     }
 
@@ -306,7 +307,7 @@ mod tests {
         roles.set_user_role("telegram", "111", "admin");
 
         let reg = registry_with(&[]);
-        let approver = make(roles, &reg, "telegram", "111");
+        let approver = make(&roles, &reg, "telegram", "111");
         assert_eq!(decide(&approver, "bash").await, ApprovalDecision::Approved);
     }
 
@@ -324,7 +325,7 @@ mod tests {
         roles.set_user_role("telegram", "111", "member");
 
         let reg = registry_with(&[("search_web", "web"), ("bash", "terminal")]);
-        let approver = make(roles, &reg, "telegram", "111");
+        let approver = make(&roles, &reg, "telegram", "111");
 
         assert_eq!(
             decide(&approver, "search_web").await,
@@ -347,7 +348,7 @@ mod tests {
         roles.set_user_role("telegram", "111", "member");
 
         let reg = registry_with(&[("read_file", "files"), ("bash", "terminal")]);
-        let approver = make(roles, &reg, "telegram", "111");
+        let approver = make(&roles, &reg, "telegram", "111");
 
         assert_eq!(
             decide(&approver, "read_file").await,
@@ -371,7 +372,7 @@ mod tests {
         roles.set_user_role("telegram", "111", "member");
 
         let reg = registry_with(&[("search_web", "web")]);
-        let approver = make(roles, &reg, "telegram", "111");
+        let approver = make(&roles, &reg, "telegram", "111");
         assert_eq!(
             decide(&approver, "search_web").await,
             ApprovalDecision::Denied
@@ -385,7 +386,7 @@ mod tests {
         roles.set_user_role("telegram", "111", "ghost");
 
         let reg = registry_with(&[]);
-        let approver = make(roles, &reg, "telegram", "111");
+        let approver = make(&roles, &reg, "telegram", "111");
         assert_eq!(
             decide(&approver, "any_tool").await,
             ApprovalDecision::Denied
@@ -407,7 +408,7 @@ mod tests {
         roles.set_user_role("telegram", "111", "admin");
 
         let reg = registry_with(&[("bash", "terminal"), ("search_web", "web")]);
-        let approver = make(roles, &reg, "telegram", "111");
+        let approver = make(&roles, &reg, "telegram", "111");
 
         assert_eq!(decide(&approver, "bash").await, ApprovalDecision::Approved);
         assert_eq!(
