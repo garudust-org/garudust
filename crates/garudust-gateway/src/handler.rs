@@ -185,10 +185,7 @@ impl GatewayHandler {
             if has_role {
                 let _ = self
                     .platform
-                    .send_message(
-                        &msg.channel,
-                        OutboundMessage::text("คุณมีสิทธิ์เข้าใช้งานอยู่แล้ว"),
-                    )
+                    .send_message(&msg.channel, OutboundMessage::text("คุณมีสิทธิ์เข้าใช้งานอยู่แล้ว"))
                     .await;
                 return Ok(true);
             }
@@ -498,21 +495,6 @@ impl GatewayHandler {
         removed
     }
 
-    /// Return the user IDs of every admin on the given platform.
-    fn find_admins(&self, platform: &str) -> Vec<String> {
-        let roles = self.live_roles.read().unwrap();
-        roles
-            .users
-            .get(platform)
-            .map(|map| {
-                map.iter()
-                    .filter(|(_, role)| role.as_str() == "admin")
-                    .map(|(id, _)| id.clone())
-                    .collect()
-            })
-            .unwrap_or_default()
-    }
-
     /// Bootstrap: if no admin exists yet and this is a DM, make the sender admin.
     /// Uses a write-lock to prevent two simultaneous DMs from both getting admin.
     /// On startup, re-run any agent tasks that were interrupted by a server crash or restart.
@@ -780,8 +762,7 @@ impl MessageHandler for GatewayHandler {
                 // has been assigned any role yet (completely fresh install).
                 // If any user exists in the map the operator has started
                 // configuring manually, so we leave it alone.
-                let total_assigned: usize =
-                    roles.users.values().map(|m| m.len()).sum();
+                let total_assigned: usize = roles.users.values().map(|m| m.len()).sum();
                 roles.definitions.contains_key("admin")
                     && roles.default_role.is_none()
                     && total_assigned == 0
@@ -800,9 +781,7 @@ impl MessageHandler for GatewayHandler {
                         .platform
                         .send_message(
                             &msg.channel,
-                            OutboundMessage::text(
-                                "✅ คุณได้รับการตั้งเป็น admin คนแรกของระบบ",
-                            ),
+                            OutboundMessage::text("✅ คุณได้รับการตั้งเป็น admin คนแรกของระบบ"),
                         )
                         .await;
                 }

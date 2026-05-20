@@ -491,10 +491,7 @@ mod tests {
         );
 
         let msg = platform.last_to("first_user").await.unwrap_or_default();
-        assert!(
-            msg.contains("admin"),
-            "ควรแจ้ง user ว่าได้รับ admin: {msg}"
-        );
+        assert!(msg.contains("admin"), "ควรแจ้ง user ว่าได้รับ admin: {msg}");
     }
 
     // ── Invite code tests ────────────────────────────────────────────────────
@@ -639,17 +636,11 @@ mod tests {
         cfg.roles.set_user_role("mock", "alice", "admin");
         let handler = make_handler(platform.clone(), cfg);
 
-        handler
-            .handle(dm("alice", "/invite member"))
-            .await
-            .unwrap();
+        handler.handle(dm("alice", "/invite member")).await.unwrap();
 
         let msg = platform.last_to("alice").await.unwrap_or_default();
         assert!(msg.contains("/join"), "reply ควรมี /join <code>: {msg}");
-        assert!(
-            msg.contains("member"),
-            "reply ควรระบุ role ที่ให้: {msg}"
-        );
+        assert!(msg.contains("member"), "reply ควรระบุ role ที่ให้: {msg}");
         // code should be stored in live_roles
         let has_code = !handler.live_roles.read().unwrap().invites.is_empty();
         assert!(has_code, "ควรบันทึก invite code ใน live_roles");
@@ -663,10 +654,7 @@ mod tests {
         cfg.roles.set_user_role("mock", "bob", "member");
         let handler = make_handler(platform.clone(), cfg);
 
-        handler
-            .handle(dm("bob", "/invite member"))
-            .await
-            .unwrap();
+        handler.handle(dm("bob", "/invite member")).await.unwrap();
 
         let msg = platform.last_to("bob").await.unwrap_or_default();
         assert!(msg.contains("admin"), "member ไม่ควรสร้าง invite ได้: {msg}");
@@ -690,9 +678,6 @@ mod tests {
             .read()
             .unwrap()
             .lookup_role("mock", "first_user", None);
-        assert!(
-            role.is_none(),
-            "group chat ไม่ควร trigger bootstrap admin"
-        );
+        assert!(role.is_none(), "group chat ไม่ควร trigger bootstrap admin");
     }
 }
