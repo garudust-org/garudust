@@ -190,7 +190,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unknown_user_without_default_role_is_blocked() {
+    async fn unknown_user_gets_lowest_role_automatically() {
         let tmp = tmpdir();
         let platform = Arc::new(MockPlatform::new());
         let mut cfg = make_config(tmp.path());
@@ -198,28 +198,29 @@ mod tests {
         cfg.roles.set_user_role("mock", "admin_user", "admin");
         let handler = make_handler(platform.clone(), cfg);
 
+        // "stranger" sends a message → should get auto-assigned the lowest role
         handler.handle(dm("stranger", "ทดสอบ")).await.unwrap();
 
-        let msg = platform.last_to("stranger").await.unwrap_or_default();
-        assert!(
-            msg.contains("รอ") || msg.contains("อนุมัติ") || msg.contains("admin"),
-            "ผู้ใช้ไม่มี role ควรถูก block: {msg}"
-        );
+        // live_roles should now have stranger assigned (not blocked/pending)
+        let role = handler.live_roles.read().unwrap().lookup_role("mock", "stranger", None);
+        assert!(role.is_some(), "ผู้ใช้ใหม่ควรได้รับ role อัตโนมัติ ไม่ใช่ถูก block");
     }
 
     #[tokio::test]
-    async fn whoami_pending_when_no_role() {
+    async fn whoami_shows_auto_assigned_role_after_first_message() {
         let tmp = tmpdir();
         let platform = Arc::new(MockPlatform::new());
         let mut cfg = make_config(tmp.path());
-        // pre-set admin, no role for "bob"
         cfg.roles.set_user_role("mock", "admin_user", "admin");
         let handler = make_handler(platform.clone(), cfg);
 
+        // First message triggers auto-assign, then /whoami shows the assigned role
+        handler.handle(dm("bob", "สวัสดี")).await.unwrap();
         handler.handle(dm("bob", "/whoami")).await.unwrap();
 
         let msg = platform.last_to("bob").await.unwrap_or_default();
-        assert!(msg.contains("pending"), "ผู้ใช้ที่ไม่มี role ควรแสดง pending: {msg}");
+        assert!(!msg.contains("pending"), "หลัง auto-assign ไม่ควรแสดง pending: {msg}");
+        assert!(msg.contains("mock:bob"), "ควรแสดง id: {msg}");
     }
 
     #[tokio::test]
@@ -277,27 +278,22 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn role_deny_removes_from_pending() {
+    async fn role_deny_revokes_role() {
         let tmp = tmpdir();
         let platform = Arc::new(MockPlatform::new());
         let mut cfg = make_config(tmp.path());
         cfg.roles.set_user_role("mock", "alice", "admin");
+        cfg.roles.set_user_role("mock", "bob", "member");
         let handler = make_handler(platform.clone(), cfg);
 
-        // stranger sends a message → added to pending
-        handler.handle(dm("stranger", "สวัสดี")).await.unwrap();
-        assert!(handler.pending_roles.contains_key("mock:stranger"));
+        // alice denies (revokes) bob
+        handler.handle(dm("alice", "/role deny mock:bob")).await.unwrap();
 
-        // alice denies stranger
-        handler
-            .handle(dm("alice", "/role deny mock:stranger"))
-            .await
-            .unwrap();
+        let role = handler.live_roles.read().unwrap().lookup_role("mock", "bob", None);
+        assert_eq!(role, None, "/role deny ควรเพิกถอน role ออกจาก live_roles");
 
-        assert!(
-            !handler.pending_roles.contains_key("mock:stranger"),
-            "ควรลบออกจาก pending หลัง deny"
-        );
+        let msg = platform.last_to("alice").await.unwrap_or_default();
+        assert!(msg.contains("bob") || msg.contains("เพิกถอน"), "ควรได้ confirm: {msg}");
     }
 
     #[tokio::test]

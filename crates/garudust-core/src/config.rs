@@ -725,6 +725,30 @@ impl RolesConfig {
         }
         false
     }
+
+    /// Returns the name of the most restricted role defined.
+    ///
+    /// Restriction rank: `deny` < `smart`/`constitutional` < `auto`.
+    /// Alphabetical order breaks ties so the result is deterministic.
+    pub fn lowest_role_name(&self) -> Option<String> {
+        self.definitions
+            .iter()
+            .min_by_key(|(name, def)| {
+                let rank = match def.approval_mode.as_deref().unwrap_or("smart") {
+                    "deny" => 0u8,
+                    "auto" => 2,
+                    _ => 1,
+                };
+                (rank, name.as_str())
+            })
+            .map(|(name, _)| name.clone())
+    }
+
+    /// Effective default role for new users.
+    /// Uses the explicit `default_role` if set; falls back to `lowest_role_name`.
+    pub fn effective_default_role(&self) -> Option<String> {
+        self.default_role.clone().or_else(|| self.lowest_role_name())
+    }
 }
 
 impl Default for PlatformConfig {
