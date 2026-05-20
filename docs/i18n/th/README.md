@@ -518,6 +518,74 @@ Agent: รับทราบ — บันทึกไว้ใน memory แล
 
 ---
 
+## การควบคุมการเข้าถึง
+
+Garudust รองรับ Role-Based Access Control (RBAC) ผ่าน `roles:` ใน `config.yaml`
+แต่ละผู้ใช้จะถูกกำหนด role โดย role จะกำหนดว่าสามารถใช้ tool ใดได้บ้าง และ tool เหล่านั้นต้องผ่านการอนุมัติอย่างไร
+
+### นิยาม Role
+
+| ฟิลด์ | ค่าที่รองรับ | คำอธิบาย |
+|---|---|---|
+| `approval_mode` | `auto` / `smart` / `deny` | วิธีอนุมัติการเรียก tool สำหรับ role นี้ |
+| `allowed_toolsets` | รายชื่อ toolset | จำกัดให้ใช้ได้เฉพาะ toolset เหล่านี้ (ว่าง = ไม่จำกัด) |
+| `allowed_tools` | รายชื่อ tool | tool เพิ่มเติมที่อนุญาตรายตัว |
+| `denied_tools` | รายชื่อ tool | tool ที่บล็อกเสมอ ไม่ว่า toolset จะกำหนดอะไรก็ตาม |
+
+ค่าของ `approval_mode`:
+
+- **`auto`** — อนุมัติทุก tool call ทันที
+- **`smart`** — ตรวจสอบด้วย constitutional policy (พฤติกรรมเริ่มต้นระดับ global)
+- **`deny`** — บล็อก tool call ทั้งหมด; bot ยังคงตอบข้อความได้ปกติ
+
+### การกำหนด User
+
+User ถูก key ด้วย platform และ ID ใต้ `roles.users`
+Telegram รองรับทั้ง numeric ID และ `@username`
+User ที่ไม่พบในแผนที่จะใช้ `default_role`; ถ้าไม่มี `default_role` ระบบจะใช้ `security.approval_mode` ระดับ global
+
+### Bootstrap
+
+เมื่อ `roles:` ถูกตั้งค่าพร้อม role definition ของ `admin` แต่ยังไม่มี user ถูกกำหนด role ใดเลย
+**คนแรกที่ส่ง DM** จะได้รับการเลื่อนตำแหน่งเป็น `admin` อัตโนมัติ
+ช่วยให้ deploy ด้วย `roles.users` ว่างเปล่าและอ้างสิทธิ์ ownership ได้ตั้งแต่การติดต่อครั้งแรก
+ไม่ต้องค้นหา platform ID และแก้ `config.yaml` ด้วยตนเองล่วงหน้า
+
+### การ Gate ผู้ใช้ที่ไม่รู้จัก
+
+เมื่อ roles ทำงานอยู่และ user ที่เข้ามาไม่มี role และไม่มี `default_role` ที่ใช้ได้
+agent จะไม่เพิกเฉยต่อพวกเขา แต่จะตอบกลับพร้อมคำแนะนำว่าการเข้าถึงถูกจำกัด
+และสั่งให้พิมพ์ `/join` เพื่อขอสิทธิ์เข้าถึง
+
+### ขั้นตอนการลงทะเบียนด้วยตนเอง
+
+มีสองวิธีที่ผู้ใช้ใหม่สามารถได้รับสิทธิ์เข้าถึง:
+
+- **`/join` (ไม่มี code)** — ส่งการแจ้งเตือนไปยัง admin ทุกคนบน platform เดียวกัน
+  การแจ้งเตือนรวมคำสั่ง `/role approve <platform:id> <role>` สำเร็จรูปที่ admin สามารถตอบกลับได้เลยเพื่อให้สิทธิ์เข้าถึง
+- **`/join <code>`** — ใช้ invite code เพื่อกำหนด role ทันที โดยไม่ต้องมี admin online
+
+### Invite Code
+
+Admin สร้าง invite code ด้วย `/invite <role> [max_uses]` โดยค่าเริ่มต้น code ใช้ได้ครั้งเดียวและหมดอายุใน 24 ชั่วโมง
+สามารถแชร์ผ่านช่องทางอื่น (เช่น กลุ่ม LINE, email, หรือช่องทางใดก็ได้) และใช้งานได้โดยไม่คำนึงว่าผู้รับจะ redeem ผ่าน platform ไหน
+
+### คำสั่ง Runtime
+
+| คำสั่ง | ผู้ใช้ | คำอธิบาย |
+|---|---|---|
+| `/whoami` | ทุกคน | แสดง platform ID และ role ปัจจุบันของคุณ |
+| `/join` | ผู้ใช้ที่ยังไม่ได้ลงทะเบียน | ขอสิทธิ์เข้าถึง — แจ้งเตือน admin พร้อมคำสั่งอนุมัติสำเร็จรูป |
+| `/join <code>` | ผู้ใช้ที่ยังไม่ได้ลงทะเบียน | ใช้ invite code เพื่อกำหนด role ทันที |
+| `/role list` | admin | แสดงรายชื่อ user ทั้งหมดที่ถูกกำหนด role บน platform ปัจจุบัน |
+| `/role add <platform:id> <role>` | admin | กำหนด role โดยตรง |
+| `/role approve <platform:id> <role>` | admin | กำหนด role และแจ้งเตือน user |
+| `/role remove <platform:id>` | admin | ลบ role ของ user |
+| `/role deny <platform:id>` | admin | ยกเลิกสิทธิ์เข้าถึง (เหมือน remove) |
+| `/invite <role> [max_uses]` | admin | สร้าง invite code ที่แชร์ได้ (ใช้ได้ 1 ครั้ง, หมดอายุ 24 ชม. เป็นค่าเริ่มต้น) |
+
+---
+
 ## หมายเหตุด้านความปลอดภัย
 
 ### Terminal tool
