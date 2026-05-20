@@ -125,43 +125,65 @@ docker compose up -d                      # Docker
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│  bin/garudust (CLI)            bin/garudust-server (Daemon)      │
-│  garudust [task] [--hint H]    garudust-server --port 3000       │
-└────────────────────┬───────────────────────────┬─────────────────┘
-                     │                           │
-                     ▼                           ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                    garudust-agent  (run-loop)                    │
-│                                                                  │
-│  1. Load memory.md + user_profile.md                            │
-│  2. Build system prompt — inject skills note                    │
-│  3. Resolve routing hint → transport + model                    │
-│                                                                  │
-│  LOOP (max_iterations = 90):                                     │
-│    a. LLM call (streaming) → text + tool_calls                  │
-│    b. Validate schema → check skill permissions → approval gate  │
-│    c. Execute tools (parallel where safe, with timeout)         │
-│    d. Wrap untrusted output → append results to history         │
-│    e. stop_reason == EndTurn → break                            │
-│                                                                  │
-│  4. Save conversation → ~/.garudust/conversations/{hash}.json   │
-│  5. Persist logs → SessionDb (SQLite)                           │
-└──────┬──────────────┬─────────────────┬────────────┬────────────┘
-       │              │                 │            │
-       ▼              ▼                 ▼            ▼
-┌────────────┐ ┌────────────┐ ┌──────────────┐ ┌────────────────┐
-│ garudust-  │ │ garudust-  │ │  garudust-   │ │ garudust-      │
-│ transport  │ │ tools      │ │  memory      │ │ platforms      │
-│            │ │            │ │              │ │                │
-│ 24 LLM     │ │ Built-in   │ │ memory.md    │ │ Telegram       │
-│ providers  │ │ Hub/Script │ │ user_profile │ │ Discord        │
-│ Named      │ │ MCP        │ │ sessions.db  │ │ Slack, Matrix  │
-│ profiles   │ │            │ │ docs.db(RAG) │ │ LINE, WhatsApp │
-│ Retry +    │ │            │ │              │ │ Webhook        │
-│ rotation   │ │            │ │              │ │                │
-└────────────┘ └────────────┘ └──────────────┘ └────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│  bin/garudust (CLI)              bin/garudust-server (Daemon)        │
+│  garudust [task] [--hint H]      garudust-server --port 3000         │
+└────────────────────┬─────────────────────────┬───────────────────────┘
+                     │                         │
+                     │          ┌──────────────┴───────────────────────┐
+                     │          │  garudust-gateway  (server-only)     │
+                     │          │  POST /chat · POST /stream · GET /ws │
+                     │          │  RBAC · roles · /join · /invite      │
+                     │          │  SessionRegistry · Metrics           │
+                     │          ├──────────────────────────────────────┤
+                     │          │  garudust-platforms  (server-only)   │
+                     │          │  Telegram · Discord · Slack          │
+                     │          │  LINE · Matrix · WhatsApp · Webhook  │
+                     │          ├──────────────────────────────────────┤
+                     │          │  garudust-cron  (server-only)        │
+                     │          │  cron-scheduled autonomous tasks     │
+                     │          └──────────────┬───────────────────────┘
+                     │                         │
+                     ▼                         ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                    garudust-agent  (run-loop)                        │
+│                                                                      │
+│  1. Load memory.md + user_profile.md                                │
+│  2. Build system prompt — inject skills note                        │
+│  3. Resolve routing hint → transport + model                        │
+│                                                                      │
+│  LOOP (max_iterations = 90):                                         │
+│    a. LLM call (streaming) → text + tool_calls                      │
+│    b. Validate schema → check skill permissions → approval gate      │
+│    c. Execute tools (parallel where safe, with timeout)             │
+│    d. Wrap untrusted output → append results to history             │
+│    e. stop_reason == EndTurn → break                                │
+│                                                                      │
+│  4. Save conversation → ~/.garudust/conversations/{hash}.json       │
+│  5. Persist logs → SessionDb (SQLite)                               │
+└──────┬──────────────┬─────────────────┬─────────────────────────────┘
+       │              │                 │
+       ▼              ▼                 ▼
+┌────────────┐ ┌────────────┐ ┌──────────────┐
+│ garudust-  │ │ garudust-  │ │  garudust-   │
+│ transport  │ │ tools      │ │  memory      │
+│            │ │            │ │              │
+│ 24 LLM     │ │ Built-in   │ │ memory.md    │
+│ providers  │ │ Hub/Script │ │ user_profile │
+│ Named      │ │ MCP        │ │ sessions.db  │
+│ profiles   │ │            │ │ docs.db(RAG) │
+│ Retry +    │ │            │ │              │
+│ rotation   │ │            │ │              │
+└────────────┘ └────────────┘ └──────────────┘
+
+garudust-core — shared types · config · traits · pricing (used by every crate above)
 ```
+
+**Gateway** — `garudust-gateway` exposes the agent over HTTP/WebSocket/SSE via an axum router (`/chat`, `/stream`, `/ws`, `/health`, `/metrics`). `GatewayHandler` sits in front of the agent for every inbound platform message: it enforces RBAC, resolves the per-user approver, manages sessions, and handles runtime commands (`/join`, `/invite`, `/role`, `/whoami`).
+
+**Platforms** — `garudust-platforms` provides `PlatformAdapter` implementations for each messaging service (Telegram, Discord, Slack, LINE, Matrix, WhatsApp, Webhook). Used exclusively by the server binary; the CLI has no platform layer.
+
+**Cron** — `garudust-cron` runs agent tasks on a cron schedule (`"0 9 * * *=morning briefing"`). Used by the server binary to drive autonomous, human-free agent runs.
 
 **Transport** — `garudust-transport` resolves `providers.default` (or a named profile) to the right API client: native Anthropic SDK, OpenAI-compatible HTTP, Bedrock, or Ollama. Each client is wrapped with exponential-backoff retry and automatic credential rotation.
 

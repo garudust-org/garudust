@@ -125,43 +125,65 @@ docker compose up -d                      # Docker
 ## สถาปัตยกรรม
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│  bin/garudust (CLI)            bin/garudust-server (Daemon)      │
-│  garudust [task] [--hint H]    garudust-server --port 3000       │
-└────────────────────┬───────────────────────────┬─────────────────┘
-                     │                           │
-                     ▼                           ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                    garudust-agent  (run-loop)                    │
-│                                                                  │
-│  1. โหลด memory.md + user_profile.md                            │
-│  2. สร้าง system prompt — แทรก skills note                      │
-│  3. Resolve routing hint → transport + model                    │
-│                                                                  │
-│  LOOP (max_iterations = 90):                                     │
-│    a. เรียก LLM (streaming) → ได้ text + tool_calls             │
-│    b. Validate schema → ตรวจ permission → approval gate         │
-│    c. Execute tools (parallel เมื่อปลอดภัย, มี timeout)         │
-│    d. ห่อ untrusted output → เพิ่มผลลัพธ์เข้า history          │
-│    e. stop_reason == EndTurn → หยุด loop                        │
-│                                                                  │
-│  4. บันทึกบทสนทนา → ~/.garudust/conversations/{hash}.json       │
-│  5. บันทึก log → SessionDb (SQLite)                             │
-└──────┬──────────────┬─────────────────┬────────────┬────────────┘
-       │              │                 │            │
-       ▼              ▼                 ▼            ▼
-┌────────────┐ ┌────────────┐ ┌──────────────┐ ┌────────────────┐
-│ garudust-  │ │ garudust-  │ │  garudust-   │ │ garudust-      │
-│ transport  │ │ tools      │ │  memory      │ │ platforms      │
-│            │ │            │ │              │ │                │
-│ 24 LLM     │ │ Built-in   │ │ memory.md    │ │ Telegram       │
-│ provider   │ │ Hub/Script │ │ user_profile │ │ Discord        │
-│ Named      │ │ MCP        │ │ sessions.db  │ │ Slack, Matrix  │
-│ profiles   │ │            │ │ docs.db(RAG) │ │ LINE, WhatsApp │
-│ Retry +    │ │            │ │              │ │ Webhook        │
-│ rotation   │ │            │ │              │ │                │
-└────────────┘ └────────────┘ └──────────────┘ └────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│  bin/garudust (CLI)              bin/garudust-server (Daemon)        │
+│  garudust [task] [--hint H]      garudust-server --port 3000         │
+└────────────────────┬─────────────────────────┬───────────────────────┘
+                     │                         │
+                     │          ┌──────────────┴───────────────────────┐
+                     │          │  garudust-gateway  (server-only)     │
+                     │          │  POST /chat · POST /stream · GET /ws │
+                     │          │  RBAC · roles · /join · /invite      │
+                     │          │  SessionRegistry · Metrics           │
+                     │          ├──────────────────────────────────────┤
+                     │          │  garudust-platforms  (server-only)   │
+                     │          │  Telegram · Discord · Slack          │
+                     │          │  LINE · Matrix · WhatsApp · Webhook  │
+                     │          ├──────────────────────────────────────┤
+                     │          │  garudust-cron  (server-only)        │
+                     │          │  task อัตโนมัติตาม cron schedule    │
+                     │          └──────────────┬───────────────────────┘
+                     │                         │
+                     ▼                         ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                    garudust-agent  (run-loop)                        │
+│                                                                      │
+│  1. โหลด memory.md + user_profile.md                                │
+│  2. สร้าง system prompt — แทรก skills note                          │
+│  3. Resolve routing hint → transport + model                        │
+│                                                                      │
+│  LOOP (max_iterations = 90):                                         │
+│    a. เรียก LLM (streaming) → ได้ text + tool_calls                 │
+│    b. Validate schema → ตรวจ permission → approval gate             │
+│    c. Execute tools (parallel เมื่อปลอดภัย, มี timeout)             │
+│    d. ห่อ untrusted output → เพิ่มผลลัพธ์เข้า history              │
+│    e. stop_reason == EndTurn → หยุด loop                            │
+│                                                                      │
+│  4. บันทึกบทสนทนา → ~/.garudust/conversations/{hash}.json           │
+│  5. บันทึก log → SessionDb (SQLite)                                 │
+└──────┬──────────────┬─────────────────┬─────────────────────────────┘
+       │              │                 │
+       ▼              ▼                 ▼
+┌────────────┐ ┌────────────┐ ┌──────────────┐
+│ garudust-  │ │ garudust-  │ │  garudust-   │
+│ transport  │ │ tools      │ │  memory      │
+│            │ │            │ │              │
+│ 24 LLM     │ │ Built-in   │ │ memory.md    │
+│ provider   │ │ Hub/Script │ │ user_profile │
+│ Named      │ │ MCP        │ │ sessions.db  │
+│ profiles   │ │            │ │ docs.db(RAG) │
+│ Retry +    │ │            │ │              │
+│ rotation   │ │            │ │              │
+└────────────┘ └────────────┘ └──────────────┘
+
+garudust-core — shared types · config · traits · pricing (ใช้โดยทุก crate ข้างต้น)
 ```
+
+**Gateway** — `garudust-gateway` expose agent ผ่าน HTTP/WebSocket/SSE ด้วย axum router (`/chat`, `/stream`, `/ws`, `/health`, `/metrics`) `GatewayHandler` คั่นกลางระหว่าง platform กับ agent: บังคับใช้ RBAC, resolve approver ต่อ user, จัดการ session และรับคำสั่ง runtime (`/join`, `/invite`, `/role`, `/whoami`) ใช้เฉพาะ server binary
+
+**Platforms** — `garudust-platforms` ให้ implementation ของ `PlatformAdapter` สำหรับแต่ละ messaging service (Telegram, Discord, Slack, LINE, Matrix, WhatsApp, Webhook) ใช้เฉพาะ server binary เท่านั้น CLI ไม่มี platform layer
+
+**Cron** — `garudust-cron` รัน agent task ตาม cron schedule (รูปแบบ `"0 9 * * *=morning briefing"`) ใช้โดย server binary สำหรับ agent run แบบอัตโนมัติ ไม่ต้องมีคนคุย
 
 **Transport** — `garudust-transport` resolve `providers.default` (หรือ named profile) ไปเป็น API client ที่เหมาะสม: native Anthropic SDK, OpenAI-compatible HTTP, Bedrock หรือ Ollama พร้อม retry แบบ exponential backoff และ credential rotation อัตโนมัติ
 

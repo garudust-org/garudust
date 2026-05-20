@@ -125,43 +125,65 @@ docker compose up -d                         # Docker
 ## 架构
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│  bin/garudust (CLI)            bin/garudust-server (守护进程)    │
-│  garudust [task] [--hint H]    garudust-server --port 3000       │
-└────────────────────┬───────────────────────────┬─────────────────┘
-                     │                           │
-                     ▼                           ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                    garudust-agent  (运行循环)                    │
-│                                                                  │
-│  1. 加载 memory.md + user_profile.md                            │
-│  2. 构建 system prompt — 注入 skills 提示                       │
-│  3. 解析路由 hint → transport + model                           │
-│                                                                  │
-│  LOOP (max_iterations = 90):                                     │
-│    a. LLM 调用（流式）→ 获取 text + tool_calls                  │
-│    b. 验证 schema → 检查权限 → approval gate                    │
-│    c. 执行工具（安全时并行，含超时控制）                        │
-│    d. 包装不可信输出 → 追加结果到历史                          │
-│    e. stop_reason == EndTurn → 退出循环                         │
-│                                                                  │
-│  4. 保存对话 → ~/.garudust/conversations/{hash}.json            │
-│  5. 持久化日志 → SessionDb（SQLite）                            │
-└──────┬──────────────┬─────────────────┬────────────┬────────────┘
-       │              │                 │            │
-       ▼              ▼                 ▼            ▼
-┌────────────┐ ┌────────────┐ ┌──────────────┐ ┌────────────────┐
-│ garudust-  │ │ garudust-  │ │  garudust-   │ │ garudust-      │
-│ transport  │ │ tools      │ │  memory      │ │ platforms      │
-│            │ │            │ │              │ │                │
-│ 24 个 LLM  │ │ 内置工具   │ │ memory.md    │ │ Telegram       │
-│ 提供商     │ │ Hub/脚本   │ │ user_profile │ │ Discord        │
-│ 命名       │ │ MCP        │ │ sessions.db  │ │ Slack, Matrix  │
-│ profiles   │ │            │ │ docs.db(RAG) │ │ LINE, WhatsApp │
-│ 重试 +     │ │            │ │              │ │ Webhook        │
-│ 密钥轮换   │ │            │ │              │ │                │
-└────────────┘ └────────────┘ └──────────────┘ └────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│  bin/garudust (CLI)              bin/garudust-server (守护进程)      │
+│  garudust [task] [--hint H]      garudust-server --port 3000         │
+└────────────────────┬─────────────────────────┬───────────────────────┘
+                     │                         │
+                     │          ┌──────────────┴───────────────────────┐
+                     │          │  garudust-gateway  (仅服务端)        │
+                     │          │  POST /chat · POST /stream · GET /ws │
+                     │          │  RBAC · roles · /join · /invite      │
+                     │          │  SessionRegistry · Metrics           │
+                     │          ├──────────────────────────────────────┤
+                     │          │  garudust-platforms  (仅服务端)      │
+                     │          │  Telegram · Discord · Slack          │
+                     │          │  LINE · Matrix · WhatsApp · Webhook  │
+                     │          ├──────────────────────────────────────┤
+                     │          │  garudust-cron  (仅服务端)           │
+                     │          │  cron 定时自主任务                   │
+                     │          └──────────────┬───────────────────────┘
+                     │                         │
+                     ▼                         ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                    garudust-agent  (运行循环)                        │
+│                                                                      │
+│  1. 加载 memory.md + user_profile.md                                │
+│  2. 构建 system prompt — 注入 skills 提示                           │
+│  3. 解析路由 hint → transport + model                               │
+│                                                                      │
+│  LOOP (max_iterations = 90):                                         │
+│    a. LLM 调用（流式）→ 获取 text + tool_calls                      │
+│    b. 验证 schema → 检查权限 → approval gate                        │
+│    c. 执行工具（安全时并行，含超时控制）                            │
+│    d. 包装不可信输出 → 追加结果到历史                              │
+│    e. stop_reason == EndTurn → 退出循环                             │
+│                                                                      │
+│  4. 保存对话 → ~/.garudust/conversations/{hash}.json                │
+│  5. 持久化日志 → SessionDb（SQLite）                                │
+└──────┬──────────────┬─────────────────┬─────────────────────────────┘
+       │              │                 │
+       ▼              ▼                 ▼
+┌────────────┐ ┌────────────┐ ┌──────────────┐
+│ garudust-  │ │ garudust-  │ │  garudust-   │
+│ transport  │ │ tools      │ │  memory      │
+│            │ │            │ │              │
+│ 24 个 LLM  │ │ 内置工具   │ │ memory.md    │
+│ 提供商     │ │ Hub/脚本   │ │ user_profile │
+│ 命名       │ │ MCP        │ │ sessions.db  │
+│ profiles   │ │            │ │ docs.db(RAG) │
+│ 重试 +     │ │            │ │              │
+│ 密钥轮换   │ │            │ │              │
+└────────────┘ └────────────┘ └──────────────┘
+
+garudust-core — 共享类型 · 配置 · 特征 · 定价（被以上所有 crate 使用）
 ```
+
+**Gateway** — `garudust-gateway` 通过 axum 将智能体暴露为 HTTP/WebSocket/SSE 服务（`/chat`、`/stream`、`/ws`、`/health`、`/metrics`）。`GatewayHandler` 位于平台与智能体之间：负责强制执行 RBAC、解析每位用户的审批器、管理会话，并处理运行时命令（`/join`、`/invite`、`/role`、`/whoami`）。仅供服务端使用。
+
+**Platforms** — `garudust-platforms` 为各消息服务（Telegram、Discord、Slack、LINE、Matrix、WhatsApp、Webhook）提供 `PlatformAdapter` 实现。仅供服务端使用，CLI 无平台层。
+
+**Cron** — `garudust-cron` 按 cron 时间表运行智能体任务（格式：`"0 9 * * *=早间简报"`）。由服务端使用，用于无需人工介入的自主定时运行。
 
 **Transport** — `garudust-transport` 将 `providers.default`（或命名 profile）解析为对应的 API 客户端：原生 Anthropic SDK、OpenAI 兼容 HTTP、Bedrock 或 Ollama。所有客户端均封装了指数退避重试和自动凭证轮换机制。
 
