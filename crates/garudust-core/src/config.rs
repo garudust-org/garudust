@@ -643,6 +643,44 @@ pub struct RoleDefinition {
     pub denied_tools: Vec<String>,
 }
 
+/// A shareable invite code that grants a role on redemption.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InviteCode {
+    /// Role granted when the code is redeemed.
+    pub role: String,
+    /// Maximum redemptions allowed. 0 = unlimited.
+    #[serde(default = "default_invite_max_uses")]
+    pub max_uses: u32,
+    /// How many times this code has already been used.
+    #[serde(default)]
+    pub uses: u32,
+    /// Unix timestamp (seconds) after which the code is invalid. None = never expires.
+    #[serde(default)]
+    pub expires_at: Option<u64>,
+}
+
+fn default_invite_max_uses() -> u32 {
+    1
+}
+
+impl InviteCode {
+    pub fn is_valid(&self) -> bool {
+        if self.max_uses > 0 && self.uses >= self.max_uses {
+            return false;
+        }
+        if let Some(exp) = self.expires_at {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            if now > exp {
+                return false;
+            }
+        }
+        true
+    }
+}
+
 /// Role-based access control.
 ///
 /// Example config.yaml:
@@ -680,6 +718,10 @@ pub struct RolesConfig {
     /// Role assigned to unknown users. `None` = pending approval required.
     #[serde(default)]
     pub default_role: Option<String>,
+
+    /// Active invite codes keyed by the code string.
+    #[serde(default)]
+    pub invites: std::collections::HashMap<String, InviteCode>,
 }
 
 impl RolesConfig {
@@ -724,6 +766,27 @@ impl RolesConfig {
             return map.remove(user_id).is_some();
         }
         false
+    }
+
+    /// Attempt to redeem an invite code for (platform, user_id).
+    ///
+    /// On success: assigns the role, increments the use count, removes the
+    /// code when max_uses is reached, and returns the granted role name.
+    /// Returns `None` when the code does not exist, is expired, or exhausted.
+    pub fn redeem_invite(&mut self, code: &str, platform: &str, user_id: &str) -> Option<String> {
+        let invite = self.invites.get_mut(code)?;
+        if !invite.is_valid() {
+            return None;
+        }
+        let role = invite.role.clone();
+        let max_uses = invite.max_uses;
+        invite.uses += 1;
+        let exhausted = max_uses > 0 && invite.uses >= max_uses;
+        if exhausted {
+            self.invites.remove(code);
+        }
+        self.set_user_role(platform, user_id, &role);
+        Some(role)
     }
 }
 

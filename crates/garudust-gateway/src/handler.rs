@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use dashmap::DashMap;
 use garudust_agent::{Agent, RolesApprover};
 use garudust_core::{
-    config::{AgentConfig, RolesConfig},
+    config::{AgentConfig, InviteCode, RolesConfig},
     platform::{MessageHandler, PlatformAdapter},
     tool::CommandApprover,
     types::{ChannelId, DocAttachment, ImageAttachment, InboundMessage, OutboundMessage},
@@ -137,6 +137,89 @@ impl GatewayHandler {
                 OutboundMessage::text("ไม่พบ approval request นี้ (หมดเวลาหรือไม่มีอยู่)")
             };
             let _ = self.platform.send_message(&msg.channel, reply).await;
+            return Ok(true);
+        }
+
+        // /join <code> — redeem an invite code for instant role assignment
+        if let Some(code) = trimmed.strip_prefix("/join ") {
+            let code = code.trim().to_string();
+            let granted = {
+                let mut roles = self.live_roles.write().unwrap();
+                roles.redeem_invite(&code, platform, user_id)
+            };
+            if granted.is_some() {
+                let roles_snapshot = self.live_roles.read().unwrap().clone();
+                let mut cfg = (*self.config).clone();
+                cfg.roles = roles_snapshot;
+                let _ = cfg.save_yaml();
+            }
+            let reply = match granted {
+                Some(role) => format!("✅ ยืนยันแล้ว คุณได้รับสิทธิ์: {role}"),
+                None => "❌ code ไม่ถูกต้อง หมดอายุ หรือถูกใช้ครบแล้ว".to_string(),
+            };
+            let _ = self
+                .platform
+                .send_message(&msg.channel, OutboundMessage::text(reply))
+                .await;
+            return Ok(true);
+        }
+
+        // /join — request access; notifies every admin on this platform
+        if trimmed == "/join" {
+            let (has_role, admins) = {
+                let roles = self.live_roles.read().unwrap();
+                let has = roles.lookup_role(platform, user_id, None).is_some()
+                    || roles.default_role.is_some();
+                let admins: Vec<String> = roles
+                    .users
+                    .get(platform.as_str())
+                    .map(|map| {
+                        map.iter()
+                            .filter(|(_, r)| r.as_str() == "admin")
+                            .map(|(id, _)| id.clone())
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                (has, admins)
+            };
+            if has_role {
+                let _ = self
+                    .platform
+                    .send_message(
+                        &msg.channel,
+                        OutboundMessage::text("คุณมีสิทธิ์เข้าใช้งานอยู่แล้ว"),
+                    )
+                    .await;
+                return Ok(true);
+            }
+            let notify_text = format!(
+                "👤 มีผู้ขอสิทธิ์เข้าใช้งาน\n\
+                 ชื่อ: {name}\n\
+                 ID: {platform}:{user_id}\n\n\
+                 ✅ อนุมัติ: /role approve {platform}:{user_id} member\n\
+                 ❌ ปฏิเสธ: /role deny {platform}:{user_id}",
+                name = msg.user_name,
+            );
+            for admin_id in &admins {
+                let ch = ChannelId {
+                    platform: platform.to_string(),
+                    chat_id: admin_id.clone(),
+                    thread_id: None,
+                };
+                let _ = self
+                    .platform
+                    .send_message(&ch, OutboundMessage::text(&notify_text))
+                    .await;
+            }
+            let reply = if admins.is_empty() {
+                "ส่งคำขอแล้ว — ยังไม่มี admin ในระบบ รอการตั้งค่า"
+            } else {
+                "ส่งคำขอถึง admin แล้ว กรุณารอการอนุมัติ"
+            };
+            let _ = self
+                .platform
+                .send_message(&msg.channel, OutboundMessage::text(reply))
+                .await;
             return Ok(true);
         }
 
@@ -326,6 +409,71 @@ impl GatewayHandler {
             return Ok(true);
         }
 
+        // /invite <role> [max_uses] — generate a shareable invite code (admin only)
+        if let Some(rest) = trimmed.strip_prefix("/invite ") {
+            if !is_admin {
+                let _ = self
+                    .platform
+                    .send_message(&msg.channel, OutboundMessage::text("ต้องการสิทธิ์ admin"))
+                    .await;
+                return Ok(true);
+            }
+            let parts: Vec<&str> = rest.trim().splitn(2, ' ').collect();
+            let role_name = parts[0].trim();
+            let max_uses: u32 = parts
+                .get(1)
+                .and_then(|s| s.trim().parse().ok())
+                .unwrap_or(1);
+
+            let code: String = uuid::Uuid::new_v4()
+                .to_string()
+                .replace('-', "")
+                .chars()
+                .take(8)
+                .collect();
+
+            let expires_at = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs()
+                + 86400;
+
+            let invite = InviteCode {
+                role: role_name.to_string(),
+                max_uses,
+                uses: 0,
+                expires_at: Some(expires_at),
+            };
+
+            let save_ok = {
+                let mut roles = self.live_roles.write().unwrap();
+                roles.invites.insert(code.clone(), invite);
+                let mut cfg = (*self.config).clone();
+                cfg.roles = roles.clone();
+                cfg.save_yaml().is_ok()
+            };
+
+            let reply = if save_ok {
+                let uses_label = if max_uses == 0 {
+                    "ไม่จำกัด".to_string()
+                } else {
+                    format!("{max_uses} ครั้ง")
+                };
+                format!(
+                    "🎟️ Invite code\n\
+                     /join {code}\n\n\
+                     สิทธิ์: {role_name} | ใช้ได้: {uses_label} | หมดอายุ: 24 ชม."
+                )
+            } else {
+                "บันทึก code ไม่สำเร็จ".to_string()
+            };
+            let _ = self
+                .platform
+                .send_message(&msg.channel, OutboundMessage::text(reply))
+                .await;
+            return Ok(true);
+        }
+
         Ok(false)
     }
 
@@ -348,6 +496,21 @@ impl GatewayHandler {
             let _ = cfg.save_yaml();
         }
         removed
+    }
+
+    /// Return the user IDs of every admin on the given platform.
+    fn find_admins(&self, platform: &str) -> Vec<String> {
+        let roles = self.live_roles.read().unwrap();
+        roles
+            .users
+            .get(platform)
+            .map(|map| {
+                map.iter()
+                    .filter(|(_, role)| role.as_str() == "admin")
+                    .map(|(id, _)| id.clone())
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     /// Bootstrap: if no admin exists yet and this is a DM, make the sender admin.
@@ -607,9 +770,82 @@ impl MessageHandler for GatewayHandler {
             );
         }
 
+        // Bootstrap: if roles are configured but no admin exists yet, make the
+        // first DM sender admin automatically so the operator doesn't need to
+        // edit config.yaml by hand just to grant themselves access.
+        {
+            let needs_bootstrap = {
+                let roles = self.live_roles.read().unwrap();
+                // Only bootstrap when definitions are configured but no user
+                // has been assigned any role yet (completely fresh install).
+                // If any user exists in the map the operator has started
+                // configuring manually, so we leave it alone.
+                let total_assigned: usize =
+                    roles.users.values().map(|m| m.len()).sum();
+                roles.definitions.contains_key("admin")
+                    && roles.default_role.is_none()
+                    && total_assigned == 0
+            };
+            if needs_bootstrap && !msg.is_group {
+                if self
+                    .save_role(&msg.channel.platform, &msg.user_id, "admin")
+                    .is_ok()
+                {
+                    tracing::info!(
+                        user_id = %msg.user_id,
+                        platform = %msg.channel.platform,
+                        "bootstrapped first admin"
+                    );
+                    let _ = self
+                        .platform
+                        .send_message(
+                            &msg.channel,
+                            OutboundMessage::text(
+                                "✅ คุณได้รับการตั้งเป็น admin คนแรกของระบบ",
+                            ),
+                        )
+                        .await;
+                }
+            }
+        }
+
         // Role check: handle /whoami and /role commands before anything else
         // (including the mention gate) so they always work.
         if self.handle_role_command(&msg).await? {
+            return Ok(());
+        }
+
+        // Unknown-user gate: when roles are configured and this user has no
+        // role (and no default_role covers them), prompt them to /join instead
+        // of silently failing when the agent tries to run tools.
+        // The guard is dropped inside the inner block so no RwLockReadGuard
+        // crosses the await point below.
+        let block_unknown_user = {
+            let roles = self.live_roles.read().unwrap();
+            let roles_active = !roles.definitions.is_empty()
+                || !roles.users.is_empty()
+                || roles.default_role.is_some();
+            if roles_active {
+                let has_access = roles
+                    .lookup_role(&msg.channel.platform, &msg.user_id, None)
+                    .is_some()
+                    || roles.default_role.is_some();
+                !has_access
+            } else {
+                false
+            }
+        };
+        if block_unknown_user {
+            let _ = self
+                .platform
+                .send_message(
+                    &msg.channel,
+                    OutboundMessage::text(
+                        "สวัสดี! คุณยังไม่มีสิทธิ์เข้าใช้งาน\n\
+                         พิมพ์ /join เพื่อขอสิทธิ์จาก admin",
+                    ),
+                )
+                .await;
             return Ok(());
         }
 

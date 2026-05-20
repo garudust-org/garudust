@@ -403,4 +403,296 @@ mod tests {
             "/role add ควร update live_roles"
         );
     }
+
+    #[tokio::test]
+    async fn unknown_user_without_default_role_gets_join_prompt() {
+        let tmp = tmpdir();
+        let platform = Arc::new(MockPlatform::new());
+        // There's already an admin → bootstrap won't fire. "stranger" has no role.
+        let mut cfg = make_config(tmp.path());
+        cfg.roles.set_user_role("mock", "alice", "admin");
+        let handler = make_handler(platform.clone(), cfg);
+
+        // "stranger" sends a normal message — should get the /join prompt, not an agent reply
+        handler.handle(dm("stranger", "สวัสดี")).await.unwrap();
+
+        let msg = platform.last_to("stranger").await.unwrap_or_default();
+        assert!(
+            msg.contains("/join"),
+            "ผู้ใช้ไม่มีสิทธิ์ควรได้รับ /join prompt: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn join_notifies_admins_and_replies_to_user() {
+        let tmp = tmpdir();
+        let platform = Arc::new(MockPlatform::new());
+        let mut cfg = make_config(tmp.path());
+        cfg.roles.set_user_role("mock", "alice", "admin");
+        let handler = make_handler(platform.clone(), cfg);
+
+        handler.handle(dm("bob", "/join")).await.unwrap();
+
+        // bob should get a confirmation reply
+        let bob_msg = platform.last_to("bob").await.unwrap_or_default();
+        assert!(
+            bob_msg.contains("admin") || bob_msg.contains("รอ"),
+            "/join ควรแจ้ง bob ว่าส่งคำขอแล้ว: {bob_msg}"
+        );
+
+        // alice (admin) should receive a notification with pre-built commands
+        let alice_msg = platform.last_to("alice").await.unwrap_or_default();
+        assert!(
+            alice_msg.contains("mock:bob"),
+            "admin ควรได้รับ ID ของผู้ขอ: {alice_msg}"
+        );
+        assert!(
+            alice_msg.contains("/role approve"),
+            "notification ควรมีคำสั่ง /role approve: {alice_msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn join_when_already_has_role_replies_with_info() {
+        let tmp = tmpdir();
+        let platform = Arc::new(MockPlatform::new());
+        let mut cfg = make_config(tmp.path());
+        cfg.roles.set_user_role("mock", "alice", "member");
+        let handler = make_handler(platform.clone(), cfg);
+
+        handler.handle(dm("alice", "/join")).await.unwrap();
+
+        let msg = platform.last_to("alice").await.unwrap_or_default();
+        assert!(
+            msg.contains("สิทธิ์") || msg.contains("อยู่แล้ว"),
+            "user ที่มี role อยู่แล้วควรได้รับ info ไม่ใช่ส่ง notification: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn first_dm_bootstraps_admin_when_no_admin_exists() {
+        let tmp = tmpdir();
+        let platform = Arc::new(MockPlatform::new());
+        // definitions have "admin" defined but no users assigned yet
+        let cfg = make_config(tmp.path());
+        let handler = make_handler(platform.clone(), cfg);
+
+        handler.handle(dm("first_user", "สวัสดี")).await.unwrap();
+
+        let role = handler
+            .live_roles
+            .read()
+            .unwrap()
+            .lookup_role("mock", "first_user", None);
+        assert_eq!(
+            role,
+            Some("admin".into()),
+            "ผู้ส่ง DM คนแรกควรได้รับ admin อัตโนมัติ"
+        );
+
+        let msg = platform.last_to("first_user").await.unwrap_or_default();
+        assert!(
+            msg.contains("admin"),
+            "ควรแจ้ง user ว่าได้รับ admin: {msg}"
+        );
+    }
+
+    // ── Invite code tests ────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn invite_code_grants_role_immediately() {
+        let tmp = tmpdir();
+        let platform = Arc::new(MockPlatform::new());
+        let mut cfg = make_config(tmp.path());
+        cfg.roles.set_user_role("mock", "alice", "admin");
+        // Pre-insert a valid invite code
+        cfg.roles.invites.insert(
+            "abc12345".to_string(),
+            garudust_core::config::InviteCode {
+                role: "member".to_string(),
+                max_uses: 1,
+                uses: 0,
+                expires_at: None,
+            },
+        );
+        let handler = make_handler(platform.clone(), cfg);
+
+        handler.handle(dm("bob", "/join abc12345")).await.unwrap();
+
+        let role = handler
+            .live_roles
+            .read()
+            .unwrap()
+            .lookup_role("mock", "bob", None);
+        assert_eq!(role, Some("member".into()), "code ถูกต้องควรได้รับ role ทันที");
+
+        let msg = platform.last_to("bob").await.unwrap_or_default();
+        assert!(msg.contains("member"), "ควรแจ้ง role ที่ได้รับ: {msg}");
+    }
+
+    #[tokio::test]
+    async fn invite_code_removed_after_single_use() {
+        let tmp = tmpdir();
+        let platform = Arc::new(MockPlatform::new());
+        let mut cfg = make_config(tmp.path());
+        cfg.roles.set_user_role("mock", "alice", "admin");
+        cfg.roles.invites.insert(
+            "once1234".to_string(),
+            garudust_core::config::InviteCode {
+                role: "member".to_string(),
+                max_uses: 1,
+                uses: 0,
+                expires_at: None,
+            },
+        );
+        let handler = make_handler(platform.clone(), cfg);
+
+        // first use — succeeds
+        handler.handle(dm("bob", "/join once1234")).await.unwrap();
+        // second use — should fail (code exhausted)
+        handler.handle(dm("carol", "/join once1234")).await.unwrap();
+
+        let carol_role = handler
+            .live_roles
+            .read()
+            .unwrap()
+            .lookup_role("mock", "carol", None);
+        assert!(carol_role.is_none(), "code ใช้ครบแล้วไม่ควรให้สิทธิ์");
+
+        let msg = platform.last_to("carol").await.unwrap_or_default();
+        assert!(
+            msg.contains("❌") || msg.contains("ถูกใช้") || msg.contains("หมด"),
+            "ควรแจ้งว่า code ใช้ไม่ได้: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn invite_code_multi_use_stays_until_exhausted() {
+        let tmp = tmpdir();
+        let platform = Arc::new(MockPlatform::new());
+        let mut cfg = make_config(tmp.path());
+        cfg.roles.set_user_role("mock", "alice", "admin");
+        cfg.roles.invites.insert(
+            "multi123".to_string(),
+            garudust_core::config::InviteCode {
+                role: "member".to_string(),
+                max_uses: 2,
+                uses: 0,
+                expires_at: None,
+            },
+        );
+        let handler = make_handler(platform.clone(), cfg);
+
+        handler.handle(dm("bob", "/join multi123")).await.unwrap();
+        // code should still exist after first use
+        let still_exists = handler
+            .live_roles
+            .read()
+            .unwrap()
+            .invites
+            .contains_key("multi123");
+        assert!(still_exists, "max_uses=2 ควรยังคง code ไว้หลังใช้ครั้งแรก");
+
+        handler.handle(dm("carol", "/join multi123")).await.unwrap();
+        // exhausted after second use
+        let gone = !handler
+            .live_roles
+            .read()
+            .unwrap()
+            .invites
+            .contains_key("multi123");
+        assert!(gone, "code ควรถูกลบหลังใช้ครบ max_uses");
+    }
+
+    #[tokio::test]
+    async fn invite_code_expired_is_rejected() {
+        let tmp = tmpdir();
+        let platform = Arc::new(MockPlatform::new());
+        let mut cfg = make_config(tmp.path());
+        cfg.roles.set_user_role("mock", "alice", "admin");
+        cfg.roles.invites.insert(
+            "expired1".to_string(),
+            garudust_core::config::InviteCode {
+                role: "member".to_string(),
+                max_uses: 1,
+                uses: 0,
+                expires_at: Some(1), // unix epoch + 1s — already expired
+            },
+        );
+        let handler = make_handler(platform.clone(), cfg);
+
+        handler.handle(dm("bob", "/join expired1")).await.unwrap();
+
+        let role = handler
+            .live_roles
+            .read()
+            .unwrap()
+            .lookup_role("mock", "bob", None);
+        assert!(role.is_none(), "หมดอายุแล้วไม่ควรได้รับสิทธิ์");
+    }
+
+    #[tokio::test]
+    async fn admin_can_create_invite_code() {
+        let tmp = tmpdir();
+        let platform = Arc::new(MockPlatform::new());
+        let mut cfg = make_config(tmp.path());
+        cfg.roles.set_user_role("mock", "alice", "admin");
+        let handler = make_handler(platform.clone(), cfg);
+
+        handler
+            .handle(dm("alice", "/invite member"))
+            .await
+            .unwrap();
+
+        let msg = platform.last_to("alice").await.unwrap_or_default();
+        assert!(msg.contains("/join"), "reply ควรมี /join <code>: {msg}");
+        assert!(
+            msg.contains("member"),
+            "reply ควรระบุ role ที่ให้: {msg}"
+        );
+        // code should be stored in live_roles
+        let has_code = !handler.live_roles.read().unwrap().invites.is_empty();
+        assert!(has_code, "ควรบันทึก invite code ใน live_roles");
+    }
+
+    #[tokio::test]
+    async fn non_admin_cannot_create_invite_code() {
+        let tmp = tmpdir();
+        let platform = Arc::new(MockPlatform::new());
+        let mut cfg = make_config(tmp.path());
+        cfg.roles.set_user_role("mock", "bob", "member");
+        let handler = make_handler(platform.clone(), cfg);
+
+        handler
+            .handle(dm("bob", "/invite member"))
+            .await
+            .unwrap();
+
+        let msg = platform.last_to("bob").await.unwrap_or_default();
+        assert!(msg.contains("admin"), "member ไม่ควรสร้าง invite ได้: {msg}");
+        let no_code = handler.live_roles.read().unwrap().invites.is_empty();
+        assert!(no_code, "ไม่ควรบันทึก code เมื่อไม่มีสิทธิ์");
+    }
+
+    #[tokio::test]
+    async fn bootstrap_does_not_fire_in_group_chat() {
+        let tmp = tmpdir();
+        let platform = Arc::new(MockPlatform::new());
+        let cfg = make_config(tmp.path());
+        let handler = make_handler(platform.clone(), cfg);
+
+        let mut group_msg = dm("first_user", "สวัสดี");
+        group_msg.is_group = true;
+        handler.handle(group_msg).await.unwrap();
+
+        let role = handler
+            .live_roles
+            .read()
+            .unwrap()
+            .lookup_role("mock", "first_user", None);
+        assert!(
+            role.is_none(),
+            "group chat ไม่ควร trigger bootstrap admin"
+        );
+    }
 }
