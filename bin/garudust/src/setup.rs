@@ -116,14 +116,13 @@ pub async fn run() -> anyhow::Result<()> {
     // its literal name so Enter falls through to the `other` branch (vllm,
     // thaillm, mistral, …) instead of silently defaulting to ollama.
     let current_choice: String = match existing_provider {
-        "ollama" => "1".into(),
         "anthropic" => "2".into(),
         "openrouter" => "3".into(),
         "groq" => "4".into(),
         "deepseek" => "5".into(),
         "gemini" => "6".into(),
         "openai" => "7".into(),
-        "" => "1".into(),
+        "ollama" | "" => "1".into(),
         other => other.into(),
     };
 
@@ -390,7 +389,9 @@ pub async fn run() -> anyhow::Result<()> {
             );
             println!("  {C_CYAN}1){C_RESET}  Open    {C_DIM}— everyone can chat (dev / private server){C_RESET}");
             println!("  {C_CYAN}2){C_RESET}  Invite  {C_DIM}— first DM becomes admin; others need /invite{C_RESET}");
-            println!("  {C_CYAN}3){C_RESET}  Skip    {C_DIM}— configure roles: manually later{C_RESET}");
+            println!(
+                "  {C_CYAN}3){C_RESET}  Skip    {C_DIM}— configure roles: manually later{C_RESET}"
+            );
             let access_choice = prompt("Choose mode", Some("2"));
             enable_invite_roles = matches!(access_choice.trim(), "2" | "invite");
             println!();
