@@ -9,7 +9,8 @@ use crossterm::{
     terminal::{self, ClearType},
 };
 use garudust_core::config::{
-    AgentConfig, BuiltinProvider, ProviderProfile, WebhookPlatformConfig, BUILTIN_PROVIDERS,
+    AgentConfig, BuiltinProvider, ProviderProfile, RoleDefinition, WebhookPlatformConfig,
+    BUILTIN_PROVIDERS,
 };
 
 const C_RESET: &str = "\x1b[0m";
@@ -111,14 +112,19 @@ pub async fn run() -> anyhow::Result<()> {
         .get("default")
         .and_then(|p| p.name.as_deref())
         .unwrap_or(existing.provider.as_str());
-    let current_choice = match existing_provider {
-        "anthropic" => "2",
-        "openrouter" => "3",
-        "groq" => "4",
-        "deepseek" => "5",
-        "gemini" => "6",
-        "openai" => "7",
-        _ => "1",
+    // Map the existing provider to a menu number when possible, otherwise echo
+    // its literal name so Enter falls through to the `other` branch (vllm,
+    // thaillm, mistral, …) instead of silently defaulting to ollama.
+    let current_choice: String = match existing_provider {
+        "ollama" => "1".into(),
+        "anthropic" => "2".into(),
+        "openrouter" => "3".into(),
+        "groq" => "4".into(),
+        "deepseek" => "5".into(),
+        "gemini" => "6".into(),
+        "openai" => "7".into(),
+        "" => "1".into(),
+        other => other.into(),
     };
 
     println!("{C_BOLD}{C_YELLOW}LLM Provider:{C_RESET}");
@@ -131,7 +137,7 @@ pub async fn run() -> anyhow::Result<()> {
     println!("  {C_CYAN}7){C_RESET}  openai      {C_DIM}— OpenAI GPT                   {C_RESET}  {C_GRAY}gpt-4o-mini{C_RESET}");
     println!("  {C_DIM}other       — type provider name  (mistral / xai / together / …){C_RESET}");
     println!("  {C_DIM}custom      — custom base URL{C_RESET}");
-    let choice = prompt("Choose provider", Some(current_choice));
+    let choice = prompt("Choose provider", Some(&current_choice));
     println!();
 
     // Remove stale legacy env vars — provider/url now live in providers.default.
@@ -248,9 +254,21 @@ pub async fn run() -> anyhow::Result<()> {
                 }
             }
             // Providers whose default base_url is localhost need a URL prompt.
+            // Prefer the URL already on disk when the user is keeping the same
+            // provider — losing a non-default port (e.g. :12345) on Enter is
+            // the kind of silent regression that breaks reconfigures.
             let needs_url = builtin.is_some_and(|p| p.base_url.starts_with("http://localhost"));
             let url = if needs_url {
-                let default_url = builtin.map(|p| p.base_url);
+                let existing_url = if existing_provider == name.as_str() {
+                    existing
+                        .providers
+                        .get("default")
+                        .and_then(|p| p.url.as_deref())
+                        .or(existing.base_url.as_deref())
+                } else {
+                    None
+                };
+                let default_url = existing_url.or(builtin.map(|p| p.base_url));
                 let u = prompt("Base URL", default_url);
                 if u.is_empty() {
                     default_url.map(str::to_string)
@@ -307,6 +325,7 @@ pub async fn run() -> anyhow::Result<()> {
     // means "don't touch the yaml's platforms section at all".
     let mut webhook_platform_selections: Option<Vec<(&'static str, bool)>> = None;
     let mut custom_profiles: Vec<(String, ProviderProfile)> = Vec::new();
+    let mut enable_invite_roles = false;
     if full {
         println!("{C_BOLD}{C_YELLOW}Optional Tools{C_RESET} {C_GRAY}(Enter to keep current / skip){C_RESET}");
         let cur_brave = read_env_file(&home_dir, "BRAVE_SEARCH_API_KEY");
@@ -356,6 +375,26 @@ pub async fn run() -> anyhow::Result<()> {
             }
         }
         println!();
+
+        // ── Access control ────────────────────────────────────────────────────
+        // Only relevant when at least one platform adapter is selected — CLI/TUI
+        // sessions don't benefit from role gating. Skipped on reconfigure when
+        // `roles:` is already populated, to avoid clobbering manual edits.
+        let any_platform_selected = selected.iter().any(|&s| s);
+        let no_existing_roles = existing.roles.definitions.is_empty()
+            && existing.roles.users.is_empty()
+            && existing.roles.default_role.is_none();
+        if any_platform_selected && no_existing_roles {
+            println!(
+                "{C_BOLD}{C_YELLOW}Access control:{C_RESET} {C_GRAY}who can use the bot?{C_RESET}"
+            );
+            println!("  {C_CYAN}1){C_RESET}  Open    {C_DIM}— everyone can chat (dev / private server){C_RESET}");
+            println!("  {C_CYAN}2){C_RESET}  Invite  {C_DIM}— first DM becomes admin; others need /invite{C_RESET}");
+            println!("  {C_CYAN}3){C_RESET}  Skip    {C_DIM}— configure roles: manually later{C_RESET}");
+            let access_choice = prompt("Choose mode", Some("2"));
+            enable_invite_roles = matches!(access_choice.trim(), "2" | "invite");
+            println!();
+        }
 
         // ── Custom Provider Profiles ──────────────────────────────────────────
         println!("{C_BOLD}{C_YELLOW}Custom Provider Profiles{C_RESET} {C_GRAY}(optional — for routing: or tool model overrides){C_RESET}");
@@ -474,6 +513,26 @@ pub async fn run() -> anyhow::Result<()> {
         new_config.providers.insert(alias, profile);
     }
 
+    // Seed invite-only roles when the user picked "Invite" and no roles exist.
+    // Definitions only — `users` stays empty so the first DM bootstraps admin.
+    if enable_invite_roles && new_config.roles.definitions.is_empty() {
+        new_config.roles.definitions.insert(
+            "admin".into(),
+            RoleDefinition {
+                approval_mode: Some("auto".into()),
+                ..Default::default()
+            },
+        );
+        new_config.roles.definitions.insert(
+            "member".into(),
+            RoleDefinition {
+                approval_mode: Some("smart".into()),
+                denied_tools: vec!["terminal".into()],
+                ..Default::default()
+            },
+        );
+    }
+
     new_config.save_yaml()?;
 
     println!("{C_GREEN}✓{C_RESET} Wrote {C_BOLD}providers.default{C_RESET} profile to {C_GRAY}{}/.garudust/config.yaml{C_RESET}", home_dir.display());
@@ -481,6 +540,11 @@ pub async fn run() -> anyhow::Result<()> {
         for (var, _) in &env_vars {
             println!("{C_GREEN}✓{C_RESET} Wrote {C_BOLD}{var}{C_RESET} to {C_GRAY}~/.garudust/.env{C_RESET}");
         }
+    }
+    if enable_invite_roles {
+        println!(
+            "{C_GREEN}✓{C_RESET} Enabled {C_BOLD}invite-only access{C_RESET} — DM the bot first to claim admin, then use {C_BOLD}/invite member{C_RESET} to add others"
+        );
     }
     println!();
 
