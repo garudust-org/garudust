@@ -122,7 +122,7 @@ cd garudust-agent && cargo build --release
 
 **02 — Configure**
 
-Run the interactive wizard — it picks a provider, asks for an API key, and writes `~/.garudust/config.yaml` (with a `providers.default` profile) and `~/.garudust/.env`:
+Run the interactive wizard — it picks a provider, asks for an API key, and writes `~/.garudust/config.yaml` (with a `providers.default` profile) and `~/.garudust/.env`. **Full mode** additionally wires up platform adapters and offers an [invite-only access control](#access-control) preset that seeds `admin` + `member` roles for you:
 
 ```bash
 garudust setup

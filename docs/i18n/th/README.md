@@ -105,7 +105,7 @@ cd garudust-agent && cargo build --release
 
 **02 — ตั้งค่า**
 
-รัน wizard ครั้งแรก — เลือก provider ใส่ API key แล้วเขียน `~/.garudust/config.yaml` (พร้อม `providers.default` profile) และ `~/.garudust/.env` ให้อัตโนมัติ:
+รัน wizard ครั้งแรก — เลือก provider ใส่ API key แล้วเขียน `~/.garudust/config.yaml` (พร้อม `providers.default` profile) และ `~/.garudust/.env` ให้อัตโนมัติ **โหมด Full** ยังตั้งค่า platform adapters และมีตัวเลือก [access control แบบ invite-only](#การควบคุมการเข้าถึง) ที่ seed role `admin` + `member` ให้อัตโนมัติ:
 
 ```bash
 garudust setup

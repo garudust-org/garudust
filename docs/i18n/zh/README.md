@@ -105,7 +105,7 @@ cd garudust-agent && cargo build --release
 
 **02 — 配置**
 
-运行首次配置向导 — 自动选择提供商、输入 API 密钥，并将 `providers.default` profile 写入 `~/.garudust/config.yaml` 和 `~/.garudust/.env`：
+运行首次配置向导 — 自动选择提供商、输入 API 密钥，并将 `providers.default` profile 写入 `~/.garudust/config.yaml` 和 `~/.garudust/.env`。**完整模式**还会配置平台适配器，并提供[仅限邀请的访问控制](#访问控制)预设，自动 seed `admin` + `member` 角色：
 
 ```bash
 garudust setup
