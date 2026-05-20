@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
@@ -199,7 +200,7 @@ impl GatewayHandler {
             );
             for admin_id in &admins {
                 let ch = ChannelId {
-                    platform: platform.to_string(),
+                    platform: platform.clone(),
                     chat_id: admin_id.clone(),
                     thread_id: None,
                 };
@@ -762,29 +763,29 @@ impl MessageHandler for GatewayHandler {
                 // has been assigned any role yet (completely fresh install).
                 // If any user exists in the map the operator has started
                 // configuring manually, so we leave it alone.
-                let total_assigned: usize = roles.users.values().map(|m| m.len()).sum();
+                let total_assigned: usize = roles.users.values().map(HashMap::len).sum();
                 roles.definitions.contains_key("admin")
                     && roles.default_role.is_none()
                     && total_assigned == 0
             };
-            if needs_bootstrap && !msg.is_group {
-                if self
+            if needs_bootstrap
+                && !msg.is_group
+                && self
                     .save_role(&msg.channel.platform, &msg.user_id, "admin")
                     .is_ok()
-                {
-                    tracing::info!(
-                        user_id = %msg.user_id,
-                        platform = %msg.channel.platform,
-                        "bootstrapped first admin"
-                    );
-                    let _ = self
-                        .platform
-                        .send_message(
-                            &msg.channel,
-                            OutboundMessage::text("✅ คุณได้รับการตั้งเป็น admin คนแรกของระบบ"),
-                        )
-                        .await;
-                }
+            {
+                tracing::info!(
+                    user_id = %msg.user_id,
+                    platform = %msg.channel.platform,
+                    "bootstrapped first admin"
+                );
+                let _ = self
+                    .platform
+                    .send_message(
+                        &msg.channel,
+                        OutboundMessage::text("✅ คุณได้รับการตั้งเป็น admin คนแรกของระบบ"),
+                    )
+                    .await;
             }
         }
 
