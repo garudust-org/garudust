@@ -593,14 +593,9 @@ impl Default for SecurityConfig {
     }
 }
 
-/// Platform-level access and behaviour controls (whitelist, mention gate, session isolation).
+/// Platform-level access and behaviour controls (mention gate, session isolation).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlatformConfig {
-    /// User IDs allowed to send messages to the agent.
-    /// Empty list means everyone is allowed.
-    #[serde(default)]
-    pub allowed_user_ids: Vec<String>,
-
     /// Only respond in group chats when the bot is @mentioned.
     /// Private / DM chats always get a response regardless of this flag.
     #[serde(default)]
@@ -793,7 +788,6 @@ impl RolesConfig {
 impl Default for PlatformConfig {
     fn default() -> Self {
         Self {
-            allowed_user_ids: Vec::new(),
             require_mention: false,
             bot_username: String::new(),
             session_per_user: true,

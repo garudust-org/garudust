@@ -247,12 +247,10 @@ security:
 #   #     uses: 0
 #   #     expires_at: 1735689600 # unix seconds; omit for no expiry
 
-# ── Platform access controls ──────────────────────────────────────────────────
+# ── Platform behaviour ────────────────────────────────────────────────────────
+# For per-user access control, use the `roles:` section above instead.
 
 # platform:
-#   # Restrict to specific user IDs (Telegram, Discord, Slack, …). Empty = allow all.
-#   allowed_user_ids: ["123456789"]
-#
 #   # Require the bot to be @mentioned before responding. Default: false.
 #   require_mention: false
 #

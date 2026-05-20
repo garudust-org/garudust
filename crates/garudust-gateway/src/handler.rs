@@ -734,12 +734,6 @@ impl MessageHandler for GatewayHandler {
     async fn handle(&self, mut msg: InboundMessage) -> Result<(), anyhow::Error> {
         let pcfg = &self.config.platform;
 
-        // Whitelist: silently drop messages from unlisted users (legacy allowed_user_ids).
-        if !pcfg.allowed_user_ids.is_empty() && !pcfg.allowed_user_ids.contains(&msg.user_id) {
-            tracing::debug!(user_id = %msg.user_id, "message dropped: user not in whitelist");
-            return Ok(());
-        }
-
         // Per-user session isolation — only for non-group (DM) chats.
         // In group chats every member shares one session so that images sent by
         // any member are visible to everyone who later asks about them.

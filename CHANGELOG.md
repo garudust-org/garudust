@@ -7,6 +7,13 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Removed
+- **`platform.allowed_user_ids`** — flat whitelist that silently dropped messages from unlisted users. Superseded by the role system (`roles:`). **Migration:** assign each previously-listed user a role under `roles.users.<platform>` and leave `roles.default_role` unset so unknown users are gated. Existing configs that still contain `allowed_user_ids` will parse (serde ignores unknown fields) but **the whitelist will no longer be enforced** — confirm your `roles:` block is configured before upgrading.
+
+---
+
 ## [0.8.1] — 2026-05-19
 
 ### Added
