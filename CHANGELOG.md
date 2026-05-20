@@ -9,8 +9,34 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+---
+
+## [0.9.0] — 2026-05-21
+
+### Added
+- **Role-based access control (RBAC)** — `roles:` in `config.yaml` assigns each platform user a role (`admin` / `member` / custom) that controls `approval_mode` and which toolsets/tools they may use. Users without an entry fall back to `default_role` (or the global approver if unset).
+- **Bootstrap admin** — when an `admin` role is defined but `roles.users` is empty, the first user to DM the bot is auto-promoted to admin; no manual ID lookup or yaml edit required.
+- **`/join` self-registration** — unknown users can request access; admins receive a notification with a pre-built `/role approve <platform:id> <role>` command they can reply with to grant access.
+- **Invite codes** — admins issue single-use, time-bounded codes via `/invite <role> [max_uses]`; users redeem with `/join <code>` for instant role assignment.
+- **Interactive tool approval over chat** — when a tool call needs approval, the bot DMs the approver and resumes execution on their reply.
+- **Runtime role commands** — `/whoami`, `/role list`, `/role add|approve|remove|deny <platform:id> [role]` for live role management without restart.
+- **Setup wizard access-control prompt** — `garudust setup` Full mode now offers Open / Invite / Skip; choosing Invite seeds `admin` (auto-approval) and `member` (smart, terminal denied) role definitions automatically.
+- **Unit + integration tests for roles** — 24 unit tests for `RolesConfig` / `RolesApprover` and 10 integration tests for the `GatewayHandler` roles flow.
+
+### Changed
+- **Auto-assign lowest role to new users** — when `default_role` is set, unknown users are silently granted the lowest-privilege role instead of being blocked at `/join`.
+- **Setup wizard preserves provider on reconfigure** — the provider menu now echoes the existing provider name (e.g. `vllm`, `thaillm`, `mistral`) instead of silently falling back to ollama, and preserves the existing base URL for localhost providers so non-default ports survive an Enter-through.
+- **Roles flow + TUI redesign** — simplified the roles resolution path and refreshed the TUI status display.
+
 ### Removed
 - **`platform.allowed_user_ids`** — flat whitelist that silently dropped messages from unlisted users. Superseded by the role system (`roles:`). **Migration:** assign each previously-listed user a role under `roles.users.<platform>` and leave `roles.default_role` unset so unknown users are gated. Existing configs that still contain `allowed_user_ids` will parse (serde ignores unknown fields) but **the whitelist will no longer be enforced** — confirm your `roles:` block is configured before upgrading.
+
+### Documentation
+- **Trilingual README updates** — English, Thai, and Chinese READMEs now ship with a Table of Contents, refreshed Architecture diagram, and a full Access Control section covering roles, bootstrap admin, `/join`, `/invite`, and runtime commands.
+- **TUI demo screenshot** refreshed in the English README.
+- **`config.yaml.example`** — added a commented `roles:` reference block.
+- **Quick Start "02 — Configure"** — calls out Full-mode platform adapters and the invite-only access control preset across all three READMEs.
+- **Raspberry Pi / Jetson install note** added with a corrected install command.
 
 ---
 
