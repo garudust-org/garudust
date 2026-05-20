@@ -14,7 +14,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Paragraph, Wrap},
+    widgets::{Paragraph, Wrap},
     Terminal,
 };
 use tokio::sync::mpsc;
@@ -131,7 +131,7 @@ impl Tui {
             input: String::new(),
             cursor: 0,
             messages: Vec::new(),
-            status: "Ready — press Enter to send, Ctrl+C to quit".into(),
+            status: "Ready  ·  Enter to send  ·  Ctrl+C to quit".into(),
             scroll: 0,
             streaming: false,
             thinking_since: None,
@@ -364,17 +364,16 @@ impl Tui {
                 self.session_output_tokens += output_tokens;
                 let total = input_tokens + output_tokens;
                 let cost_part = estimate_cost_usd(&self.model, input_tokens, output_tokens)
-                    .map(|c| format!(" | ~${c:.4}"))
+                    .map(|c| format!(" · ~${c:.4}"))
                     .unwrap_or_default();
                 let session_cost = estimate_cost_usd(
                     &self.model,
                     self.session_input_tokens,
                     self.session_output_tokens,
                 )
-                .map(|c| format!(" | session ~${c:.4}"))
+                .map(|c| format!(" · session ~${c:.4}"))
                 .unwrap_or_default();
-                self.status =
-                    format!("Done — {iterations} iter | {total} tok{cost_part}{session_cost}");
+                self.status = format!("{iterations} iter · {total} tok{cost_part}{session_cost}");
             }
             AgentEvent::Error(e) => {
                 self.streaming = false;
@@ -387,7 +386,7 @@ impl Tui {
     }
 
     // Build the startup banner lines (logo left, tools+skills right).
-    // `pane_w` is the full width of the messages block including borders.
+    // `pane_w` is the full width of the (borderless) chat area.
     fn build_banner_lines(&self, pane_w: u16) -> Vec<Line<'static>> {
         const LOGO_W: usize = 20;
         const LOGO: &[&str] = &[
@@ -405,25 +404,22 @@ impl Tui {
         let accent = Style::default()
             .fg(Color::Rgb(245, 166, 35))
             .add_modifier(Modifier::BOLD);
-        let dim = Style::default().fg(Color::DarkGray);
-        let bold_w = Style::default()
-            .fg(Color::White)
+        let dim = Style::default().fg(Color::Rgb(75, 75, 75));
+        let label = Style::default()
+            .fg(Color::Rgb(170, 170, 170))
             .add_modifier(Modifier::BOLD);
-        let normal = Style::default().fg(Color::White);
+        let muted = Style::default().fg(Color::Rgb(120, 120, 120));
 
-        let inner_w = pane_w.saturating_sub(2) as usize;
+        let inner_w = pane_w as usize;
         let right_w = inner_w.saturating_sub(LOGO_W);
 
         let mut right: Vec<Vec<Span<'static>>> = Vec::new();
 
         let tool_total: usize = self.toolsets.values().map(Vec::len).sum();
-        right.push(vec![Span::styled(
-            format!("Available Tools ({tool_total})"),
-            bold_w,
-        )]);
+        right.push(vec![Span::styled(format!("Tools ({tool_total})"), label)]);
 
         for (toolset, names) in &self.toolsets {
-            let prefix = format!("  {toolset}: ");
+            let prefix = format!("  {toolset}  ");
             let avail = right_w.saturating_sub(prefix.len());
             let joined = names.join(", ");
             let display = if joined.len() > avail && avail > 3 {
@@ -433,17 +429,14 @@ impl Tui {
             };
             right.push(vec![
                 Span::styled(prefix, dim),
-                Span::styled(display, normal),
+                Span::styled(display, muted),
             ]);
         }
 
         right.push(vec![Span::raw("")]);
 
         let skill_total = self.skill_names.len();
-        right.push(vec![Span::styled(
-            format!("Available Skills ({skill_total})"),
-            bold_w,
-        )]);
+        right.push(vec![Span::styled(format!("Skills ({skill_total})"), label)]);
 
         if self.skill_names.is_empty() {
             right.push(vec![Span::styled("  —", dim)]);
@@ -455,20 +448,16 @@ impl Tui {
             } else {
                 joined
             };
-            right.push(vec![Span::styled(format!("  {display}"), normal)]);
+            right.push(vec![Span::styled(format!("  {display}"), muted)]);
         }
 
         let n_rows = LOGO.len().max(right.len());
         let mut lines: Vec<Line<'static>> = Vec::new();
 
-        let v = env!("CARGO_PKG_VERSION");
-        lines.push(Line::from(vec![
-            Span::styled(format!(" Garudust v{v}"), accent),
-            Span::styled(
-                format!(" · {tool_total} tools · {skill_total} skills · /help for commands"),
-                dim,
-            ),
-        ]));
+        lines.push(Line::from(Span::styled(
+            format!(" {tool_total} tools · {skill_total} skills · /help for commands"),
+            dim,
+        )));
 
         for i in 0..n_rows {
             let logo_str = LOGO.get(i).copied().unwrap_or("");
@@ -484,49 +473,99 @@ impl Tui {
 
         lines.push(Line::from(Span::styled(
             "─".repeat(inner_w),
-            Style::default().fg(Color::Rgb(60, 60, 60)),
+            Style::default().fg(Color::Rgb(45, 45, 45)),
         )));
 
         lines
     }
 
     fn render(&mut self, f: &mut ratatui::Frame) {
+        let area = f.area();
+        let w = area.width as usize;
+
+        // 6 rows: header | sep | chat | status | sep | input
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
+                Constraint::Length(1),
+                Constraint::Length(1),
                 Constraint::Min(3),
                 Constraint::Length(1),
-                Constraint::Length(3),
+                Constraint::Length(1),
+                Constraint::Length(1),
             ])
-            .split(f.area());
+            .split(area);
 
-        // ── Chat pane ──
-        let banner = self.build_banner_lines(chunks[0].width);
+        let accent = Style::default()
+            .fg(Color::Rgb(245, 166, 35))
+            .add_modifier(Modifier::BOLD);
+        let dim = Style::default().fg(Color::Rgb(80, 80, 80));
+        let sep_style = Style::default().fg(Color::Rgb(45, 45, 45));
+        let text_style = Style::default().fg(Color::Rgb(210, 210, 210));
+        let sep = "─".repeat(w);
+
+        // ── Header ────────────────────────────────────────────────────────────
+        let v = env!("CARGO_PKG_VERSION");
+        let left = format!(" Garudust v{v}");
+        let turns = self.session_turns;
+        let cost_sfx = estimate_cost_usd(
+            &self.model,
+            self.session_input_tokens,
+            self.session_output_tokens,
+        )
+        .map(|c| format!(" · ~${c:.4}"))
+        .unwrap_or_default();
+        let right = format!(
+            "{} · {} turn{}{} ",
+            self.model,
+            turns,
+            if turns == 1 { "" } else { "s" },
+            cost_sfx,
+        );
+        let pad = w.saturating_sub(left.len() + right.len());
+
+        let header = Line::from(vec![
+            Span::styled(left, accent),
+            Span::raw(" ".repeat(pad)),
+            Span::styled(right, dim),
+        ]);
+        f.render_widget(Paragraph::new(header), chunks[0]);
+
+        // ── Separator ─────────────────────────────────────────────────────────
+        f.render_widget(Paragraph::new(sep.as_str()).style(sep_style), chunks[1]);
+
+        // ── Chat pane ─────────────────────────────────────────────────────────
+        let chat_w = chunks[2].width;
+        let banner = self.build_banner_lines(chat_w);
+
+        let user_style = Style::default()
+            .fg(Color::Rgb(99, 179, 237))
+            .add_modifier(Modifier::BOLD);
+        let ai_style = Style::default().fg(Color::Rgb(104, 211, 145));
+        let err_style = Style::default().fg(Color::Rgb(252, 129, 129));
 
         let chat_lines: Vec<Line<'static>> = self
             .messages
             .iter()
             .flat_map(|(role, text)| -> Vec<Line<'static>> {
-                let (prefix, style) = match role {
-                    Role::User => (
-                        "You  › ",
-                        Style::default()
-                            .fg(Color::Cyan)
-                            .add_modifier(Modifier::BOLD),
-                    ),
-                    Role::Assistant => ("  AI › ", Style::default().fg(Color::Green)),
-                    Role::Error => ("  !! › ", Style::default().fg(Color::Red)),
+                let (prefix, prefix_style) = match role {
+                    Role::User => ("  you › ", user_style),
+                    Role::Assistant => ("   ai › ", ai_style),
+                    Role::Error => ("  err › ", err_style),
                 };
                 text.lines()
                     .enumerate()
                     .map(move |(i, line)| {
                         if i == 0 {
                             Line::from(vec![
-                                Span::styled(prefix.to_string(), style),
-                                Span::raw(line.to_string()),
+                                Span::styled(prefix.to_string(), prefix_style),
+                                Span::styled(line.to_string(), text_style),
                             ])
                         } else {
-                            Line::from(vec![Span::raw("       "), Span::raw(line.to_string())])
+                            Line::from(vec![
+                                Span::raw("        "),
+                                Span::styled(line.to_string(), text_style),
+                            ])
                         }
                     })
                     .collect()
@@ -534,55 +573,48 @@ impl Tui {
             .collect();
 
         let all_lines: Vec<Line<'static>> = banner.into_iter().chain(chat_lines).collect();
-        let visible = chunks[0].height.saturating_sub(2);
+        let visible = chunks[2].height;
 
-        let messages = Paragraph::new(Text::from(all_lines))
-            .block(Block::default().borders(Borders::ALL).title(" Garudust "))
-            .wrap(Wrap { trim: false });
+        let messages = Paragraph::new(Text::from(all_lines)).wrap(Wrap { trim: false });
 
-        let text_w = chunks[0].width.saturating_sub(2);
-        let total_visual = u16::try_from(messages.line_count(text_w)).unwrap_or(u16::MAX);
-        let max_scroll = total_visual.saturating_sub(visible + 2);
+        let total_visual = u16::try_from(messages.line_count(chat_w)).unwrap_or(u16::MAX);
+        let max_scroll = total_visual.saturating_sub(visible);
         let scroll = if self.scroll == u16::MAX {
             max_scroll
         } else {
             self.scroll.min(max_scroll)
         };
 
-        f.render_widget(messages.scroll((scroll, 0)), chunks[0]);
+        f.render_widget(messages.scroll((scroll, 0)), chunks[2]);
 
-        // ── Status bar ──
+        // ── Status bar ────────────────────────────────────────────────────────
         let status_text = if let Some(since) = self.thinking_since {
             let secs = since.elapsed().as_secs();
             if secs > 0 {
-                format!("{} ({}s)", self.status, secs)
+                format!("  {} ({}s)", self.status, secs)
             } else {
-                self.status.clone()
+                format!("  {}", self.status)
             }
         } else {
-            self.status.clone()
+            format!("  {}", self.status)
         };
-        f.render_widget(
-            Paragraph::new(status_text.as_str()).style(Style::default().fg(Color::DarkGray)),
-            chunks[1],
-        );
+        f.render_widget(Paragraph::new(status_text.as_str()).style(dim), chunks[3]);
 
-        // ── Input box with cursor ──
-        // Render text before and after cursor with a block cursor style.
+        // ── Separator ─────────────────────────────────────────────────────────
+        f.render_widget(Paragraph::new(sep.as_str()).style(sep_style), chunks[4]);
+
+        // ── Input line ────────────────────────────────────────────────────────
         let before = &self.input[..self.cursor];
         let at = self.input[self.cursor..]
             .chars()
             .next()
             .map_or_else(|| " ".to_string(), |c| c.to_string());
         let after_start = self.cursor
-            + at.len().saturating_sub(
-                // at is always 1 char from the string; if we appended a space, skip 0 bytes
-                if self.cursor < self.input.len() {
-                    at.len()
-                } else {
-                    0
-                },
-            );
+            + at.len().saturating_sub(if self.cursor < self.input.len() {
+                at.len()
+            } else {
+                0
+            });
         let after = if self.cursor < self.input.len() {
             &self.input[after_start..]
         } else {
@@ -594,15 +626,13 @@ impl Tui {
             .bg(Color::White)
             .add_modifier(Modifier::BOLD);
 
-        let input_spans = Line::from(vec![
-            Span::raw(before.to_string()),
+        let input_line = Line::from(vec![
+            Span::styled(" ❯ ", accent),
+            Span::styled(before.to_string(), text_style),
             Span::styled(at, cursor_style),
-            Span::raw(after.to_string()),
+            Span::styled(after.to_string(), text_style),
         ]);
 
-        let input_widget = Paragraph::new(input_spans)
-            .block(Block::default().borders(Borders::ALL).title(" Input "))
-            .style(Style::default().fg(Color::White));
-        f.render_widget(input_widget, chunks[2]);
+        f.render_widget(Paragraph::new(input_line), chunks[5]);
     }
 }

@@ -118,7 +118,11 @@ impl CommandApprover for RolesApprover {
         }
         if let Some(allowed) = &self.allowed_tools {
             if !allowed.contains(tool_name) {
-                tracing::info!(tool = tool_name, user_id, "roles: tool not in allowed_tools");
+                tracing::info!(
+                    tool = tool_name,
+                    user_id,
+                    "roles: tool not in allowed_tools"
+                );
                 return ApprovalDecision::Denied;
             }
         }
@@ -175,13 +179,23 @@ mod tests {
 
     #[async_trait]
     impl Tool for MockTool {
-        fn name(&self) -> &str { self.name }
-        fn description(&self) -> &str { "mock" }
-        fn toolset(&self) -> &str { self.toolset }
+        fn name(&self) -> &str {
+            self.name
+        }
+        fn description(&self) -> &str {
+            "mock"
+        }
+        fn toolset(&self) -> &str {
+            self.toolset
+        }
         fn schema(&self) -> serde_json::Value {
             serde_json::json!({ "type": "object", "properties": {} })
         }
-        async fn execute(&self, _p: serde_json::Value, _ctx: &ToolContext) -> Result<ToolResult, ToolError> {
+        async fn execute(
+            &self,
+            _p: serde_json::Value,
+            _ctx: &ToolContext,
+        ) -> Result<ToolResult, ToolError> {
             Ok(ToolResult::ok("id", "ok"))
         }
     }
@@ -200,7 +214,12 @@ mod tests {
         approver.approve(tool, "{}", "test_user").await
     }
 
-    fn make(roles: RolesConfig, reg: &ToolRegistry, platform: &str, user_id: &str) -> Arc<dyn CommandApprover> {
+    fn make(
+        roles: RolesConfig,
+        reg: &ToolRegistry,
+        platform: &str,
+        user_id: &str,
+    ) -> Arc<dyn CommandApprover> {
         RolesApprover::for_user(platform, user_id, None, &roles, AUTO, reg)
     }
 
@@ -210,45 +229,63 @@ mod tests {
     async fn no_roles_configured_uses_global_auto() {
         let reg = registry_with(&[]);
         let approver = make(RolesConfig::default(), &reg, "telegram", "111");
-        assert_eq!(decide(&approver, "any_tool").await, ApprovalDecision::Approved);
+        assert_eq!(
+            decide(&approver, "any_tool").await,
+            ApprovalDecision::Approved
+        );
     }
 
     #[tokio::test]
     async fn unknown_user_no_default_role_is_denied() {
         let mut roles = RolesConfig::default();
-        roles.definitions.insert("admin".into(), RoleDefinition {
-            approval_mode: Some("auto".into()),
-            ..Default::default()
-        });
+        roles.definitions.insert(
+            "admin".into(),
+            RoleDefinition {
+                approval_mode: Some("auto".into()),
+                ..Default::default()
+            },
+        );
         roles.set_user_role("telegram", "999", "admin");
 
         let reg = registry_with(&[]);
         // user "555" has no role, no default_role
         let approver = make(roles, &reg, "telegram", "555");
-        assert_eq!(decide(&approver, "any_tool").await, ApprovalDecision::Denied);
+        assert_eq!(
+            decide(&approver, "any_tool").await,
+            ApprovalDecision::Denied
+        );
     }
 
     #[tokio::test]
     async fn default_role_applied_to_unknown_user() {
         let mut roles = RolesConfig::default();
-        roles.definitions.insert("readonly".into(), RoleDefinition {
-            approval_mode: Some("auto".into()),
-            ..Default::default()
-        });
+        roles.definitions.insert(
+            "readonly".into(),
+            RoleDefinition {
+                approval_mode: Some("auto".into()),
+                ..Default::default()
+            },
+        );
         roles.default_role = Some("readonly".into());
 
         let reg = registry_with(&[]);
         let approver = make(roles, &reg, "telegram", "stranger");
-        assert_eq!(decide(&approver, "read_file").await, ApprovalDecision::Approved);
+        assert_eq!(
+            decide(&approver, "read_file").await,
+            ApprovalDecision::Approved
+        );
     }
 
     #[tokio::test]
     async fn role_with_approval_mode_deny_blocks_all() {
         let mut roles = RolesConfig::default();
-        roles.definitions.insert("readonly".into(), RoleDefinition {
-            approval_mode: Some("deny".into()),
-            ..Default::default()
-        });
+        roles.definitions.insert(
+            "readonly".into(),
+            RoleDefinition {
+                approval_mode: Some("deny".into()),
+                ..Default::default()
+            },
+        );
         roles.set_user_role("telegram", "111", "readonly");
 
         let reg = registry_with(&[]);
@@ -259,10 +296,13 @@ mod tests {
     #[tokio::test]
     async fn role_with_approval_mode_auto_approves_all() {
         let mut roles = RolesConfig::default();
-        roles.definitions.insert("admin".into(), RoleDefinition {
-            approval_mode: Some("auto".into()),
-            ..Default::default()
-        });
+        roles.definitions.insert(
+            "admin".into(),
+            RoleDefinition {
+                approval_mode: Some("auto".into()),
+                ..Default::default()
+            },
+        );
         roles.set_user_role("telegram", "111", "admin");
 
         let reg = registry_with(&[]);
@@ -273,51 +313,69 @@ mod tests {
     #[tokio::test]
     async fn allowed_toolset_permits_tools_in_set() {
         let mut roles = RolesConfig::default();
-        roles.definitions.insert("member".into(), RoleDefinition {
-            approval_mode: Some("auto".into()),
-            allowed_toolsets: vec!["web".into()],
-            ..Default::default()
-        });
+        roles.definitions.insert(
+            "member".into(),
+            RoleDefinition {
+                approval_mode: Some("auto".into()),
+                allowed_toolsets: vec!["web".into()],
+                ..Default::default()
+            },
+        );
         roles.set_user_role("telegram", "111", "member");
 
         let reg = registry_with(&[("search_web", "web"), ("bash", "terminal")]);
         let approver = make(roles, &reg, "telegram", "111");
 
-        assert_eq!(decide(&approver, "search_web").await, ApprovalDecision::Approved);
+        assert_eq!(
+            decide(&approver, "search_web").await,
+            ApprovalDecision::Approved
+        );
         assert_eq!(decide(&approver, "bash").await, ApprovalDecision::Denied);
     }
 
     #[tokio::test]
     async fn individual_allowed_tool_passes_without_toolset() {
         let mut roles = RolesConfig::default();
-        roles.definitions.insert("member".into(), RoleDefinition {
-            approval_mode: Some("auto".into()),
-            allowed_tools: vec!["read_file".into()],
-            ..Default::default()
-        });
+        roles.definitions.insert(
+            "member".into(),
+            RoleDefinition {
+                approval_mode: Some("auto".into()),
+                allowed_tools: vec!["read_file".into()],
+                ..Default::default()
+            },
+        );
         roles.set_user_role("telegram", "111", "member");
 
         let reg = registry_with(&[("read_file", "files"), ("bash", "terminal")]);
         let approver = make(roles, &reg, "telegram", "111");
 
-        assert_eq!(decide(&approver, "read_file").await, ApprovalDecision::Approved);
+        assert_eq!(
+            decide(&approver, "read_file").await,
+            ApprovalDecision::Approved
+        );
         assert_eq!(decide(&approver, "bash").await, ApprovalDecision::Denied);
     }
 
     #[tokio::test]
     async fn denied_tools_wins_over_allowlist() {
         let mut roles = RolesConfig::default();
-        roles.definitions.insert("member".into(), RoleDefinition {
-            approval_mode: Some("auto".into()),
-            allowed_toolsets: vec!["web".into()],
-            denied_tools: vec!["search_web".into()],
-            ..Default::default()
-        });
+        roles.definitions.insert(
+            "member".into(),
+            RoleDefinition {
+                approval_mode: Some("auto".into()),
+                allowed_toolsets: vec!["web".into()],
+                denied_tools: vec!["search_web".into()],
+                ..Default::default()
+            },
+        );
         roles.set_user_role("telegram", "111", "member");
 
         let reg = registry_with(&[("search_web", "web")]);
         let approver = make(roles, &reg, "telegram", "111");
-        assert_eq!(decide(&approver, "search_web").await, ApprovalDecision::Denied);
+        assert_eq!(
+            decide(&approver, "search_web").await,
+            ApprovalDecision::Denied
+        );
     }
 
     #[tokio::test]
@@ -328,24 +386,33 @@ mod tests {
 
         let reg = registry_with(&[]);
         let approver = make(roles, &reg, "telegram", "111");
-        assert_eq!(decide(&approver, "any_tool").await, ApprovalDecision::Denied);
+        assert_eq!(
+            decide(&approver, "any_tool").await,
+            ApprovalDecision::Denied
+        );
     }
 
     #[tokio::test]
     async fn empty_allowed_toolsets_means_unrestricted() {
         let mut roles = RolesConfig::default();
-        roles.definitions.insert("admin".into(), RoleDefinition {
-            approval_mode: Some("auto".into()),
-            allowed_toolsets: vec![],
-            allowed_tools: vec![],
-            ..Default::default()
-        });
+        roles.definitions.insert(
+            "admin".into(),
+            RoleDefinition {
+                approval_mode: Some("auto".into()),
+                allowed_toolsets: vec![],
+                allowed_tools: vec![],
+                ..Default::default()
+            },
+        );
         roles.set_user_role("telegram", "111", "admin");
 
         let reg = registry_with(&[("bash", "terminal"), ("search_web", "web")]);
         let approver = make(roles, &reg, "telegram", "111");
 
         assert_eq!(decide(&approver, "bash").await, ApprovalDecision::Approved);
-        assert_eq!(decide(&approver, "search_web").await, ApprovalDecision::Approved);
+        assert_eq!(
+            decide(&approver, "search_web").await,
+            ApprovalDecision::Approved
+        );
     }
 }

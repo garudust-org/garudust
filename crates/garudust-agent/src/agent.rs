@@ -463,8 +463,17 @@ impl Agent {
         session_key: Option<&str>,
         user_id: &str,
     ) -> Result<AgentResult, AgentError> {
-        self.run_inner(task, approver, platform, None, None, hint, session_key, user_id)
-            .await
+        self.run_inner(
+            task,
+            approver,
+            platform,
+            None,
+            None,
+            hint,
+            session_key,
+            user_id,
+        )
+        .await
     }
 
     #[allow(clippy::too_many_arguments)]

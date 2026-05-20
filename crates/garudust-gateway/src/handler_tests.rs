@@ -34,8 +34,15 @@ mod tests {
     struct EchoTransport;
     #[async_trait]
     impl ProviderTransport for EchoTransport {
-        fn api_mode(&self) -> ApiMode { ApiMode::ChatCompletions }
-        async fn chat(&self, _m: &[Message], _c: &InferenceConfig, _t: &[ToolSchema]) -> Result<TransportResponse, TransportError> {
+        fn api_mode(&self) -> ApiMode {
+            ApiMode::ChatCompletions
+        }
+        async fn chat(
+            &self,
+            _m: &[Message],
+            _c: &InferenceConfig,
+            _t: &[ToolSchema],
+        ) -> Result<TransportResponse, TransportError> {
             Ok(TransportResponse {
                 content: vec![ContentPart::Text("ok".into())],
                 tool_calls: vec![],
@@ -43,18 +50,33 @@ mod tests {
                 stop_reason: StopReason::EndTurn,
             })
         }
-        async fn chat_stream(&self, _m: &[Message], _c: &InferenceConfig, _t: &[ToolSchema]) -> Result<StreamResult, TransportError> {
-            Ok(Box::pin(stream::iter(vec![Ok(StreamChunk::Done { usage: TokenUsage::default() })])))
+        async fn chat_stream(
+            &self,
+            _m: &[Message],
+            _c: &InferenceConfig,
+            _t: &[ToolSchema],
+        ) -> Result<StreamResult, TransportError> {
+            Ok(Box::pin(stream::iter(vec![Ok(StreamChunk::Done {
+                usage: TokenUsage::default(),
+            })])))
         }
     }
 
     struct NopMemory;
     #[async_trait]
     impl MemoryStore for NopMemory {
-        async fn read_memory(&self) -> Result<MemoryContent, AgentError> { Ok(MemoryContent::default()) }
-        async fn write_memory(&self, _: &MemoryContent) -> Result<(), AgentError> { Ok(()) }
-        async fn read_user_profile(&self) -> Result<String, AgentError> { Ok(String::new()) }
-        async fn write_user_profile(&self, _: &str) -> Result<(), AgentError> { Ok(()) }
+        async fn read_memory(&self) -> Result<MemoryContent, AgentError> {
+            Ok(MemoryContent::default())
+        }
+        async fn write_memory(&self, _: &MemoryContent) -> Result<(), AgentError> {
+            Ok(())
+        }
+        async fn read_user_profile(&self) -> Result<String, AgentError> {
+            Ok(String::new())
+        }
+        async fn write_user_profile(&self, _: &str) -> Result<(), AgentError> {
+            Ok(())
+        }
     }
 
     /// Captures every outbound message (channel_id → text).
@@ -65,7 +87,9 @@ mod tests {
 
     impl MockPlatform {
         fn new() -> Self {
-            Self { sent: Arc::new(Mutex::new(vec![])) }
+            Self {
+                sent: Arc::new(Mutex::new(vec![])),
+            }
         }
 
         async fn last_to(&self, chat_id: &str) -> Option<String> {
@@ -81,13 +105,33 @@ mod tests {
 
     #[async_trait]
     impl PlatformAdapter for MockPlatform {
-        fn name(&self) -> &'static str { "mock" }
-        async fn start(&self, _: Arc<dyn garudust_core::platform::MessageHandler>) -> Result<(), PlatformError> { Ok(()) }
-        async fn send_message(&self, channel: &ChannelId, msg: OutboundMessage) -> Result<(), PlatformError> {
-            self.sent.lock().await.push((channel.chat_id.clone(), msg.text));
+        fn name(&self) -> &'static str {
+            "mock"
+        }
+        async fn start(
+            &self,
+            _: Arc<dyn garudust_core::platform::MessageHandler>,
+        ) -> Result<(), PlatformError> {
             Ok(())
         }
-        async fn send_stream(&self, _: &ChannelId, _: Pin<Box<dyn Stream<Item = String> + Send>>) -> Result<(), PlatformError> { Ok(()) }
+        async fn send_message(
+            &self,
+            channel: &ChannelId,
+            msg: OutboundMessage,
+        ) -> Result<(), PlatformError> {
+            self.sent
+                .lock()
+                .await
+                .push((channel.chat_id.clone(), msg.text));
+            Ok(())
+        }
+        async fn send_stream(
+            &self,
+            _: &ChannelId,
+            _: Pin<Box<dyn Stream<Item = String> + Send>>,
+        ) -> Result<(), PlatformError> {
+            Ok(())
+        }
     }
 
     // ── Helper builders ──────────────────────────────────────────────────────
@@ -115,15 +159,24 @@ mod tests {
         let mut definitions = std::collections::HashMap::new();
         definitions.insert(
             "admin".into(),
-            RoleDefinition { approval_mode: Some("auto".into()), ..Default::default() },
+            RoleDefinition {
+                approval_mode: Some("auto".into()),
+                ..Default::default()
+            },
         );
         definitions.insert(
             "member".into(),
-            RoleDefinition { approval_mode: Some("auto".into()), ..Default::default() },
+            RoleDefinition {
+                approval_mode: Some("auto".into()),
+                ..Default::default()
+            },
         );
         AgentConfig {
             home_dir: tmp.to_path_buf(),
-            roles: RolesConfig { definitions, ..Default::default() },
+            roles: RolesConfig {
+                definitions,
+                ..Default::default()
+            },
             ..Default::default()
         }
     }
@@ -155,26 +208,6 @@ mod tests {
     // ── Tests ────────────────────────────────────────────────────────────────
 
     #[tokio::test]
-    async fn bootstrap_first_dm_becomes_admin() {
-        let tmp = tmpdir();
-        let platform = Arc::new(MockPlatform::new());
-        let cfg = make_config(tmp.path());
-        let handler = make_handler(platform.clone(), cfg);
-
-        handler.handle(dm("alice", "สวัสดี")).await.unwrap();
-
-        let msg = platform.last_to("alice").await.unwrap_or_default();
-        assert!(
-            msg.contains("admin") || msg.contains("🎉"),
-            "ควรได้รับแจ้ง bootstrap admin แต่ได้: {msg}"
-        );
-        assert!(
-            handler.live_roles.read().unwrap().has_any_admin(),
-            "live_roles ควร has_any_admin = true"
-        );
-    }
-
-    #[tokio::test]
     async fn whoami_shows_role() {
         let tmp = tmpdir();
         let platform = Arc::new(MockPlatform::new());
@@ -186,40 +219,46 @@ mod tests {
 
         let msg = platform.last_to("alice").await.unwrap_or_default();
         assert!(msg.contains("admin"), "whoami ควรแสดง role: {msg}");
-        assert!(msg.contains("mock:alice"), "whoami ควรแสดง platform:id: {msg}");
+        assert!(
+            msg.contains("mock:alice"),
+            "whoami ควรแสดง platform:id: {msg}"
+        );
     }
 
     #[tokio::test]
-    async fn unknown_user_gets_lowest_role_automatically() {
+    async fn unknown_user_uses_default_role_without_writing_config() {
         let tmp = tmpdir();
         let platform = Arc::new(MockPlatform::new());
         let mut cfg = make_config(tmp.path());
-        // pre-set an admin so bootstrap doesn't fire
-        cfg.roles.set_user_role("mock", "admin_user", "admin");
+        cfg.roles.default_role = Some("member".into());
         let handler = make_handler(platform.clone(), cfg);
 
-        // "stranger" sends a message → should get auto-assigned the lowest role
         handler.handle(dm("stranger", "ทดสอบ")).await.unwrap();
 
-        // live_roles should now have stranger assigned (not blocked/pending)
-        let role = handler.live_roles.read().unwrap().lookup_role("mock", "stranger", None);
-        assert!(role.is_some(), "ผู้ใช้ใหม่ควรได้รับ role อัตโนมัติ ไม่ใช่ถูก block");
+        // live_roles must NOT have written stranger — default_role covers them
+        let role = handler
+            .live_roles
+            .read()
+            .unwrap()
+            .lookup_role("mock", "stranger", None);
+        assert!(
+            role.is_none(),
+            "ไม่ควรเขียน config เมื่อ default_role ครอบคลุมแล้ว"
+        );
     }
 
     #[tokio::test]
-    async fn whoami_shows_auto_assigned_role_after_first_message() {
+    async fn whoami_shows_default_role_for_unknown_user() {
         let tmp = tmpdir();
         let platform = Arc::new(MockPlatform::new());
         let mut cfg = make_config(tmp.path());
-        cfg.roles.set_user_role("mock", "admin_user", "admin");
+        cfg.roles.default_role = Some("member".into());
         let handler = make_handler(platform.clone(), cfg);
 
-        // First message triggers auto-assign, then /whoami shows the assigned role
-        handler.handle(dm("bob", "สวัสดี")).await.unwrap();
         handler.handle(dm("bob", "/whoami")).await.unwrap();
 
         let msg = platform.last_to("bob").await.unwrap_or_default();
-        assert!(!msg.contains("pending"), "หลัง auto-assign ไม่ควรแสดง pending: {msg}");
+        assert!(msg.contains("member"), "whoami ควรแสดง default_role: {msg}");
         assert!(msg.contains("mock:bob"), "ควรแสดง id: {msg}");
     }
 
@@ -269,7 +308,11 @@ mod tests {
             .unwrap();
 
         // verify live_roles updated immediately (no restart needed)
-        let role = handler.live_roles.read().unwrap().lookup_role("mock", "bob", None);
+        let role = handler
+            .live_roles
+            .read()
+            .unwrap()
+            .lookup_role("mock", "bob", None);
         assert_eq!(role, Some("member".into()), "live_roles ควร update ทันที");
 
         // verify alice received confirmation
@@ -287,13 +330,23 @@ mod tests {
         let handler = make_handler(platform.clone(), cfg);
 
         // alice denies (revokes) bob
-        handler.handle(dm("alice", "/role deny mock:bob")).await.unwrap();
+        handler
+            .handle(dm("alice", "/role deny mock:bob"))
+            .await
+            .unwrap();
 
-        let role = handler.live_roles.read().unwrap().lookup_role("mock", "bob", None);
+        let role = handler
+            .live_roles
+            .read()
+            .unwrap()
+            .lookup_role("mock", "bob", None);
         assert_eq!(role, None, "/role deny ควรเพิกถอน role ออกจาก live_roles");
 
         let msg = platform.last_to("alice").await.unwrap_or_default();
-        assert!(msg.contains("bob") || msg.contains("เพิกถอน"), "ควรได้ confirm: {msg}");
+        assert!(
+            msg.contains("bob") || msg.contains("เพิกถอน"),
+            "ควรได้ confirm: {msg}"
+        );
     }
 
     #[tokio::test]
@@ -306,13 +359,23 @@ mod tests {
         let handler = make_handler(platform.clone(), cfg);
 
         // alice removes bob
-        handler.handle(dm("alice", "/role remove mock:bob")).await.unwrap();
+        handler
+            .handle(dm("alice", "/role remove mock:bob"))
+            .await
+            .unwrap();
 
-        let role = handler.live_roles.read().unwrap().lookup_role("mock", "bob", None);
+        let role = handler
+            .live_roles
+            .read()
+            .unwrap()
+            .lookup_role("mock", "bob", None);
         assert_eq!(role, None, "หลัง remove ไม่ควรมี role เหลือ");
 
         let msg = platform.last_to("alice").await.unwrap_or_default();
-        assert!(msg.contains("bob") || msg.contains("ลบ"), "ควรได้ confirm remove: {msg}");
+        assert!(
+            msg.contains("bob") || msg.contains("ลบ"),
+            "ควรได้ confirm remove: {msg}"
+        );
     }
 
     #[tokio::test]
@@ -329,7 +392,15 @@ mod tests {
             .await
             .unwrap();
 
-        let role = handler.live_roles.read().unwrap().lookup_role("mock", "carol", None);
-        assert_eq!(role, Some("member".into()), "/role add ควร update live_roles");
+        let role = handler
+            .live_roles
+            .read()
+            .unwrap()
+            .lookup_role("mock", "carol", None);
+        assert_eq!(
+            role,
+            Some("member".into()),
+            "/role add ควร update live_roles"
+        );
     }
 }

@@ -31,9 +31,6 @@ pub struct GatewayHandler {
     /// Live, in-memory roles config — updated immediately on every /role change
     /// so the new permissions take effect without a restart.
     pub(crate) live_roles: Arc<RwLock<RolesConfig>>,
-    /// Mutex that serialises the bootstrap write so two simultaneous DMs cannot
-    /// both see "no admin" and both get promoted.
-    bootstrap_lock: Arc<tokio::sync::RwLock<()>>,
 }
 
 impl GatewayHandler {
@@ -56,7 +53,6 @@ impl GatewayHandler {
             pending_docs: Arc::new(DashMap::new()),
             image_gates: Arc::new(DashMap::new()),
             live_roles,
-            bootstrap_lock: Arc::new(tokio::sync::RwLock::new(())),
         }
     }
 
@@ -89,9 +85,7 @@ impl GatewayHandler {
                     .or_else(|| roles.default_role.clone())
                     .unwrap_or_else(|| "pending".to_string())
             };
-            let reply = OutboundMessage::text(format!(
-                "id: {platform}:{user_id}\nrole: {role}"
-            ));
+            let reply = OutboundMessage::text(format!("id: {platform}:{user_id}\nrole: {role}"));
             let _ = self.platform.send_message(&msg.channel, reply).await;
             return Ok(true);
         }
@@ -186,7 +180,9 @@ impl GatewayHandler {
                     .platform
                     .send_message(
                         &msg.channel,
-                        OutboundMessage::text("รูปแบบ ID ไม่ถูกต้อง ต้องเป็น platform:id เช่น telegram:123456"),
+                        OutboundMessage::text(
+                            "รูปแบบ ID ไม่ถูกต้อง ต้องเป็น platform:id เช่น telegram:123456",
+                        ),
                     )
                     .await;
             }
@@ -306,38 +302,6 @@ impl GatewayHandler {
 
     /// Bootstrap: if no admin exists yet and this is a DM, make the sender admin.
     /// Uses a write-lock to prevent two simultaneous DMs from both getting admin.
-    async fn maybe_bootstrap_admin(&self, msg: &InboundMessage) -> bool {
-        if msg.is_group {
-            return false;
-        }
-        // Fast path without lock: admin already exists.
-        if self.live_roles.read().unwrap().has_any_admin() {
-            return false;
-        }
-        let _guard = self.bootstrap_lock.write().await;
-        // Re-check under lock (another task may have written by now).
-        if self.live_roles.read().unwrap().has_any_admin() {
-            return false;
-        }
-        let platform = &msg.channel.platform;
-        let user_id = &msg.user_id;
-        if self.save_role(platform, user_id, "admin").is_ok() {
-            tracing::info!(platform, user_id, "roles: bootstrap — first DM user promoted to admin");
-            let _ = self
-                .platform
-                .send_message(
-                    &msg.channel,
-                    OutboundMessage::text(
-                        "🎉 คุณได้รับสิทธิ์ admin เนื่องจากเป็นผู้ใช้คนแรก\n\
-                         ใช้ /role approve <platform:id> <role> เพื่อเพิ่มผู้ใช้คนอื่น",
-                    ),
-                )
-                .await;
-            return true;
-        }
-        false
-    }
-
     /// On startup, re-run any agent tasks that were interrupted by a server crash or restart.
     /// Tasks are stored in SQLite before the agent run begins and deleted on completion.
     pub fn resume_pending(&self) {
@@ -580,9 +544,6 @@ impl MessageHandler for GatewayHandler {
             return Ok(());
         }
 
-        // Bootstrap: first DM user becomes admin automatically (no-op if admin exists).
-        self.maybe_bootstrap_admin(&msg).await;
-
         // Per-user session isolation — only for non-group (DM) chats.
         // In group chats every member shares one session so that images sent by
         // any member are visible to everyone who later asks about them.
@@ -600,29 +561,6 @@ impl MessageHandler for GatewayHandler {
         // (including the mention gate) so they always work.
         if self.handle_role_command(&msg).await? {
             return Ok(());
-        }
-
-        // Auto-assign: new user with no role gets the lowest defined role immediately.
-        {
-            let (has_roles_configured, needs_assign) = {
-                let roles = self.live_roles.read().unwrap();
-                let configured = !roles.definitions.is_empty() || roles.default_role.is_some();
-                let has_role = roles.lookup_role(&msg.channel.platform, &msg.user_id, None).is_some();
-                let effective = has_role || roles.default_role.is_some();
-                (configured, configured && !effective)
-            };
-            if has_roles_configured && needs_assign {
-                let lowest = self.live_roles.read().unwrap().effective_default_role();
-                if let Some(role) = lowest {
-                    let _ = self.save_role(&msg.channel.platform, &msg.user_id, &role);
-                    tracing::info!(
-                        platform = %msg.channel.platform,
-                        user_id  = %msg.user_id,
-                        role     = %role,
-                        "roles: auto-assigned default role to new user"
-                    );
-                }
-            }
         }
 
         // Image-only or doc-only messages bypass the mention gate.
@@ -867,7 +805,14 @@ impl MessageHandler for GatewayHandler {
 
         tokio::spawn(async move {
             match agent
-                .run_for_user(&task, approver, &platform_name, None, Some(&session_key), &user_id)
+                .run_for_user(
+                    &task,
+                    approver,
+                    &platform_name,
+                    None,
+                    Some(&session_key),
+                    &user_id,
+                )
                 .await
             {
                 Ok(result) => {

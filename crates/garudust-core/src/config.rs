@@ -683,14 +683,14 @@ pub struct RolesConfig {
 }
 
 impl RolesConfig {
-    /// Returns true if any user has the "admin" role on any platform.
-    pub fn has_any_admin(&self) -> bool {
-        self.users.values().any(|m| m.values().any(|r| r == "admin"))
-    }
-
     /// Look up the role for a (platform, user_id) pair.
     /// For Telegram, also checks @username if numeric ID does not match.
-    pub fn lookup_role(&self, platform: &str, user_id: &str, username: Option<&str>) -> Option<String> {
+    pub fn lookup_role(
+        &self,
+        platform: &str,
+        user_id: &str,
+        username: Option<&str>,
+    ) -> Option<String> {
         let map = self.users.get(platform)?;
         if let Some(role) = map.get(user_id) {
             return Some(role.clone());
@@ -724,30 +724,6 @@ impl RolesConfig {
             return map.remove(user_id).is_some();
         }
         false
-    }
-
-    /// Returns the name of the most restricted role defined.
-    ///
-    /// Restriction rank: `deny` < `smart`/`constitutional` < `auto`.
-    /// Alphabetical order breaks ties so the result is deterministic.
-    pub fn lowest_role_name(&self) -> Option<String> {
-        self.definitions
-            .iter()
-            .min_by_key(|(name, def)| {
-                let rank = match def.approval_mode.as_deref().unwrap_or("smart") {
-                    "deny" => 0u8,
-                    "auto" => 2,
-                    _ => 1,
-                };
-                (rank, name.as_str())
-            })
-            .map(|(name, _)| name.clone())
-    }
-
-    /// Effective default role for new users.
-    /// Uses the explicit `default_role` if set; falls back to `lowest_role_name`.
-    pub fn effective_default_role(&self) -> Option<String> {
-        self.default_role.clone().or_else(|| self.lowest_role_name())
     }
 }
 
@@ -1252,23 +1228,6 @@ mod tests {
     }
 
     #[test]
-    fn roles_has_any_admin_false_when_empty() {
-        assert!(!RolesConfig::default().has_any_admin());
-    }
-
-    #[test]
-    fn roles_has_any_admin_true() {
-        assert!(roles_with_admin().has_any_admin());
-    }
-
-    #[test]
-    fn roles_has_any_admin_member_not_counted() {
-        let mut r = RolesConfig::default();
-        r.set_user_role("telegram", "222", "member");
-        assert!(!r.has_any_admin());
-    }
-
-    #[test]
     fn roles_lookup_by_id() {
         let r = roles_with_admin();
         assert_eq!(r.lookup_role("telegram", "111", None), Some("admin".into()));
@@ -1335,7 +1294,7 @@ mod tests {
     fn roles_remove_user_returns_true_when_found() {
         let mut r = roles_with_admin();
         assert!(r.remove_user("telegram", "111"));
-        assert!(!r.has_any_admin());
+        assert!(r.lookup_role("telegram", "111", None).is_none());
     }
 
     #[test]
