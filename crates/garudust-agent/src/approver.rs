@@ -65,6 +65,20 @@ pub struct RolesApprover {
 }
 
 impl RolesApprover {
+    /// Wrap an existing inner approver with the tool-filtering rules from a role definition.
+    /// Used when the inner approver is built externally (e.g. `InteractiveApprover`).
+    pub fn with_inner(
+        inner: Arc<dyn CommandApprover>,
+        def: &RoleDefinition,
+        registry: &garudust_tools::ToolRegistry,
+    ) -> Arc<dyn CommandApprover> {
+        Arc::new(RolesApprover {
+            inner,
+            allowed_tools: expand_allowed_tools(def, registry),
+            denied_tools: def.denied_tools.iter().cloned().collect(),
+        })
+    }
+
     /// Build a per-request approver for the given (platform, user_id) pair.
     ///
     /// `roles` is the live in-memory `RolesConfig` (read from the RwLock before calling).

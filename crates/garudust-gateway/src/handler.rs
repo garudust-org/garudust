@@ -1,4 +1,5 @@
 use std::sync::{Arc, RwLock};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use dashmap::DashMap;
@@ -10,10 +11,9 @@ use garudust_core::{
     types::{ChannelId, DocAttachment, ImageAttachment, InboundMessage, OutboundMessage},
 };
 use garudust_memory::SessionDb;
+use tokio::sync::{oneshot, Mutex};
 
-use tokio::sync::Mutex;
-
-use crate::sessions::SessionRegistry;
+use crate::{interactive::InteractiveApprover, sessions::SessionRegistry};
 
 /// Routes inbound platform messages to an agent and sends the reply back.
 pub struct GatewayHandler {
@@ -31,6 +31,9 @@ pub struct GatewayHandler {
     /// Live, in-memory roles config — updated immediately on every /role change
     /// so the new permissions take effect without a restart.
     pub(crate) live_roles: Arc<RwLock<RolesConfig>>,
+    /// Pending interactive tool-approval requests keyed by short ID.
+    /// Populated by InteractiveApprover; resolved by /approve and /deny commands.
+    pending_approvals: Arc<DashMap<String, oneshot::Sender<bool>>>,
 }
 
 impl GatewayHandler {
@@ -53,17 +56,38 @@ impl GatewayHandler {
             pending_docs: Arc::new(DashMap::new()),
             image_gates: Arc::new(DashMap::new()),
             live_roles,
+            pending_approvals: Arc::new(DashMap::new()),
         }
     }
 
     // ── Role helpers ─────────────────────────────────────────────────────────
 
     /// Build a per-request approver based on the sender's configured role.
-    fn approver_for(&self, platform: &str, user_id: &str) -> Arc<dyn CommandApprover> {
+    /// When the role's approval_mode is "interactive", wraps an InteractiveApprover
+    /// so the user is asked for confirmation before each tool call.
+    fn approver_for(&self, msg: &InboundMessage) -> Arc<dyn CommandApprover> {
         let roles = self.live_roles.read().unwrap();
+        let role_name = roles
+            .lookup_role(&msg.channel.platform, &msg.user_id, None)
+            .or_else(|| roles.default_role.clone());
+
+        if let Some(rn) = &role_name {
+            if let Some(def) = roles.definitions.get(rn) {
+                if def.approval_mode.as_deref() == Some("interactive") {
+                    let inner = Arc::new(InteractiveApprover {
+                        platform: self.platform.clone(),
+                        channel: msg.channel.clone(),
+                        pending: self.pending_approvals.clone(),
+                        timeout: Duration::from_secs(60),
+                    });
+                    return RolesApprover::with_inner(inner, def, self.agent.tools());
+                }
+            }
+        }
+
         RolesApprover::for_user(
-            platform,
-            user_id,
+            &msg.channel.platform,
+            &msg.user_id,
             None,
             &roles,
             &self.config.security.approval_mode,
@@ -86,6 +110,32 @@ impl GatewayHandler {
                     .unwrap_or_else(|| "pending".to_string())
             };
             let reply = OutboundMessage::text(format!("id: {platform}:{user_id}\nrole: {role}"));
+            let _ = self.platform.send_message(&msg.channel, reply).await;
+            return Ok(true);
+        }
+
+        // /approve <id> — resolve a pending interactive tool approval
+        if let Some(id) = trimmed.strip_prefix("/approve ") {
+            let id = id.trim();
+            let reply = if let Some((_, tx)) = self.pending_approvals.remove(id) {
+                let _ = tx.send(true);
+                OutboundMessage::text("✅ อนุมัติแล้ว")
+            } else {
+                OutboundMessage::text("ไม่พบ approval request นี้ (หมดเวลาหรือไม่มีอยู่)")
+            };
+            let _ = self.platform.send_message(&msg.channel, reply).await;
+            return Ok(true);
+        }
+
+        // /deny <id> — reject a pending interactive tool approval
+        if let Some(id) = trimmed.strip_prefix("/deny ") {
+            let id = id.trim();
+            let reply = if let Some((_, tx)) = self.pending_approvals.remove(id) {
+                let _ = tx.send(false);
+                OutboundMessage::text("❌ ปฏิเสธแล้ว")
+            } else {
+                OutboundMessage::text("ไม่พบ approval request นี้ (หมดเวลาหรือไม่มีอยู่)")
+            };
             let _ = self.platform.send_message(&msg.channel, reply).await;
             return Ok(true);
         }
@@ -583,7 +633,7 @@ impl MessageHandler for GatewayHandler {
                     &msg.session_key,
                     &msg.user_name,
                     &msg.channel,
-                    self.approver_for(&msg.channel.platform, &msg.user_id),
+                    self.approver_for(&msg),
                 )
                 .await;
             }
@@ -687,7 +737,7 @@ impl MessageHandler for GatewayHandler {
         let channel = msg.channel.clone();
         let agent = self.agent.clone();
         let platform = self.platform.clone();
-        let approver = self.approver_for(&msg.channel.platform, &msg.user_id);
+        let approver = self.approver_for(&msg);
         let platform_name = msg.channel.platform.clone();
         let user_id = msg.user_id.clone();
         let session_key = msg.session_key.clone();
