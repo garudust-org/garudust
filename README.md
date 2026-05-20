@@ -315,6 +315,32 @@ platform:
   bot_username: ""
   session_per_user: true
 
+# ── Role-based access control ─────────────────────────────────────────────────
+# Controls who can message the bot and what tools each user may run.
+# Users not listed under roles.users fall back to default_role.
+# Manage at runtime with /role commands (admin only).
+roles:
+  default_role: member        # role for users not explicitly assigned
+
+  definitions:
+    admin:
+      approval_mode: auto     # all tools auto-approved
+    member:
+      approval_mode: smart    # tools audited by constitutional policy
+      allowed_toolsets: [web, files, memory]
+      denied_tools: [bash]
+    readonly:
+      approval_mode: deny     # no tool execution
+
+  users:
+    telegram:
+      "123456789": admin
+      "@somchai": member
+    discord:
+      "987654321": member
+    line:
+      "Uxxxxxxxxx": readonly
+
 # ── Webhook platforms ────────────────────────────────────────────────────────
 platforms:
   webhook:
@@ -534,6 +560,49 @@ You: always format JSON with 2-space indent
 Agent: Got it — saving to memory.
 # Next session: already applied, no reminder needed
 ```
+
+---
+
+## Access Control
+
+Garudust supports role-based access control (RBAC) via `roles:` in `config.yaml`.
+Each user is assigned a role; the role determines which tools they may run and
+how those tools are approved.
+
+### Role definitions
+
+| Field | Values | Description |
+|---|---|---|
+| `approval_mode` | `auto` / `smart` / `deny` | How tool calls are approved for this role |
+| `allowed_toolsets` | list of toolset names | Restrict to these toolsets (empty = unrestricted) |
+| `allowed_tools` | list of tool names | Additional individual tools to allow |
+| `denied_tools` | list of tool names | Tools always blocked, regardless of toolset |
+
+`approval_mode` values:
+
+- **`auto`** — every tool call is approved immediately
+- **`smart`** — constitutional policy audits the call (default global behaviour)
+- **`deny`** — all tool calls are blocked; the bot still replies to messages
+
+### User assignment
+
+Users are keyed by platform and ID under `roles.users`.
+Telegram supports both numeric ID and `@username`.
+Users not found in the map use `default_role`; if no `default_role` is set,
+the global `security.approval_mode` applies.
+
+### Runtime commands (admin only)
+
+| Command | Description |
+|---|---|
+| `/whoami` | Show your current platform ID and role |
+| `/role list` | List all assigned users on the current platform |
+| `/role add <platform:id> <role>` | Assign a role directly |
+| `/role approve <platform:id> <role>` | Assign and notify the user |
+| `/role remove <platform:id>` | Remove a user's role |
+| `/role deny <platform:id>` | Revoke access (same as remove) |
+
+Admin must be set manually in `config.yaml` — there is no automatic promotion.
 
 ---
 
