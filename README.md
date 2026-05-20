@@ -591,18 +591,51 @@ Telegram supports both numeric ID and `@username`.
 Users not found in the map use `default_role`; if no `default_role` is set,
 the global `security.approval_mode` applies.
 
-### Runtime commands (admin only)
+### Bootstrap
 
-| Command | Description |
-|---|---|
-| `/whoami` | Show your current platform ID and role |
-| `/role list` | List all assigned users on the current platform |
-| `/role add <platform:id> <role>` | Assign a role directly |
-| `/role approve <platform:id> <role>` | Assign and notify the user |
-| `/role remove <platform:id>` | Remove a user's role |
-| `/role deny <platform:id>` | Revoke access (same as remove) |
+When `roles:` is configured with an `admin` role definition but no users are
+assigned yet, the **first person to send a DM** is automatically promoted to
+`admin`. This means you can deploy with an empty `roles.users` map and claim
+ownership on first contact — no need to look up your platform ID and edit
+`config.yaml` manually beforehand.
 
-Admin must be set manually in `config.yaml` — there is no automatic promotion.
+### Unknown-user gate
+
+When roles are active and an incoming user has no assigned role and no
+`default_role` applies, the agent does not silently ignore them. Instead it
+replies with a prompt explaining that access is restricted and instructing them
+to type `/join` to request access.
+
+### Self-registration flow
+
+There are two ways a new user can gain access:
+
+- **`/join` (no code)** — sends a notification to every admin on the same
+  platform. The notification includes a pre-built `/role approve <platform:id>
+  <role>` command that the admin can simply reply with to grant access.
+- **`/join <code>`** — redeems an invite code for instant role assignment,
+  with no admin interaction required.
+
+### Invite codes
+
+An admin generates an invite code with `/invite <role> [max_uses]`. Codes are
+single-use by default and expire after 24 hours. They can be shared out-of-band
+(e.g. a LINE group, email, or any other channel) and work regardless of which
+platform the recipient uses to redeem them.
+
+### Runtime commands
+
+| Command | Who | Description |
+|---|---|---|
+| `/whoami` | everyone | Show your current platform ID and role |
+| `/join` | unregistered users | Request access — notifies admins with a pre-built approve command |
+| `/join <code>` | unregistered users | Redeem an invite code for instant role assignment |
+| `/role list` | admin | List all assigned users on the current platform |
+| `/role add <platform:id> <role>` | admin | Assign a role directly |
+| `/role approve <platform:id> <role>` | admin | Assign a role and notify the user |
+| `/role remove <platform:id>` | admin | Remove a user's role |
+| `/role deny <platform:id>` | admin | Revoke access (same as remove) |
+| `/invite <role> [max_uses]` | admin | Generate a shareable invite code (1-use, 24 h expiry by default) |
 
 ---
 
