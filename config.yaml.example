@@ -201,6 +201,52 @@ security:
   # Allowed root directories for write_file. Defaults to cwd.
   # allowed_write_paths: [/tmp/agent-output]
 
+# ── Role-based access control ─────────────────────────────────────────────────
+# Assign each chat user a role that controls approval_mode and which tools
+# they may use. Roles override the global security.approval_mode above.
+#
+# Bootstrap: if an `admin` role is defined but no users are assigned, the first
+# person to DM the bot is auto-promoted to admin — no manual ID lookup needed.
+#
+# Unknown users see an access-restricted prompt and can:
+#   /join              — notify admins to approve them
+#   /join <code>       — redeem an invite code for instant role assignment
+#
+# Admin runtime commands:
+#   /whoami, /role list, /role add|approve|remove|deny <platform:id> [role],
+#   /invite <role> [max_uses]
+
+# roles:
+#   default_role: ~              # role for unknown users; ~ = require approval
+#
+#   definitions:
+#     admin:
+#       approval_mode: auto      # all tools auto-approved
+#     member:
+#       approval_mode: smart     # constitutional policy audits calls
+#       allowed_toolsets: [web, files, memory]
+#       denied_tools: [terminal]
+#     readonly:
+#       approval_mode: deny      # bot replies but runs no tools
+#       allowed_toolsets: [web]
+#
+#   users:
+#     telegram:
+#       "123456789": admin
+#       "@somchai": member
+#     discord:
+#       "987654321": member
+#     line:
+#       "Uxxxxxxxxx": readonly
+#
+#   # Active invite codes (normally managed via /invite, edit only to revoke).
+#   # invites:
+#   #   ABC123:
+#   #     role: member
+#   #     max_uses: 1            # 0 = unlimited
+#   #     uses: 0
+#   #     expires_at: 1735689600 # unix seconds; omit for no expiry
+
 # ── Platform access controls ──────────────────────────────────────────────────
 
 # platform:

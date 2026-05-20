@@ -42,6 +42,28 @@ A self-improving AI agent runtime written in Rust — delivered as a single ~10 
 
 ---
 
+## Contents
+
+- [Why Garudust?](#why-garudust)
+- [Supported Platforms](#supported-platforms)
+- [Quick Start](#quick-start)
+- [Architecture](#architecture)
+- [Configuration](#configuration)
+- [Platform Adapters](#platform-adapters)
+- [LLM Providers](#llm-providers)
+- [Tools](#tools)
+- [RAG (Document Search)](#rag-document-search)
+- [Hub](#hub)
+- [Memory](#memory)
+- [Access Control](#access-control)
+- [Security Notes](#security-notes)
+- [Contributing](#contributing)
+- [License](#license)
+- [Contributors](#contributors)
+- [Star History](#star-history)
+
+---
+
 ## Why Garudust?
 
 - **~10 MB binary, < 20 ms cold start** — statically linked, zero runtime dependencies
