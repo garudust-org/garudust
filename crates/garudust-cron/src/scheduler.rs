@@ -32,8 +32,9 @@ impl CronScheduler {
         timezone: Option<&str>,
     ) -> anyhow::Result<Self> {
         let tz = match timezone {
-            Some(s) => Tz::from_str(s)
-                .map_err(|_| anyhow::anyhow!("unknown timezone: '{s}' — use an IANA name like 'Asia/Bangkok'"))?,
+            Some(s) => Tz::from_str(s).map_err(|_| {
+                anyhow::anyhow!("unknown timezone: '{s}' — use an IANA name like 'Asia/Bangkok'")
+            })?,
             None => Tz::UTC,
         };
         Ok(Self {
