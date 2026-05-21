@@ -289,6 +289,9 @@ security:
 # ── Cron ──────────────────────────────────────────────────────────────────────
 
 # cron:
+#   # IANA timezone for all schedules. Defaults to UTC when omitted.
+#   timezone: "Asia/Bangkok"
+#
 #   jobs:
 #     # 6-field syntax: sec min hour dom month dow
 #     - schedule: "0 0 9 * * 1-5"   # weekdays at 09:00

@@ -627,7 +627,9 @@ async fn main() -> Result<()> {
 
     // Always create a scheduler so the cron_create/cron_list/cron_delete tools work
     // even when no static jobs are configured.
-    let scheduler = Arc::new(CronScheduler::new(agent.load_full(), approver.clone()).await?);
+    let scheduler = Arc::new(
+        CronScheduler::new(agent.load_full(), approver.clone(), config.cron.timezone.as_deref()).await?,
+    );
 
     for (expr, task) in &cron_jobs {
         scheduler.add_job(expr, task.clone()).await?;

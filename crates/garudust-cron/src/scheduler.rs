@@ -1,6 +1,8 @@
+use std::str::FromStr;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use chrono_tz::Tz;
 use garudust_agent::Agent;
 use garudust_core::{cron::CronJobInfo, tool::CommandApprover};
 use tokio::sync::Mutex;
@@ -20,25 +22,34 @@ pub struct CronScheduler {
     agent: Arc<Agent>,
     approver: Arc<dyn CommandApprover>,
     jobs: Mutex<Vec<CronJobEntry>>,
+    timezone: Tz,
 }
 
 impl CronScheduler {
     pub async fn new(
         agent: Arc<Agent>,
         approver: Arc<dyn CommandApprover>,
+        timezone: Option<&str>,
     ) -> anyhow::Result<Self> {
+        let tz = match timezone {
+            Some(s) => Tz::from_str(s)
+                .map_err(|_| anyhow::anyhow!("unknown timezone: '{s}' — use an IANA name like 'Asia/Bangkok'"))?,
+            None => Tz::UTC,
+        };
         Ok(Self {
             inner: JobScheduler::new().await?,
             agent,
             approver,
             jobs: Mutex::new(Vec::new()),
+            timezone: tz,
         })
     }
 
     pub async fn add_job(&self, cron_expr: &str, task: String) -> anyhow::Result<()> {
         let agent = self.agent.clone();
         let approver = self.approver.clone();
-        let job = Job::new_async(cron_expr, move |_uuid, _lock| {
+        let tz = self.timezone;
+        let job = Job::new_async_tz(cron_expr, tz, move |_uuid, _lock| {
             let agent = agent.clone();
             let approver = approver.clone();
             let task = task.clone();
@@ -70,7 +81,8 @@ impl CronScheduler {
         F: Fn() -> Fut + Send + Sync + Clone + 'static,
         Fut: std::future::Future<Output = ()> + Send + 'static,
     {
-        let job = Job::new_async(cron_expr, move |_, _| {
+        let tz = self.timezone;
+        let job = Job::new_async_tz(cron_expr, tz, move |_, _| {
             let fut = f();
             Box::pin(fut)
         })?;
@@ -94,7 +106,8 @@ impl garudust_core::cron::CronManager for CronScheduler {
         let agent = self.agent.clone();
         let approver = self.approver.clone();
         let task_str = task.to_string();
-        let job = Job::new_async(schedule, move |_uuid, _lock| {
+        let tz = self.timezone;
+        let job = Job::new_async_tz(schedule, tz, move |_uuid, _lock| {
             let agent = agent.clone();
             let approver = approver.clone();
             let task = task_str.clone();

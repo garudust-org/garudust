@@ -889,6 +889,10 @@ pub struct CronConfig {
     /// Recurring agent tasks.
     #[serde(default)]
     pub jobs: Vec<CronJob>,
+    /// IANA timezone name applied to all cron schedules (e.g. `"Asia/Bangkok"`).
+    /// Defaults to UTC when absent.
+    #[serde(default)]
+    pub timezone: Option<String>,
     /// Cron expression for automatic memory consolidation. `None` = disabled.
     #[serde(default)]
     pub memory_consolidation: Option<String>,
