@@ -367,6 +367,8 @@ server:
 
 # ── Cron jobs ─────────────────────────────────────────────────────────────────
 cron:
+  # ชื่อ timezone ตามมาตรฐาน IANA ใช้กับทุก schedule (ค่าเริ่มต้นคือ UTC)
+  timezone: "Asia/Bangkok"
   # 6-field syntax: sec min hour dom month dow
   memory_consolidation: "0 0 3 * * *"   # housekeeping memory ทุกคืน
   memory_expiry: "0 0 4 * * 0"          # ลบ memory ที่หมดอายุรายสัปดาห์

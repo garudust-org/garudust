@@ -367,6 +367,8 @@ server:
 
 # ── 定时任务 ──────────────────────────────────────────────────────────────────
 cron:
+  # IANA 时区名称，应用于所有调度。省略时默认为 UTC。
+  timezone: "Asia/Bangkok"
   # 6-field syntax: sec min hour dom month dow
   memory_consolidation: "0 0 3 * * *"   # 每晚自动整理记忆
   memory_expiry: "0 0 4 * * 0"          # 每周清理过期记忆

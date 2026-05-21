@@ -406,6 +406,8 @@ server:
 
 # ── Cron jobs ────────────────────────────────────────────────────────────────
 cron:
+  # IANA timezone applied to all schedules. Defaults to UTC when omitted.
+  timezone: "Asia/Bangkok"
   # 6-field syntax: sec min hour dom month dow
   memory_consolidation: "0 0 3 * * *"   # nightly memory housekeeping
   memory_expiry: "0 0 4 * * 0"          # weekly expiry sweep
