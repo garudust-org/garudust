@@ -290,14 +290,15 @@ security:
 
 # cron:
 #   jobs:
-#     - schedule: "0 9 * * 1-5"   # weekdays at 09:00
+#     # 6-field syntax: sec min hour dom month dow
+#     - schedule: "0 0 9 * * 1-5"   # weekdays at 09:00
 #       task: "Write a morning briefing and save it to ~/briefing.md"
 #
-#     - schedule: "0 18 * * 5"    # Fridays at 18:00
+#     - schedule: "0 0 18 * * 5"    # Fridays at 18:00
 #       task: "Review this week's work and update the project memory"
 #
 #   # Consolidate and deduplicate memory entries on a schedule.
-#   memory_consolidation: "0 3 * * *"   # daily at 03:00
+#   memory_consolidation: "0 0 3 * * *"   # daily at 03:00
 #
 #   # Expire stale memory entries (respects memory_expiry settings above).
-#   memory_expiry: "0 4 * * 0"          # weekly on Sunday at 04:00
+#   memory_expiry: "0 0 4 * * 0"          # weekly on Sunday at 04:00

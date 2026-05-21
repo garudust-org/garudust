@@ -204,7 +204,7 @@ garudust-core — 共享类型 · 配置 · 特征 · 定价（被以上所有 c
 
 **Platforms** — `garudust-platforms` 为各消息服务（Telegram、Discord、Slack、LINE、Matrix、WhatsApp、Webhook）提供 `PlatformAdapter` 实现。仅供服务端使用，CLI 无平台层。
 
-**Cron** — `garudust-cron` 按 cron 时间表运行智能体任务（格式：`"0 9 * * *=早间简报"`）。由服务端使用，用于无需人工介入的自主定时运行。
+**Cron** — `garudust-cron` 按 cron 时间表运行智能体任务（格式：`"0 0 9 * * *=早间简报"`）。使用 6-field cron 语法（sec min hour dom month dow）。由服务端使用，用于无需人工介入的自主定时运行。
 
 **Transport** — `garudust-transport` 将 `providers.default`（或命名 profile）解析为对应的 API 客户端：原生 Anthropic SDK、OpenAI 兼容 HTTP、Bedrock 或 Ollama。所有客户端均封装了指数退避重试和自动凭证轮换机制。
 
@@ -367,10 +367,11 @@ server:
 
 # ── 定时任务 ──────────────────────────────────────────────────────────────────
 cron:
-  memory_consolidation: "0 3 * * *"   # 每晚自动整理记忆
-  memory_expiry: "0 4 * * 0"          # 每周清理过期记忆
+  # 6-field syntax: sec min hour dom month dow
+  memory_consolidation: "0 0 3 * * *"   # 每晚自动整理记忆
+  memory_expiry: "0 0 4 * * 0"          # 每周清理过期记忆
   jobs:
-    - schedule: "0 9 * * 1-5"
+    - schedule: "0 0 9 * * 1-5"
       task: "生成每日简报并保存到 ~/briefing.md"
 
 # ── 上下文压缩 ────────────────────────────────────────────────────────────────

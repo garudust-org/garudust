@@ -204,7 +204,7 @@ garudust-core — shared types · config · traits · pricing (ใช้โด�
 
 **Platforms** — `garudust-platforms` ให้ implementation ของ `PlatformAdapter` สำหรับแต่ละ messaging service (Telegram, Discord, Slack, LINE, Matrix, WhatsApp, Webhook) ใช้เฉพาะ server binary เท่านั้น CLI ไม่มี platform layer
 
-**Cron** — `garudust-cron` รัน agent task ตาม cron schedule (รูปแบบ `"0 9 * * *=morning briefing"`) ใช้โดย server binary สำหรับ agent run แบบอัตโนมัติ ไม่ต้องมีคนคุย
+**Cron** — `garudust-cron` รัน agent task ตาม cron schedule (รูปแบบ `"0 0 9 * * *=morning briefing"`) ใช้ 6-field cron syntax (sec min hour dom month dow) ใช้โดย server binary สำหรับ agent run แบบอัตโนมัติ ไม่ต้องมีคนคุย
 
 **Transport** — `garudust-transport` resolve `providers.default` (หรือ named profile) ไปเป็น API client ที่เหมาะสม: native Anthropic SDK, OpenAI-compatible HTTP, Bedrock หรือ Ollama พร้อม retry แบบ exponential backoff และ credential rotation อัตโนมัติ
 
@@ -367,10 +367,11 @@ server:
 
 # ── Cron jobs ─────────────────────────────────────────────────────────────────
 cron:
-  memory_consolidation: "0 3 * * *"   # housekeeping memory ทุกคืน
-  memory_expiry: "0 4 * * 0"          # ลบ memory ที่หมดอายุรายสัปดาห์
+  # 6-field syntax: sec min hour dom month dow
+  memory_consolidation: "0 0 3 * * *"   # housekeeping memory ทุกคืน
+  memory_expiry: "0 0 4 * * 0"          # ลบ memory ที่หมดอายุรายสัปดาห์
   jobs:
-    - schedule: "0 9 * * 1-5"
+    - schedule: "0 0 9 * * 1-5"
       task: "เขียน morning briefing และบันทึกที่ ~/briefing.md"
 
 # ── Context compression ───────────────────────────────────────────────────────

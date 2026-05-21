@@ -205,7 +205,7 @@ garudust-core — shared types · config · traits · pricing (used by every cra
 
 **Platforms** — `garudust-platforms` provides `PlatformAdapter` implementations for each messaging service (Telegram, Discord, Slack, LINE, Matrix, WhatsApp, Webhook). Used exclusively by the server binary; the CLI has no platform layer.
 
-**Cron** — `garudust-cron` runs agent tasks on a cron schedule (`"0 9 * * *=morning briefing"`). Used by the server binary to drive autonomous, human-free agent runs.
+**Cron** — `garudust-cron` runs agent tasks on a cron schedule (`"0 0 9 * * *=morning briefing"`). Uses 6-field cron syntax (sec min hour dom month dow). Used by the server binary to drive autonomous, human-free agent runs.
 
 **Transport** — `garudust-transport` resolves `providers.default` (or a named profile) to the right API client: native Anthropic SDK, OpenAI-compatible HTTP, Bedrock, or Ollama. Each client is wrapped with exponential-backoff retry and automatic credential rotation.
 
@@ -406,10 +406,11 @@ server:
 
 # ── Cron jobs ────────────────────────────────────────────────────────────────
 cron:
-  memory_consolidation: "0 3 * * *"   # nightly memory housekeeping
-  memory_expiry: "0 4 * * 0"          # weekly expiry sweep
+  # 6-field syntax: sec min hour dom month dow
+  memory_consolidation: "0 0 3 * * *"   # nightly memory housekeeping
+  memory_expiry: "0 0 4 * * 0"          # weekly expiry sweep
   jobs:
-    - schedule: "0 9 * * 1-5"
+    - schedule: "0 0 9 * * 1-5"
       task: "Generate a morning briefing and save to ~/briefing.md"
 
 # ── Context compression ───────────────────────────────────────────────────────
