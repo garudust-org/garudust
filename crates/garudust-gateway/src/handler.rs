@@ -631,10 +631,13 @@ impl GatewayHandler {
                     .run_tool("read_qr", serde_json::json!({ "image_path": att.path }))
                     .await;
                 if is_qr_hit(&qr) {
-                    if !analysis.is_empty() {
+                    let qr_line = format!("[QR code ที่อ่านได้: {}]", qr.trim());
+                    if analysis.is_empty() {
+                        analysis = qr_line;
+                    } else {
                         analysis.push_str("\n\n");
+                        analysis.push_str(&qr_line);
                     }
-                    analysis.push_str(&format!("[QR code ที่อ่านได้: {}]", qr.trim()));
                 }
             }
             if !analysis.is_empty() {
