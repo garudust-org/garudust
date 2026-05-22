@@ -15,15 +15,9 @@ categories   = ["development-tools", "database"]
 garudust-core = { path = "../garudust-core", version = "0.9.0" }
 async-trait   = { workspace = true }
 rusqlite      = { workspace = true }
-serde         = { workspace = true }
-serde_json    = { workspace = true }
-serde_yaml    = { workspace = true }
 tokio         = { workspace = true }
 tracing       = { workspace = true }
 anyhow        = { workspace = true }
-thiserror     = { workspace = true }
-fs4           = { workspace = true }
-chrono        = { workspace = true }
 uuid          = { workspace = true }
 
 [dev-dependencies]

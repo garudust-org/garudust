@@ -1676,16 +1676,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fs4"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7e72ed92b67c146290f88e9c89d60ca163ea417a446f61ffd7b72df3e7f1dfd5"
-dependencies = [
- "rustix",
- "windows-sys 0.61.2",
-]
-
-[[package]]
 name = "fsevent-sys"
 version = "4.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1833,11 +1823,8 @@ dependencies = [
  "garudust-memory",
  "garudust-tools",
  "garudust-transport",
- "serde",
  "serde_json",
- "serde_yaml",
  "tempfile",
- "thiserror 2.0.18",
  "tokio",
  "tracing",
  "uuid",
@@ -1857,7 +1844,6 @@ dependencies = [
  "serde_yaml",
  "thiserror 2.0.18",
  "tokio",
- "uuid",
 ]
 
 [[package]]
@@ -1868,13 +1854,8 @@ dependencies = [
  "async-trait",
  "chrono",
  "chrono-tz",
- "fs4",
  "garudust-agent",
  "garudust-core",
- "serde",
- "serde_json",
- "serde_yaml",
- "thiserror 2.0.18",
  "tokio",
  "tokio-cron-scheduler",
  "tracing",
@@ -1902,11 +1883,9 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "tempfile",
- "thiserror 2.0.18",
  "tokio",
  "tokio-stream",
  "tower",
- "tower-http",
  "tower_governor",
  "tracing",
  "uuid",
@@ -1918,15 +1897,9 @@ version = "0.9.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "chrono",
- "fs4",
  "garudust-core",
  "rusqlite",
- "serde",
- "serde_json",
- "serde_yaml",
  "tempfile",
- "thiserror 2.0.18",
  "tokio",
  "tracing",
  "uuid",
@@ -1943,7 +1916,6 @@ dependencies = [
  "bytes",
  "dashmap 6.2.1",
  "futures",
- "garudust-agent",
  "garudust-core",
  "garudust-memory",
  "hex",
@@ -1955,7 +1927,6 @@ dependencies = [
  "serenity",
  "sha2 0.11.0",
  "teloxide",
- "thiserror 2.0.18",
  "tokio",
  "tokio-tungstenite 0.29.0",
  "tracing",
@@ -2005,7 +1976,6 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "tempfile",
- "thiserror 2.0.18",
  "tokio",
  "tracing",
  "walkdir",
@@ -2022,9 +1992,7 @@ dependencies = [
  "futures",
  "garudust-core",
  "reqwest",
- "serde",
  "serde_json",
- "thiserror 2.0.18",
  "tokio",
  "tracing",
 ]
@@ -5914,7 +5882,6 @@ dependencies = [
  "tower",
  "tower-layer",
  "tower-service",
- "tracing",
  "url",
 ]
 

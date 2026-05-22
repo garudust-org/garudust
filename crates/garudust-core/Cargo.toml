@@ -19,7 +19,6 @@ serde_json  = { workspace = true }
 serde_yaml  = { workspace = true }
 thiserror   = { workspace = true }
 tokio       = { workspace = true }
-uuid        = { workspace = true }
 chrono      = { workspace = true }
 anyhow      = { workspace = true }
 dirs        = "6"
