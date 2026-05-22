@@ -584,6 +584,7 @@ impl GatewayHandler {
         let _gate_guard = gate.lock().await;
 
         let view_image_installed = self.agent.has_tool("view_image");
+        let read_qr_installed = self.agent.has_tool("read_qr");
 
         for (i, att) in attachments.iter().enumerate() {
             let seq = seq_start + i + 1;
@@ -605,9 +606,13 @@ impl GatewayHandler {
             self.agent
                 .inject_history(session_key, &user_label, &placeholder);
 
-            // Run view_image and replace the placeholder once done.
+            // Analyse the image with whichever tools are installed, then
+            // replace the placeholder. Both calls run here — before the temp
+            // file is deleted below — so a later text question finds the
+            // result in history instead of a path that no longer exists.
+            let mut analysis = String::new();
             if view_image_installed {
-                let description = self
+                analysis = self
                     .agent
                     .run_tool(
                         "view_image",
@@ -617,7 +622,26 @@ impl GatewayHandler {
                         }),
                     )
                     .await;
-                self.agent.update_last_history(session_key, &description);
+            }
+            // QR/barcode decoding is deterministic (zbar) rather than a
+            // vision-model guess, so append any decoded payload verbatim.
+            if read_qr_installed {
+                let qr = self
+                    .agent
+                    .run_tool("read_qr", serde_json::json!({ "image_path": att.path }))
+                    .await;
+                if is_qr_hit(&qr) {
+                    let qr_line = format!("[QR code ที่อ่านได้: {}]", qr.trim());
+                    if analysis.is_empty() {
+                        analysis = qr_line;
+                    } else {
+                        analysis.push_str("\n\n");
+                        analysis.push_str(&qr_line);
+                    }
+                }
+            }
+            if !analysis.is_empty() {
+                self.agent.update_last_history(session_key, &analysis);
             }
 
             // Clean up temp file
@@ -1115,9 +1139,19 @@ fn summarize_ingest(file_name: &str, result: &str) -> String {
     format!("นำเข้าไฟล์ \"{file_name}\" ไม่สำเร็จ: {}", result.trim())
 }
 
+/// True when `read_qr` output is an actual decoded payload, not an error
+/// wrapper or a "nothing found" message. Robust to both the old `run.sh`
+/// (no QR → non-zero exit → `[read_qr failed: …]`) and the new one (no QR →
+/// exit 0 with a "No QR code found" line), so wiring is correct regardless of
+/// which `read_qr` version is installed.
+fn is_qr_hit(output: &str) -> bool {
+    let s = output.trim();
+    !s.is_empty() && !s.starts_with("[read_qr failed:") && !s.contains("No QR code found")
+}
+
 #[cfg(test)]
 mod tests {
-    use super::summarize_ingest;
+    use super::{is_qr_hit, summarize_ingest};
 
     #[test]
     fn summarize_success_reports_chunk_count() {
@@ -1141,5 +1175,26 @@ mod tests {
         );
         assert!(s.contains("ไม่สำเร็จ"));
         assert!(s.contains("outside allowed read directories"));
+    }
+
+    #[test]
+    fn qr_hit_accepts_decoded_payload() {
+        assert!(is_qr_hit("https://example.com/pay?id=42"));
+        assert!(is_qr_hit("  00020101021129...  \n"));
+    }
+
+    #[test]
+    fn qr_hit_rejects_empty_error_and_not_found() {
+        assert!(!is_qr_hit(""));
+        assert!(!is_qr_hit("   \n  "));
+        // new run.sh: no QR → exit 0 with a message
+        assert!(!is_qr_hit("No QR code found in image."));
+        // old run.sh: no QR or missing file → non-zero exit → error wrapper
+        assert!(!is_qr_hit(
+            "[read_qr failed: script exited with exit status: 1]"
+        ));
+        assert!(!is_qr_hit(
+            "[read_qr failed: file not found: /tmp/gone.jpg]"
+        ));
     }
 }
