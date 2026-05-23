@@ -11,6 +11,41 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.11.0] — 2026-05-23
+
+### Added
+- **Per-user rate limiting** — new `security.rate_limit_rpm_per_user` config option caps requests per (platform, user_id) pair per minute using a fixed-window counter; replies with a Thai message when exceeded (`#139`)
+- **Platform health in `/health`** — `/health` now calls `health_check()` on every registered platform adapter; returns `503` and reports each adapter's status under `checks.platforms` when any adapter is degraded
+- **Config validation at startup** — `garudust-server` validates the loaded config before accepting requests: non-empty model, routing hints reference known providers, role `approval_mode` values are valid, and no port conflicts between enabled adapters
+- **Child tracing spans** — `process_images`, `process_docs`, and `handle_role_command` in `GatewayHandler` are now instrumented with `#[tracing::instrument]` for per-call trace context
+- **Per-platform iteration counters** — `Metrics` tracks `garudust_platform_iterations_total{platform="…"}` in addition to the global counter; exposed via `/metrics`
+- **Max upload size enforcement** — images and documents exceeding `platform.max_image_bytes` (default 20 MB) or `platform.max_doc_bytes` (default 50 MB) are silently dropped before processing; oversized temp files are cleaned up
+- **Image MIME validation** — `process_images` inspects magic bytes (JPEG, PNG, GIF, WebP) before calling `view_image`; files with unrecognised signatures are skipped to prevent passing arbitrary data to the vision tool
+- **`read_roles` / `write_roles` helpers** — `GatewayHandler` now uses poison-safe RwLock helpers instead of inline `.unwrap()` calls throughout
+
+### Changed
+- **`PlatformAdapter::health_check()`** — new default method on the trait (returns `Ok(())`) so existing adapters don't need changes; override to add real liveness checks
+- **`AppState::platform_adapters`** — gateway state now holds a `Vec<Arc<dyn PlatformAdapter>>` so the health handler can iterate them
+
+### Removed
+- **`ReasoningEffort::None` variant** — the variant was unreachable: all three transports (Anthropic, OpenAI-compatible, Bedrock) caught it with `_` and returned the same result as `Option::None`. To disable reasoning, leave `reasoning_effort` unset in config
+
+### Fixed
+- Several `clippy::pedantic` lints: `write_with_newline`, `unnecessary_map_or`, `map_unwrap_or`, `manual_let_else`, `items_after_statements`, `useless_vec`, `redundant_closure_for_method_calls`
+
+### Infrastructure
+- **GitHub Pages** — switched from legacy Jekyll build (which failed with `BadCredentialsError`) to a direct static-file deploy workflow; `docs/` is plain HTML with no Jekyll dependency
+
+---
+
+## [0.10.0] — 2026-05-22
+
+### Added
+- **QR code reader pipeline** — images sent to any platform adapter are scanned for QR codes via `read_qr` hub tool; decoded payloads are prepended to the agent's context before vision analysis
+- **`/health` platform checks** — health endpoint iterates registered platform adapters and surfaces per-adapter status
+
+---
+
 ## [0.9.0] — 2026-05-21
 
 ### Added
@@ -409,6 +444,12 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Pre-built binaries for `x86_64-musl` and `aarch64-apple-darwin` via release workflow
 - MIT license
 
+[0.11.0]: https://github.com/garudust-org/garudust-agent/compare/v0.10.0...v0.11.0
+[0.10.0]: https://github.com/garudust-org/garudust-agent/compare/v0.9.0...v0.10.0
+[0.9.0]: https://github.com/garudust-org/garudust-agent/compare/v0.8.1...v0.9.0
+[0.8.1]: https://github.com/garudust-org/garudust-agent/compare/v0.8.0...v0.8.1
+[0.8.0]: https://github.com/garudust-org/garudust-agent/compare/v0.7.1...v0.8.0
+[0.7.1]: https://github.com/garudust-org/garudust-agent/compare/v0.7.0...v0.7.1
 [0.5.0]: https://github.com/garudust-org/garudust-agent/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/garudust-org/garudust-agent/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/garudust-org/garudust-agent/compare/v0.3.1...v0.3.2
