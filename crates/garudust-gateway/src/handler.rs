@@ -70,7 +70,7 @@ impl GatewayHandler {
     /// When the role's approval_mode is "interactive", wraps an InteractiveApprover
     /// so the user is asked for confirmation before each tool call.
     fn approver_for(&self, msg: &InboundMessage) -> Arc<dyn CommandApprover> {
-        let roles = self.live_roles.read().unwrap_or_else(|e| e.into_inner());
+        let roles = self.live_roles.read().unwrap_or_else(std::sync::PoisonError::into_inner);
         let role_name = roles
             .lookup_role(&msg.channel.platform, &msg.user_id, None)
             .or_else(|| roles.default_role.clone());
@@ -107,7 +107,7 @@ impl GatewayHandler {
 
         if trimmed == "/whoami" {
             let role = {
-                let roles = self.live_roles.read().unwrap_or_else(|e| e.into_inner());
+                let roles = self.live_roles.read().unwrap_or_else(std::sync::PoisonError::into_inner);
                 roles
                     .lookup_role(platform, user_id, None)
                     .or_else(|| roles.default_role.clone())
@@ -148,14 +148,14 @@ impl GatewayHandler {
         if let Some(code) = trimmed.strip_prefix("/join ") {
             let code = code.trim().to_string();
             let granted = {
-                let mut roles = self.live_roles.write().unwrap_or_else(|e| e.into_inner());
+                let mut roles = self.live_roles.write().unwrap_or_else(std::sync::PoisonError::into_inner);
                 roles.redeem_invite(&code, platform, user_id)
             };
             if granted.is_some() {
                 let roles_snapshot = self
                     .live_roles
                     .read()
-                    .unwrap_or_else(|e| e.into_inner())
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
                     .clone();
                 let mut cfg = (*self.config).clone();
                 cfg.roles = roles_snapshot;
@@ -175,7 +175,7 @@ impl GatewayHandler {
         // /join — request access; notifies every admin on this platform
         if trimmed == "/join" {
             let (has_role, admins) = {
-                let roles = self.live_roles.read().unwrap_or_else(|e| e.into_inner());
+                let roles = self.live_roles.read().unwrap_or_else(std::sync::PoisonError::into_inner);
                 let has = roles.lookup_role(platform, user_id, None).is_some()
                     || roles.default_role.is_some();
                 let admins: Vec<String> = roles
@@ -232,7 +232,7 @@ impl GatewayHandler {
         let is_admin = self
             .live_roles
             .read()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .lookup_role(platform, user_id, None)
             .as_deref()
             == Some("admin");
@@ -246,7 +246,7 @@ impl GatewayHandler {
                 return Ok(true);
             }
             let lines = {
-                let roles = self.live_roles.read().unwrap_or_else(|e| e.into_inner());
+                let roles = self.live_roles.read().unwrap_or_else(std::sync::PoisonError::into_inner);
                 match roles.users.get(platform.as_str()) {
                     None => "ยังไม่มีผู้ใช้ที่กำหนดสิทธิ์".to_string(),
                     Some(map) => map
@@ -451,7 +451,7 @@ impl GatewayHandler {
             };
 
             let save_ok = {
-                let mut roles = self.live_roles.write().unwrap_or_else(|e| e.into_inner());
+                let mut roles = self.live_roles.write().unwrap_or_else(std::sync::PoisonError::into_inner);
                 roles.invites.insert(code.clone(), invite);
                 let mut cfg = (*self.config).clone();
                 cfg.roles = roles.clone();
@@ -484,7 +484,7 @@ impl GatewayHandler {
 
     /// Update a role in-memory and persist to config.yaml atomically.
     fn save_role(&self, platform: &str, user_id: &str, role: &str) -> std::io::Result<()> {
-        let mut roles = self.live_roles.write().unwrap_or_else(|e| e.into_inner());
+        let mut roles = self.live_roles.write().unwrap_or_else(std::sync::PoisonError::into_inner);
         roles.set_user_role(platform, user_id, role);
         let mut cfg = (*self.config).clone();
         cfg.roles = roles.clone();
@@ -493,7 +493,7 @@ impl GatewayHandler {
 
     /// Remove a role in-memory and persist to config.yaml atomically.
     fn remove_role(&self, platform: &str, user_id: &str) -> bool {
-        let mut roles = self.live_roles.write().unwrap_or_else(|e| e.into_inner());
+        let mut roles = self.live_roles.write().unwrap_or_else(std::sync::PoisonError::into_inner);
         let removed = roles.remove_user(platform, user_id);
         if removed {
             let mut cfg = (*self.config).clone();
@@ -801,7 +801,7 @@ impl MessageHandler for GatewayHandler {
         // edit config.yaml by hand just to grant themselves access.
         {
             let needs_bootstrap = {
-                let roles = self.live_roles.read().unwrap_or_else(|e| e.into_inner());
+                let roles = self.live_roles.read().unwrap_or_else(std::sync::PoisonError::into_inner);
                 // Only bootstrap when definitions are configured but no user
                 // has been assigned any role yet (completely fresh install).
                 // If any user exists in the map the operator has started
@@ -844,7 +844,7 @@ impl MessageHandler for GatewayHandler {
         // The guard is dropped inside the inner block so no RwLockReadGuard
         // crosses the await point below.
         let block_unknown_user = {
-            let roles = self.live_roles.read().unwrap_or_else(|e| e.into_inner());
+            let roles = self.live_roles.read().unwrap_or_else(std::sync::PoisonError::into_inner);
             let roles_active = !roles.definitions.is_empty()
                 || !roles.users.is_empty()
                 || roles.default_role.is_some();
