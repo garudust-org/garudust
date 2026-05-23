@@ -180,6 +180,39 @@ garudust-core — shared types · config · traits (ใช้โดยทุก 
 
 Secret เก็บใน `~/.garudust/.env` ส่วนการตั้งค่าอื่น ๆ อยู่ใน `~/.garudust/config.yaml`
 
+### `~/.garudust/.env`
+
+```bash
+# LLM provider — ตั้ง 1 ตัว (ถ้าไม่มี config.yaml จะ detect อัตโนมัติจาก env)
+ANTHROPIC_API_KEY=sk-ant-...
+# OPENAI_API_KEY=sk-...
+# GEMINI_API_KEY=AIza...
+# GROQ_API_KEY=gsk_...
+
+# Fallback keys — สลับอัตโนมัติเมื่อ auth ล้มเหลว
+# LLM_FALLBACK_API_KEYS=sk-ant-backup1,sk-ant-backup2
+
+# Platform adapters — ตั้งเฉพาะที่ใช้
+TELEGRAM_TOKEN=123456789:AAFxxx
+DISCORD_TOKEN=<bot-token>
+SLACK_BOT_TOKEN=xoxb-...
+SLACK_APP_TOKEN=xapp-...
+LINE_CHANNEL_TOKEN=<channel-access-token>
+LINE_CHANNEL_SECRET=<32-char-hex>
+WHATSAPP_ACCESS_TOKEN=EAAxxxxx
+WHATSAPP_PHONE_NUMBER_ID=123456789012345
+WHATSAPP_VERIFY_TOKEN=my_verify_token
+
+# ค้นหา (optional — fallback เป็น DuckDuckGo)
+BRAVE_SEARCH_API_KEY=BSA...
+SERPER_API_KEY=...
+
+# Gateway auth
+GARUDUST_API_KEY=my-gateway-secret
+```
+
+### `~/.garudust/config.yaml`
+
 ```yaml
 providers:
   default:

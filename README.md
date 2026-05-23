@@ -180,6 +180,39 @@ garudust-core — shared types · config · traits (used by every crate above)
 
 Secrets → `~/.garudust/.env`. Everything else → `~/.garudust/config.yaml`.
 
+### `~/.garudust/.env`
+
+```bash
+# LLM provider — set one (auto-detected from env when no config.yaml)
+ANTHROPIC_API_KEY=sk-ant-...
+# OPENAI_API_KEY=sk-...
+# GEMINI_API_KEY=AIza...
+# GROQ_API_KEY=gsk_...
+
+# Fallback keys — rotated automatically on auth failure
+# LLM_FALLBACK_API_KEYS=sk-ant-backup1,sk-ant-backup2
+
+# Platform adapters — set only what you use
+TELEGRAM_TOKEN=123456789:AAFxxx
+DISCORD_TOKEN=<bot-token>
+SLACK_BOT_TOKEN=xoxb-...
+SLACK_APP_TOKEN=xapp-...
+LINE_CHANNEL_TOKEN=<channel-access-token>
+LINE_CHANNEL_SECRET=<32-char-hex>
+WHATSAPP_ACCESS_TOKEN=EAAxxxxx
+WHATSAPP_PHONE_NUMBER_ID=123456789012345
+WHATSAPP_VERIFY_TOKEN=my_verify_token
+
+# Search (optional — falls back to DuckDuckGo)
+BRAVE_SEARCH_API_KEY=BSA...
+SERPER_API_KEY=...
+
+# Gateway auth
+GARUDUST_API_KEY=my-gateway-secret
+```
+
+### `~/.garudust/config.yaml`
+
 ```yaml
 providers:
   default:
@@ -199,7 +232,7 @@ routing:
   # then: garudust --hint fast "quick question"
 ```
 
-For the full config reference (LLM providers, cron, MCP, RBAC, compression, etc.) see [CONTRIBUTING.md](CONTRIBUTING.md).
+For the full config reference (cron, MCP, RBAC, compression, etc.) see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 

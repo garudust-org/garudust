@@ -180,6 +180,39 @@ garudust-core — 共享类型 · 配置 · 特征（被以上所有 crate 使�
 
 密钥 → `~/.garudust/.env`。其余配置 → `~/.garudust/config.yaml`。
 
+### `~/.garudust/.env`
+
+```bash
+# LLM 提供商 — 设置一个（无 config.yaml 时自动从环境变量检测）
+ANTHROPIC_API_KEY=sk-ant-...
+# OPENAI_API_KEY=sk-...
+# GEMINI_API_KEY=AIza...
+# GROQ_API_KEY=gsk_...
+
+# 备用密钥 — 鉴权失败时自动轮换
+# LLM_FALLBACK_API_KEYS=sk-ant-backup1,sk-ant-backup2
+
+# 平台适配器 — 仅设置需要使用的
+TELEGRAM_TOKEN=123456789:AAFxxx
+DISCORD_TOKEN=<bot-token>
+SLACK_BOT_TOKEN=xoxb-...
+SLACK_APP_TOKEN=xapp-...
+LINE_CHANNEL_TOKEN=<channel-access-token>
+LINE_CHANNEL_SECRET=<32位十六进制密钥>
+WHATSAPP_ACCESS_TOKEN=EAAxxxxx
+WHATSAPP_PHONE_NUMBER_ID=123456789012345
+WHATSAPP_VERIFY_TOKEN=my_verify_token
+
+# 搜索（可选 — 未设置时回退到 DuckDuckGo）
+BRAVE_SEARCH_API_KEY=BSA...
+SERPER_API_KEY=...
+
+# 网关鉴权
+GARUDUST_API_KEY=my-gateway-secret
+```
+
+### `~/.garudust/config.yaml`
+
 ```yaml
 providers:
   default:
