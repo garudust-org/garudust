@@ -14,6 +14,7 @@ pub struct Metrics {
     pub platform_errors: DashMap<String, AtomicU64>,
     pub agent_iterations_total: AtomicU64,
     pub sessions_active: AtomicU64,
+    pub platform_iterations: DashMap<String, AtomicU64>,
 }
 
 impl Metrics {
@@ -53,6 +54,15 @@ impl Metrics {
 
     pub fn add_iterations(&self, n: u32) {
         self.agent_iterations_total
+            .fetch_add(u64::from(n), Ordering::Relaxed);
+    }
+
+    pub fn add_platform_iterations(&self, platform: &str, n: u32) {
+        self.agent_iterations_total
+            .fetch_add(u64::from(n), Ordering::Relaxed);
+        self.platform_iterations
+            .entry(platform.to_string())
+            .or_insert_with(|| AtomicU64::new(0))
             .fetch_add(u64::from(n), Ordering::Relaxed);
     }
 
@@ -107,6 +117,26 @@ impl Metrics {
                 let _ = writeln!(
                     out,
                     "garudust_platform_messages_total{{platform=\"{platform}\"}} {count}"
+                );
+            }
+        }
+
+        // Per-platform iteration counters (sorted for deterministic output)
+        let mut pi: Vec<(String, u64)> = self
+            .platform_iterations
+            .iter()
+            .map(|e| (e.key().clone(), e.value().load(Ordering::Relaxed)))
+            .collect();
+        pi.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+        if !pi.is_empty() {
+            out.push_str(
+                "# HELP garudust_platform_iterations_total Agent loop iterations per platform\n\
+                 # TYPE garudust_platform_iterations_total counter\n",
+            );
+            for (platform, count) in &pi {
+                let _ = writeln!(
+                    out,
+                    "garudust_platform_iterations_total{{platform=\"{platform}\"}} {count}"
                 );
             }
         }
@@ -234,6 +264,32 @@ mod tests {
         m.add_iterations(3);
         m.add_iterations(5);
         assert_eq!(m.agent_iterations_total.load(Ordering::Relaxed), 8);
+    }
+
+    #[test]
+    fn add_platform_iterations_tracks_per_platform_and_global() {
+        let m = Metrics::default();
+        m.add_platform_iterations("telegram", 3);
+        m.add_platform_iterations("telegram", 2);
+        m.add_platform_iterations("discord", 5);
+
+        let tg = m
+            .platform_iterations
+            .get("telegram")
+            .unwrap()
+            .load(Ordering::Relaxed);
+        let dc = m
+            .platform_iterations
+            .get("discord")
+            .unwrap()
+            .load(Ordering::Relaxed);
+        assert_eq!(tg, 5);
+        assert_eq!(dc, 5);
+        assert_eq!(m.agent_iterations_total.load(Ordering::Relaxed), 10);
+
+        let text = m.prometheus_text();
+        assert!(text.contains("garudust_platform_iterations_total{platform=\"discord\"} 5"));
+        assert!(text.contains("garudust_platform_iterations_total{platform=\"telegram\"} 5"));
     }
 
     #[test]
