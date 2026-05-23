@@ -12,6 +12,7 @@ use garudust_core::{
     types::{ChannelId, DocAttachment, ImageAttachment, InboundMessage, OutboundMessage},
 };
 use garudust_memory::SessionDb;
+use tokio::io::AsyncReadExt as _;
 use tokio::sync::{oneshot, Mutex};
 
 use crate::{interactive::InteractiveApprover, metrics::Metrics, sessions::SessionRegistry};
@@ -643,6 +644,19 @@ impl GatewayHandler {
                 format!("[@{user_name} ส่งรูปที่ {seq} เวลา {ts}]")
             };
 
+            // Reject files whose header does not match a supported image type.
+            if !is_supported_image(&att.path).await {
+                self.agent.inject_history(
+                    session_key,
+                    &user_label,
+                    "[ไม่สามารถวิเคราะห์ได้ — ไฟล์ไม่ใช่รูปภาพที่รองรับ (JPEG/PNG/GIF/WebP)]",
+                );
+                if att.path.starts_with("/tmp/") {
+                    let _ = tokio::fs::remove_file(&att.path).await;
+                }
+                continue;
+            }
+
             // Inject label immediately so the sender is visible in history
             // even if view_image takes several seconds to complete.
             let placeholder = if view_image_installed {
@@ -928,20 +942,39 @@ impl MessageHandler for GatewayHandler {
                 .await;
 
             if !msg.attachments.is_empty() {
-                self.process_images(&msg.attachments, &msg.session_key, 0, &msg.user_name)
+                let (imgs, _) = filter_oversized(
+                    &msg.attachments,
+                    pcfg.max_image_bytes,
+                    |a| &a.path,
+                    |a| a.path.clone(),
+                )
+                .await;
+                self.process_images(&imgs, &msg.session_key, 0, &msg.user_name)
                     .await;
             }
             if !msg.doc_attachments.is_empty() {
-                // process_docs spawns the agent to ask confirmation — no extra
-                // return value needed; the spawned task sends the reply.
-                self.process_docs(
+                let (docs, rejected) = filter_oversized(
                     &msg.doc_attachments,
-                    &msg.session_key,
-                    &msg.user_name,
-                    &msg.channel,
-                    self.approver_for(&msg),
+                    pcfg.max_doc_bytes,
+                    |a| &a.path,
+                    |a| a.path.clone(),
                 )
                 .await;
+                for path in rejected {
+                    if path.starts_with("/tmp/") {
+                        let _ = tokio::fs::remove_file(&path).await;
+                    }
+                }
+                if !docs.is_empty() {
+                    self.process_docs(
+                        &docs,
+                        &msg.session_key,
+                        &msg.user_name,
+                        &msg.channel,
+                        self.approver_for(&msg),
+                    )
+                    .await;
+                }
             }
             return Ok(());
         }
@@ -1021,7 +1054,14 @@ impl MessageHandler for GatewayHandler {
 
         // Process any image or document attachments that come alongside text
         if !msg.attachments.is_empty() {
-            self.process_images(&msg.attachments, &msg.session_key, 0, &msg.user_name)
+            let (imgs, _) = filter_oversized(
+                &msg.attachments,
+                pcfg.max_image_bytes,
+                |a| &a.path,
+                |a| a.path.clone(),
+            )
+            .await;
+            self.process_images(&imgs, &msg.session_key, 0, &msg.user_name)
                 .await;
         }
         // Doc attachments alongside text: inject into history only (the user's
@@ -1242,6 +1282,60 @@ fn summarize_ingest(file_name: &str, result: &str) -> String {
     format!("นำเข้าไฟล์ \"{file_name}\" ไม่สำเร็จ: {}", result.trim())
 }
 
+/// Split `attachments` into (accepted, rejected_paths). Files whose size on
+/// disk exceeds `max_bytes` are dropped; their paths are returned so the
+/// caller can send an error message and clean up the temp file.
+async fn filter_oversized<T, P, Q>(
+    attachments: &[T],
+    max_bytes: u64,
+    path_of: P,
+    path_clone: Q,
+) -> (Vec<T>, Vec<String>)
+where
+    T: Clone,
+    P: Fn(&T) -> &str,
+    Q: Fn(&T) -> String,
+{
+    let mut accepted = Vec::new();
+    let mut rejected = Vec::new();
+    for att in attachments {
+        let sz = file_size(path_of(att)).await;
+        if sz > max_bytes {
+            rejected.push(path_clone(att));
+        } else {
+            accepted.push(att.clone());
+        }
+    }
+    (accepted, rejected)
+}
+
+/// Return the size of the file at `path`, or 0 on any I/O error.
+async fn file_size(path: &str) -> u64 {
+    tokio::fs::metadata(path)
+        .await
+        .map(|m| m.len())
+        .unwrap_or(0)
+}
+
+/// True if the file at `path` starts with a recognised image magic-byte
+/// signature (JPEG, PNG, GIF, WebP). Returns true on any I/O error so
+/// that a header read failure never silently discards a valid image.
+async fn is_supported_image(path: &str) -> bool {
+    let mut f = match tokio::fs::File::open(path).await {
+        Ok(f) => f,
+        Err(_) => return true,
+    };
+    let mut buf = [0u8; 12];
+    let n = f.read(&mut buf).await.unwrap_or(0);
+    let b = &buf[..n];
+    matches!(b.first(), Some(0xFF) if b.get(1) == Some(&0xD8)) // JPEG
+        || b.starts_with(&[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) // PNG
+        || b.starts_with(b"GIF8") // GIF
+        || (b.len() >= 12 // WebP
+            && b.starts_with(&[0x52, 0x49, 0x46, 0x46])
+            && &b[8..12] == b"WEBP")
+}
+
 /// True when `read_qr` output is an actual decoded payload, not an error
 /// wrapper or a "nothing found" message. Robust to both the old `run.sh`
 /// (no QR → non-zero exit → `[read_qr failed: …]`) and the new one (no QR →
@@ -1254,7 +1348,7 @@ fn is_qr_hit(output: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_qr_hit, summarize_ingest};
+    use super::{filter_oversized, is_qr_hit, is_supported_image, summarize_ingest};
 
     #[test]
     fn summarize_success_reports_chunk_count() {
@@ -1299,5 +1393,73 @@ mod tests {
         assert!(!is_qr_hit(
             "[read_qr failed: file not found: /tmp/gone.jpg]"
         ));
+    }
+
+    // ── is_supported_image ────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn jpeg_magic_bytes_accepted() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        use std::io::Write as _;
+        f.write_all(&[0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10]).unwrap();
+        assert!(is_supported_image(f.path().to_str().unwrap()).await);
+    }
+
+    #[tokio::test]
+    async fn png_magic_bytes_accepted() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        use std::io::Write as _;
+        f.write_all(&[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00])
+            .unwrap();
+        assert!(is_supported_image(f.path().to_str().unwrap()).await);
+    }
+
+    #[tokio::test]
+    async fn webp_magic_bytes_accepted() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        use std::io::Write as _;
+        f.write_all(b"RIFF\x00\x00\x00\x00WEBP").unwrap();
+        assert!(is_supported_image(f.path().to_str().unwrap()).await);
+    }
+
+    #[tokio::test]
+    async fn random_bytes_rejected() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        use std::io::Write as _;
+        f.write_all(b"%PDF-1.4 this is a pdf not an image").unwrap();
+        assert!(!is_supported_image(f.path().to_str().unwrap()).await);
+    }
+
+    #[tokio::test]
+    async fn missing_file_treated_as_accepted() {
+        assert!(is_supported_image("/tmp/garudust_nonexistent_xyz.jpg").await);
+    }
+
+    // ── filter_oversized ──────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn filter_oversized_keeps_small_rejects_large() {
+        use garudust_core::types::ImageAttachment;
+        use std::io::Write as _;
+
+        let small = tempfile::NamedTempFile::new().unwrap();
+        let large = tempfile::NamedTempFile::new().unwrap();
+        {
+            let mut lf = std::fs::OpenOptions::new()
+                .write(true)
+                .open(large.path())
+                .unwrap();
+            lf.write_all(&vec![0u8; 200]).unwrap();
+        }
+
+        let atts = vec![
+            ImageAttachment { path: small.path().to_str().unwrap().to_string() },
+            ImageAttachment { path: large.path().to_str().unwrap().to_string() },
+        ];
+
+        let (accepted, rejected) =
+            filter_oversized(&atts, 100, |a| &a.path, |a| a.path.clone()).await;
+        assert_eq!(accepted.len(), 1);
+        assert_eq!(rejected.len(), 1);
     }
 }

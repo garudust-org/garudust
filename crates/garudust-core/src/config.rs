@@ -619,10 +619,28 @@ pub struct PlatformConfig {
     /// Not applied to the webhook platform — webhook callers control session routing via payload.
     #[serde(default = "default_true")]
     pub session_per_user: bool,
+
+    /// Maximum bytes accepted per image attachment (default: 20 MiB).
+    /// Uploads exceeding this limit are rejected before analysis.
+    #[serde(default = "default_max_image_bytes")]
+    pub max_image_bytes: u64,
+
+    /// Maximum bytes accepted per document attachment (default: 50 MiB).
+    /// Uploads exceeding this limit are rejected before RAG ingestion.
+    #[serde(default = "default_max_doc_bytes")]
+    pub max_doc_bytes: u64,
 }
 
 fn default_true() -> bool {
     true
+}
+
+fn default_max_image_bytes() -> u64 {
+    20 * 1024 * 1024
+}
+
+fn default_max_doc_bytes() -> u64 {
+    50 * 1024 * 1024
 }
 
 /// One role definition: approval mode, allowed toolsets, and tool-level overrides.
@@ -799,6 +817,8 @@ impl Default for PlatformConfig {
             require_mention: false,
             bot_username: String::new(),
             session_per_user: true,
+            max_image_bytes: default_max_image_bytes(),
+            max_doc_bytes: default_max_doc_bytes(),
         }
     }
 }
