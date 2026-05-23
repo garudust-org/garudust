@@ -26,6 +26,20 @@
 
 ---
 
+## 支持的操作系统
+
+| 操作系统 | 架构 | 文件 |
+|---------|------|------|
+| macOS | Apple Silicon（M1/M2/M3/M4） | `garudust-*-aarch64-apple-darwin.tar.gz` |
+| macOS | Intel | `garudust-*-x86_64-apple-darwin.tar.gz` |
+| Linux | x86_64 | `garudust-*-x86_64-unknown-linux-musl.tar.gz` |
+| Linux | ARM64（Raspberry Pi 4/5、Jetson） | `garudust-*-aarch64-unknown-linux-musl.tar.gz` |
+| Windows | x86_64 | `garudust-*-x86_64-pc-windows-msvc.zip` |
+
+从 [GitHub Releases](https://github.com/garudust-org/garudust-agent/releases/latest) 下载 — 无需安装 Rust。
+
+---
+
 ## 快速开始
 
 **01 — 安装**

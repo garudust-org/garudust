@@ -26,6 +26,20 @@ AI agent runtime แบบ self-improving เขียนด้วย Rust — b
 
 ---
 
+## ระบบปฏิบัติการที่รองรับ
+
+| OS | สถาปัตยกรรม | ไฟล์ |
+|----|------------|------|
+| macOS | Apple Silicon (M1/M2/M3/M4) | `garudust-*-aarch64-apple-darwin.tar.gz` |
+| macOS | Intel | `garudust-*-x86_64-apple-darwin.tar.gz` |
+| Linux | x86_64 | `garudust-*-x86_64-unknown-linux-musl.tar.gz` |
+| Linux | ARM64 (Raspberry Pi 4/5, Jetson) | `garudust-*-aarch64-unknown-linux-musl.tar.gz` |
+| Windows | x86_64 | `garudust-*-x86_64-pc-windows-msvc.zip` |
+
+ดาวน์โหลดจาก [GitHub Releases](https://github.com/garudust-org/garudust-agent/releases/latest) — ไม่ต้องติดตั้ง Rust
+
+---
+
 ## เริ่มใช้งาน
 
 **01 — ติดตั้ง**
