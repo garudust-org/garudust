@@ -95,12 +95,23 @@ fn make_agent(reply: &str) -> Arc<Agent> {
 }
 
 fn make_agent_with_config(reply: &str, config: Arc<AgentConfig>) -> Arc<Agent> {
+    make_agent_with_tools_and_config(reply, ToolRegistry::new(), config)
+}
+
+fn make_agent_with_tools(reply: &str, tools: ToolRegistry) -> Arc<Agent> {
+    make_agent_with_tools_and_config(reply, tools, Arc::new(AgentConfig::default()))
+}
+
+fn make_agent_with_tools_and_config(
+    reply: &str,
+    tools: ToolRegistry,
+    config: Arc<AgentConfig>,
+) -> Arc<Agent> {
     let transport = Arc::new(StaticTransport {
         reply: reply.to_string(),
     });
-    let tools = Arc::new(ToolRegistry::new());
     let memory = Arc::new(NopMemory);
-    Arc::new(Agent::new(transport, tools, memory, config))
+    Arc::new(Agent::new(transport, Arc::new(tools), memory, config))
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -273,6 +284,85 @@ impl Tool for RecordingTool {
         self.calls.lock().unwrap().push(params);
         Ok(ToolResult::ok("", format!("echoed: {text}")))
     }
+}
+
+struct FailingTool;
+
+#[async_trait]
+impl Tool for FailingTool {
+    fn name(&self) -> &'static str {
+        "explode"
+    }
+    fn description(&self) -> &'static str {
+        "Always fails for run_tool error-path coverage"
+    }
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({ "type": "object", "properties": {} })
+    }
+    fn toolset(&self) -> &'static str {
+        "test"
+    }
+    async fn execute(
+        &self,
+        _params: serde_json::Value,
+        _ctx: &ToolContext,
+    ) -> Result<ToolResult, ToolError> {
+        Err(ToolError::Execution("simulated failure".into()))
+    }
+}
+
+#[tokio::test]
+async fn run_tool_returns_registered_tool_output() {
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let mut registry = ToolRegistry::new();
+    registry.register(RecordingTool {
+        calls: calls.clone(),
+    });
+    let agent = make_agent_with_tools("unused", registry);
+
+    let output = agent
+        .run_tool("echo", serde_json::json!({ "text": "hello" }))
+        .await;
+
+    assert_eq!(output, "echoed: hello");
+    let recorded = calls.lock().unwrap();
+    assert_eq!(recorded.len(), 1, "tool should be dispatched once");
+    assert_eq!(recorded[0]["text"], "hello");
+}
+
+#[tokio::test]
+async fn run_tool_unknown_tool_returns_error_description() {
+    let agent = make_agent("unused");
+
+    let output = agent.run_tool("missing_tool", serde_json::json!({})).await;
+
+    assert!(
+        output.contains("missing_tool"),
+        "error should include missing tool name: {output}"
+    );
+    assert!(
+        output.contains("tool not found"),
+        "error should include registry failure reason: {output}"
+    );
+}
+
+#[tokio::test]
+async fn run_tool_tool_error_returns_non_empty_error_description() {
+    let mut registry = ToolRegistry::new();
+    registry.register(FailingTool);
+    let agent = make_agent_with_tools("unused", registry);
+
+    let output = agent.run_tool("explode", serde_json::json!({})).await;
+
+    assert!(!output.is_empty(), "tool errors should not be swallowed");
+    assert!(
+        output.contains("explode"),
+        "error should include failing tool name: {output}"
+    );
+    assert!(
+        output.contains("simulated failure"),
+        "error should include execution failure details: {output}"
+    );
 }
 
 // ── ContextCompressor ─────────────────────────────────────────────────────────
