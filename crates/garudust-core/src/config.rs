@@ -371,6 +371,11 @@ pub struct AgentConfig {
     /// requests to complete before forcing exit. Default: 30.
     #[serde(default = "default_shutdown_timeout_secs")]
     pub shutdown_timeout_secs: u64,
+    /// How long (seconds) a session may be idle before the server evicts it from memory.
+    /// Eviction removes in-memory conversation history; disk files are removed separately.
+    /// Default: 3600 (1 hour). Set to 0 to disable eviction.
+    #[serde(default = "default_session_idle_timeout_secs")]
+    pub session_idle_timeout_secs: u64,
     /// Hard cap on total tokens (input + output) consumed by a single task.
     /// When exceeded the agent stops and returns what it has with a budget notice.
     /// `None` means no limit.
@@ -473,6 +478,9 @@ fn default_tool_timeout_secs() -> u64 {
 }
 fn default_shutdown_timeout_secs() -> u64 {
     30
+}
+fn default_session_idle_timeout_secs() -> u64 {
+    3600
 }
 
 /// Per-category retention policy for memory entries.
@@ -977,6 +985,7 @@ impl Default for AgentConfig {
             llm_timeout_secs: default_llm_timeout_secs(),
             tool_timeout_secs: default_tool_timeout_secs(),
             shutdown_timeout_secs: default_shutdown_timeout_secs(),
+            session_idle_timeout_secs: default_session_idle_timeout_secs(),
             max_tokens_per_task: None,
             max_output_tokens: None,
             reasoning_effort: None,

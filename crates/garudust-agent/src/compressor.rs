@@ -207,6 +207,47 @@ mod tests {
         }
     }
 
+    /// Records the InferenceConfig passed to each `chat()` call.
+    struct RecordingTransport {
+        calls: Arc<std::sync::Mutex<Vec<InferenceConfig>>>,
+    }
+
+    impl RecordingTransport {
+        fn new() -> (Arc<Self>, Arc<std::sync::Mutex<Vec<InferenceConfig>>>) {
+            let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+            (Arc::new(Self { calls: calls.clone() }), calls)
+        }
+    }
+
+    #[async_trait]
+    impl ProviderTransport for RecordingTransport {
+        fn api_mode(&self) -> ApiMode {
+            ApiMode::ChatCompletions
+        }
+        async fn chat(
+            &self,
+            _messages: &[Message],
+            config: &InferenceConfig,
+            _tools: &[ToolSchema],
+        ) -> Result<TransportResponse, TransportError> {
+            self.calls.lock().unwrap().push(config.clone());
+            Ok(TransportResponse {
+                content: vec![ContentPart::Text("summary".into())],
+                tool_calls: vec![],
+                usage: Default::default(),
+                stop_reason: garudust_core::types::StopReason::EndTurn,
+            })
+        }
+        async fn chat_stream(
+            &self,
+            _messages: &[Message],
+            _config: &InferenceConfig,
+            _tools: &[ToolSchema],
+        ) -> Result<StreamResult, TransportError> {
+            unimplemented!()
+        }
+    }
+
     fn compressor(context_limit: usize) -> ContextCompressor {
         ContextCompressor::new(Arc::new(NullTransport), "null".into())
             .with_context_limit(context_limit)
@@ -253,5 +294,56 @@ mod tests {
         // 2403 chars ÷ 3 = 801 tokens > 800 → compress
         let msgs = vec![msg(&"x".repeat(2_403))];
         assert!(compressor(1_000).should_compress(&msgs));
+    }
+
+    // ── compression model forwarding ──────────────────────────────────────────
+
+    #[tokio::test]
+    async fn compress_uses_configured_model_name() {
+        let (transport, calls) = RecordingTransport::new();
+        let compressor = ContextCompressor::new(transport, "claude-haiku-test".into())
+            .with_context_limit(100);
+
+        // Build enough messages that there is a middle region to summarise.
+        // head=1, tail=tail_turns*2=12; we need >13 to have a non-empty middle.
+        let mut msgs: Vec<Message> = vec![Message {
+            role: Role::System,
+            content: vec![ContentPart::Text("sys".into())],
+        }];
+        for i in 0..20 {
+            msgs.push(Message {
+                role: Role::User,
+                content: vec![ContentPart::Text(format!("turn {i}"))],
+            });
+        }
+
+        let _ = compressor.compress(msgs).await.unwrap();
+
+        let recorded = calls.lock().unwrap();
+        assert!(!recorded.is_empty(), "compress() must call transport.chat()");
+        assert_eq!(
+            recorded[0].model, "claude-haiku-test",
+            "compress must forward the configured model name, not fall back to main model"
+        );
+    }
+
+    #[tokio::test]
+    async fn compress_too_short_skips_llm_call() {
+        let (transport, calls) = RecordingTransport::new();
+        let compressor = ContextCompressor::new(transport, "any-model".into())
+            .with_context_limit(100);
+
+        // Only 5 messages — not enough to have a middle region.
+        let msgs: Vec<Message> = (0..5)
+            .map(|i| Message {
+                role: Role::User,
+                content: vec![ContentPart::Text(format!("msg {i}"))],
+            })
+            .collect();
+
+        let (result, usage) = compressor.compress(msgs.clone()).await.unwrap();
+        assert_eq!(result.len(), msgs.len(), "short history must be returned unchanged");
+        assert_eq!(usage.input_tokens, 0, "no LLM call means zero token usage");
+        assert!(calls.lock().unwrap().is_empty(), "short history must not call transport");
     }
 }

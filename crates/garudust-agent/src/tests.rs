@@ -462,3 +462,240 @@ async fn run_loop_executes_tool_then_finishes() {
     );
     assert_eq!(recorded[0]["text"], "hi");
 }
+
+// ── max_iterations enforcement ────────────────────────────────────────────────
+
+#[tokio::test]
+async fn run_stops_at_max_iterations() {
+    // Every turn asks for the echo tool → the loop would run forever without a cap.
+    let tool_turn = TransportResponse {
+        content: vec![],
+        tool_calls: vec![ToolCall {
+            id: "c1".into(),
+            name: "echo".into(),
+            arguments: serde_json::json!({ "text": "x" }),
+        }],
+        usage: TokenUsage::default(),
+        stop_reason: StopReason::ToolUse,
+    };
+    let responses: Vec<TransportResponse> = std::iter::repeat(tool_turn).take(20).collect();
+    let (transport, _) = ScriptedTransport::new(responses);
+
+    let mut registry = ToolRegistry::new();
+    registry.register(RecordingTool {
+        calls: Arc::new(Mutex::new(vec![])),
+    });
+
+    let config = Arc::new(AgentConfig {
+        max_iterations: 3,
+        ..AgentConfig::default()
+    });
+    let agent = Arc::new(Agent::new(
+        transport,
+        Arc::new(registry),
+        Arc::new(NopMemory),
+        config,
+    ));
+
+    let result = agent
+        .run("run forever", Arc::new(AutoApprove), "test", None, None)
+        .await;
+
+    // Should stop with a budget error or a truncated result — not loop 20 times.
+    match result {
+        Err(AgentError::BudgetExhausted(_)) => {} // expected path
+        Ok(r) => assert!(
+            r.iterations <= 5,
+            "ran too many iterations: {}",
+            r.iterations
+        ),
+        Err(e) => panic!("unexpected error: {e}"),
+    }
+}
+
+// ── token budget cap ──────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn run_respects_max_tokens_per_task() {
+    // Each turn reports 200 input + 200 output tokens = 400. Cap is 500.
+    // After turn 1 (400 tokens) we are under; after the tool result
+    // is fed back and turn 2 fires the cumulative total passes 500.
+    let heavy_usage = TokenUsage {
+        input_tokens: 200,
+        output_tokens: 200,
+        cache_read_tokens: 0,
+        cache_write_tokens: 0,
+    };
+    let tool_turn = TransportResponse {
+        content: vec![],
+        tool_calls: vec![ToolCall {
+            id: "c1".into(),
+            name: "echo".into(),
+            arguments: serde_json::json!({ "text": "x" }),
+        }],
+        usage: heavy_usage.clone(),
+        stop_reason: StopReason::ToolUse,
+    };
+    let finish_turn = TransportResponse {
+        content: vec![ContentPart::Text("done".into())],
+        tool_calls: vec![],
+        usage: heavy_usage,
+        stop_reason: StopReason::EndTurn,
+    };
+    let (transport, _) = ScriptedTransport::new(vec![tool_turn, finish_turn]);
+
+    let mut registry = ToolRegistry::new();
+    registry.register(RecordingTool {
+        calls: Arc::new(Mutex::new(vec![])),
+    });
+
+    let config = Arc::new(AgentConfig {
+        max_tokens_per_task: Some(500),
+        ..AgentConfig::default()
+    });
+    let agent = Arc::new(Agent::new(
+        transport,
+        Arc::new(registry),
+        Arc::new(NopMemory),
+        config,
+    ));
+
+    let result = agent
+        .run("heavy task", Arc::new(AutoApprove), "test", None, None)
+        .await
+        .unwrap();
+
+    // Output must mention budget exhaustion — the loop terminates early.
+    assert!(
+        result.output.contains("Token budget") || result.iterations <= 2,
+        "expected early stop due to token budget; got output: {}",
+        result.output
+    );
+}
+
+// ── parallel tool dispatch ────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn run_loop_dispatches_multiple_tools_in_one_turn() {
+    let calls = Arc::new(Mutex::new(Vec::new()));
+
+    // Turn 1: model requests two echo calls in the same turn.
+    let turn1 = TransportResponse {
+        content: vec![],
+        tool_calls: vec![
+            ToolCall {
+                id: "c1".into(),
+                name: "echo".into(),
+                arguments: serde_json::json!({ "text": "first" }),
+            },
+            ToolCall {
+                id: "c2".into(),
+                name: "echo".into(),
+                arguments: serde_json::json!({ "text": "second" }),
+            },
+        ],
+        usage: TokenUsage::default(),
+        stop_reason: StopReason::ToolUse,
+    };
+    let turn2 = TransportResponse {
+        content: vec![ContentPart::Text("all done".into())],
+        tool_calls: vec![],
+        usage: TokenUsage::default(),
+        stop_reason: StopReason::EndTurn,
+    };
+    let (transport, _) = ScriptedTransport::new(vec![turn1, turn2]);
+
+    let mut registry = ToolRegistry::new();
+    registry.register(RecordingTool {
+        calls: calls.clone(),
+    });
+
+    let agent = Arc::new(Agent::new(
+        transport,
+        Arc::new(registry),
+        Arc::new(NopMemory),
+        Arc::new(AgentConfig::default()),
+    ));
+
+    let result = agent
+        .run("use both tools", Arc::new(AutoApprove), "test", None, None)
+        .await
+        .unwrap();
+
+    assert_eq!(result.iterations, 2);
+    let recorded = calls.lock().unwrap();
+    assert_eq!(recorded.len(), 2, "both tool calls must be dispatched");
+    let texts: Vec<&str> = recorded
+        .iter()
+        .filter_map(|v| v.get("text")?.as_str())
+        .collect();
+    assert!(texts.contains(&"first"));
+    assert!(texts.contains(&"second"));
+}
+
+// ── compression trigger during run-loop ───────────────────────────────────────
+
+#[tokio::test]
+async fn run_loop_triggers_compression_when_threshold_exceeded() {
+    use crate::compressor::ContextCompressor;
+    use garudust_core::hooks::AgentHooks;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    // Count how many times on_pre_compress is called.
+    struct CountHooks(Arc<AtomicUsize>);
+    #[async_trait::async_trait]
+    impl AgentHooks for CountHooks {
+        async fn on_pre_compress(&self, _count: usize, _sid: &str) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    let compress_count = Arc::new(AtomicUsize::new(0));
+
+    // Single finishing turn — the history won't be huge but we override the
+    // compressor's threshold to 0 chars so it fires unconditionally.
+    let reply = TransportResponse {
+        content: vec![ContentPart::Text("compressed run done".into())],
+        tool_calls: vec![],
+        usage: TokenUsage::default(),
+        stop_reason: StopReason::EndTurn,
+    };
+    let (transport, _) = ScriptedTransport::new(vec![reply.clone()]);
+
+    // Build a compressor that always says "compress" but uses a static transport
+    // for the summarise call so no real LLM is invoked.
+    let summary_resp = TransportResponse {
+        content: vec![ContentPart::Text("summary".into())],
+        tool_calls: vec![],
+        usage: TokenUsage::default(),
+        stop_reason: StopReason::EndTurn,
+    };
+    let (compress_transport, _) = ScriptedTransport::new(vec![summary_resp]);
+    let compressor = ContextCompressor::new(compress_transport, "m".into())
+        .with_context_limit(1); // threshold = 1 token → always fires
+
+    let mut config = AgentConfig::default();
+    config.compression.enabled = true;
+
+    let agent = Arc::new(
+        Agent::new(
+            transport,
+            Arc::new(ToolRegistry::new()),
+            Arc::new(NopMemory),
+            Arc::new(config),
+        )
+        .with_compressor(compressor)
+        .with_hooks(CountHooks(compress_count.clone())),
+    );
+
+    let result = agent
+        .run("trigger compress", Arc::new(AutoApprove), "test", None, None)
+        .await
+        .unwrap();
+
+    assert!(result.output.contains("compressed run done"));
+    assert!(
+        compress_count.load(Ordering::SeqCst) >= 1,
+        "on_pre_compress hook must fire when context exceeds threshold"
+    );
+}

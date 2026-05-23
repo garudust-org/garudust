@@ -40,6 +40,23 @@ impl SessionRegistry {
     pub async fn count(&self) -> usize {
         self.sessions.read().await.len()
     }
+
+    /// Remove sessions whose `last_seen` is older than `max_age`.
+    /// Returns the session keys that were evicted so callers can clean up agent state.
+    pub async fn cleanup_idle(&self, max_age: std::time::Duration) -> Vec<String> {
+        let cutoff = Utc::now()
+            - chrono::Duration::from_std(max_age).unwrap_or(chrono::Duration::seconds(3600));
+        let mut map = self.sessions.write().await;
+        let expired: Vec<String> = map
+            .iter()
+            .filter(|(_, s)| s.last_seen < cutoff)
+            .map(|(k, _)| k.clone())
+            .collect();
+        for key in &expired {
+            map.remove(key);
+        }
+        expired
+    }
 }
 
 #[cfg(test)]
@@ -84,5 +101,48 @@ mod tests {
         r.touch("key1", "telegram", "user1").await;
         let second = r.sessions.read().await["key1"].last_seen;
         assert!(second >= first);
+    }
+
+    // ── cleanup_idle ──────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn cleanup_idle_removes_old_sessions() {
+        let r = SessionRegistry::new();
+        r.touch("old", "telegram", "u1").await;
+        r.touch("fresh", "telegram", "u2").await;
+
+        // Back-date "old" by writing directly into the map
+        {
+            let mut map = r.sessions.write().await;
+            map.get_mut("old").unwrap().last_seen =
+                Utc::now() - chrono::Duration::hours(2);
+        }
+
+        let evicted = r.cleanup_idle(std::time::Duration::from_secs(3600)).await;
+        assert_eq!(evicted, vec!["old".to_string()]);
+        assert_eq!(r.count().await, 1);
+    }
+
+    #[tokio::test]
+    async fn cleanup_idle_keeps_recent_sessions() {
+        let r = SessionRegistry::new();
+        r.touch("key1", "discord", "u1").await;
+        r.touch("key2", "discord", "u2").await;
+
+        let evicted = r.cleanup_idle(std::time::Duration::from_secs(3600)).await;
+        assert!(evicted.is_empty());
+        assert_eq!(r.count().await, 2);
+    }
+
+    #[tokio::test]
+    async fn cleanup_idle_zero_duration_evicts_all() {
+        let r = SessionRegistry::new();
+        r.touch("a", "slack", "u1").await;
+        r.touch("b", "slack", "u2").await;
+
+        // max_age = 0 → cutoff is now → everything is "old"
+        let evicted = r.cleanup_idle(std::time::Duration::ZERO).await;
+        assert_eq!(evicted.len(), 2);
+        assert_eq!(r.count().await, 0);
     }
 }

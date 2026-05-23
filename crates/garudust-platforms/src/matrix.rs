@@ -6,20 +6,91 @@ use futures::{Stream, StreamExt};
 use garudust_core::{
     error::PlatformError,
     platform::{MessageHandler, PlatformAdapter},
-    types::{ChannelId, InboundMessage, OutboundMessage},
+    types::{ChannelId, DocAttachment, ImageAttachment, InboundMessage, OutboundMessage},
 };
 use matrix_sdk::{
     config::SyncSettings,
+    media::{MediaFormat, MediaRequestParameters},
     room::Room,
     ruma::{
-        events::room::message::{
-            MessageType, OriginalSyncRoomMessageEvent, RoomMessageEventContent,
+        events::room::{
+            message::{MessageType, OriginalSyncRoomMessageEvent, RoomMessageEventContent},
+            MediaSource,
         },
         RoomId,
     },
     Client,
 };
 use tokio::sync::OnceCell;
+
+async fn download_matrix_image(
+    client: &Client,
+    source: &MediaSource,
+    event_id: &str,
+    ext: &str,
+) -> Vec<ImageAttachment> {
+    let req = MediaRequestParameters {
+        source: source.clone(),
+        format: MediaFormat::File,
+    };
+    match client.media().get_media_content(&req, false).await {
+        Ok(bytes) => {
+            let safe_id = event_id.replace(['/', '$', ':'], "_");
+            let dest = format!("/tmp/garudust_matrix_{safe_id}.{ext}");
+            match tokio::fs::write(&dest, &bytes).await {
+                Ok(()) => vec![ImageAttachment { path: dest }],
+                Err(e) => {
+                    tracing::warn!(event_id, error = %e, "Matrix: write image failed");
+                    vec![]
+                }
+            }
+        }
+        Err(e) => {
+            tracing::warn!(event_id, error = %e, "Matrix: download image failed");
+            vec![]
+        }
+    }
+}
+
+async fn download_matrix_doc(
+    client: &Client,
+    source: &MediaSource,
+    event_id: &str,
+    ext: &str,
+    file_name: &str,
+) -> Vec<DocAttachment> {
+    let supported = matches!(
+        ext.to_lowercase().as_str(),
+        "pdf" | "txt" | "csv" | "md" | "json" | "docx" | "doc" | "xlsx" | "xls"
+    );
+    if !supported {
+        return vec![];
+    }
+    let req = MediaRequestParameters {
+        source: source.clone(),
+        format: MediaFormat::File,
+    };
+    match client.media().get_media_content(&req, false).await {
+        Ok(bytes) => {
+            let safe_id = event_id.replace(['/', '$', ':'], "_");
+            let dest = format!("/tmp/garudust_matrix_{safe_id}.{ext}");
+            match tokio::fs::write(&dest, &bytes).await {
+                Ok(()) => vec![DocAttachment {
+                    path: dest,
+                    file_name: file_name.to_string(),
+                }],
+                Err(e) => {
+                    tracing::warn!(event_id, error = %e, "Matrix: write doc failed");
+                    vec![]
+                }
+            }
+        }
+        Err(e) => {
+            tracing::warn!(event_id, error = %e, "Matrix: download doc failed");
+            vec![]
+        }
+    }
+}
 
 pub struct MatrixAdapter {
     homeserver: String,
@@ -68,31 +139,55 @@ impl PlatformAdapter for MatrixAdapter {
         // Filter out our own messages
         let bot_user_id = client.user_id().map(std::borrow::ToOwned::to_owned);
 
+        let client_for_handler = client.clone();
         client.add_event_handler(move |ev: OriginalSyncRoomMessageEvent, _room: Room| {
             let handler = handler.clone();
             let bot_uid = bot_user_id.clone();
+            let dl_client = client_for_handler.clone();
             async move {
                 if bot_uid.as_ref().is_some_and(|id| id == &ev.sender) {
                     return;
                 }
-                let MessageType::Text(text_content) = ev.content.msgtype else {
-                    return;
-                };
                 let room_id = _room.room_id().to_string();
+                let user_id = ev.sender.to_string();
+                let user_name = ev.sender.localpart().to_string();
+                let session_key = format!("matrix:{room_id}");
+
+                let (text, attachments, doc_attachments) = match ev.content.msgtype {
+                    MessageType::Text(c) => (c.body, vec![], vec![]),
+                    MessageType::Image(c) => {
+                        let atts = download_matrix_image(&dl_client, &c.source, &ev.event_id.to_string(), "jpg").await;
+                        (String::new(), atts, vec![])
+                    }
+                    MessageType::File(c) => {
+                        let ext = std::path::Path::new(&c.body)
+                            .extension()
+                            .and_then(|e| e.to_str())
+                            .unwrap_or("bin");
+                        let docs = download_matrix_doc(&dl_client, &c.source, &ev.event_id.to_string(), ext, &c.body).await;
+                        (String::new(), vec![], docs)
+                    }
+                    _ => return,
+                };
+
+                if text.is_empty() && attachments.is_empty() && doc_attachments.is_empty() {
+                    return;
+                }
+
                 let inbound = InboundMessage {
                     channel: ChannelId {
                         platform: "matrix".into(),
-                        chat_id: room_id.clone(),
+                        chat_id: room_id,
                         thread_id: None,
                     },
-                    user_id: ev.sender.to_string(),
-                    user_name: ev.sender.localpart().to_string(),
-                    text: text_content.body,
-                    session_key: format!("matrix:{room_id}"),
+                    user_id,
+                    user_name,
+                    text,
+                    session_key,
                     is_group: true,
                     bot_mentioned: None,
-                    attachments: vec![],
-                    doc_attachments: vec![],
+                    attachments,
+                    doc_attachments,
                 };
                 let _ = handler.handle(inbound).await;
             }

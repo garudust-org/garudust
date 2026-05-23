@@ -371,4 +371,112 @@ mod tests {
         assert_eq!(key, "resolved-key");
         std::env::remove_var("GARUDUST_TEST_REGISTRY_KEY");
     }
+
+    // ── BUILTIN_PROVIDERS schema validation ───────────────────────────────────
+
+    #[test]
+    fn all_builtin_providers_have_unique_names() {
+        let names: Vec<&str> = garudust_core::config::BUILTIN_PROVIDERS
+            .iter()
+            .map(|p| p.name)
+            .collect();
+        let mut seen = std::collections::HashSet::new();
+        for name in &names {
+            assert!(seen.insert(*name), "duplicate provider name: {name}");
+        }
+    }
+
+    #[test]
+    fn all_builtin_providers_have_non_empty_base_url() {
+        for p in garudust_core::config::BUILTIN_PROVIDERS {
+            assert!(!p.base_url.is_empty(), "provider '{}' has empty base_url", p.name);
+        }
+    }
+
+    #[test]
+    fn all_builtin_providers_have_non_empty_api_key_env() {
+        for p in garudust_core::config::BUILTIN_PROVIDERS {
+            assert!(
+                !p.api_key_env.is_empty(),
+                "provider '{}' has empty api_key_env",
+                p.name
+            );
+        }
+    }
+
+    #[test]
+    fn all_builtin_providers_tokens_param_is_known_value() {
+        const VALID: &[&str] = &["max_tokens", "max_completion_tokens"];
+        for p in garudust_core::config::BUILTIN_PROVIDERS {
+            assert!(
+                VALID.contains(&p.tokens_param),
+                "provider '{}' has unexpected tokens_param: '{}'",
+                p.name,
+                p.tokens_param
+            );
+        }
+    }
+
+    #[test]
+    fn all_builtin_providers_base_url_has_valid_scheme() {
+        for p in garudust_core::config::BUILTIN_PROVIDERS {
+            assert!(
+                p.base_url.starts_with("https://") || p.base_url.starts_with("http://"),
+                "provider '{}' base_url has unexpected scheme: '{}'",
+                p.name,
+                p.base_url
+            );
+        }
+    }
+
+    #[test]
+    fn all_builtin_providers_api_key_env_is_screaming_snake_case() {
+        for p in garudust_core::config::BUILTIN_PROVIDERS {
+            let valid = p
+                .api_key_env
+                .chars()
+                .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_');
+            assert!(
+                valid,
+                "provider '{}' api_key_env '{}' is not SCREAMING_SNAKE_CASE",
+                p.name,
+                p.api_key_env
+            );
+        }
+    }
+
+    #[test]
+    fn resolve_to_env_vars_returns_correct_base_url_for_every_builtin() {
+        for p in garudust_core::config::BUILTIN_PROVIDERS {
+            let target = format!("{}/some-model", p.name);
+            let result = resolve_to_env_vars(&target, &profiles(&[]));
+            assert!(
+                result.is_some(),
+                "resolve_to_env_vars returned None for builtin provider '{}'",
+                p.name
+            );
+            let (base_url, _key, model) = result.unwrap();
+            assert_eq!(
+                base_url, p.base_url,
+                "provider '{}' resolved to wrong base_url",
+                p.name
+            );
+            assert_eq!(model, "some-model", "provider '{}' model was mangled", p.name);
+        }
+    }
+
+    #[test]
+    fn resolve_hint_returns_transport_for_every_builtin() {
+        for p in garudust_core::config::BUILTIN_PROVIDERS {
+            let target = format!("{}/some-model", p.name);
+            let result = resolve_hint(&target, &profiles(&[]));
+            assert!(
+                result.is_some(),
+                "resolve_hint returned None for builtin provider '{}'",
+                p.name
+            );
+            let (_, model) = result.unwrap();
+            assert_eq!(model, "some-model");
+        }
+    }
 }

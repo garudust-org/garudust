@@ -292,6 +292,12 @@ impl Agent {
         self
     }
 
+    #[cfg(test)]
+    pub fn with_compressor(mut self, compressor: ContextCompressor) -> Self {
+        self.compressor = compressor;
+        self
+    }
+
     pub fn tools(&self) -> &garudust_tools::ToolRegistry {
         &self.tools
     }

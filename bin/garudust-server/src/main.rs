@@ -682,6 +682,28 @@ async fn main() -> Result<()> {
     // Fill the cron slot so tools registered in the agent can now access the scheduler.
     *cron_slot.lock().await = Some(scheduler.clone() as Arc<dyn CronManager>);
 
+    // ── Session TTL cleanup ───────────────────────────────────────────────────
+    if config.session_idle_timeout_secs > 0 {
+        let idle_secs = config.session_idle_timeout_secs;
+        let sessions_gc = sessions.clone();
+        let agent_gc = agent.clone();
+        tokio::spawn(async move {
+            let interval = std::time::Duration::from_secs(idle_secs.min(300));
+            let max_age = std::time::Duration::from_secs(idle_secs);
+            loop {
+                tokio::time::sleep(interval).await;
+                let evicted = sessions_gc.cleanup_idle(max_age).await;
+                if !evicted.is_empty() {
+                    let a = agent_gc.load_full();
+                    for key in &evicted {
+                        a.clear_session(key);
+                    }
+                    tracing::info!(count = evicted.len(), "evicted idle sessions");
+                }
+            }
+        });
+    }
+
     // ── HTTP gateway ──────────────────────────────────────────────────────────
     let shutdown_secs = config.shutdown_timeout_secs;
     let state = AppState {
