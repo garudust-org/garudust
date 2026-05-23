@@ -28,7 +28,9 @@ A self-improving AI agent runtime written in Rust — ~10 MB binary, no runtime 
 
 ## Quick Start
 
-**Install** — download from [GitHub Releases](https://github.com/garudust-org/garudust-agent/releases/latest) (macOS, Linux, Windows, ARM64):
+**01 — Install**
+
+Download a pre-built binary from [GitHub Releases](https://github.com/garudust-org/garudust-agent/releases/latest) (macOS, Linux, Windows, ARM64):
 
 ```bash
 ARCH=$(uname -m)
@@ -40,15 +42,19 @@ tar -xzf garudust-*.tar.gz && sudo mv garudust garudust-server /usr/local/bin/
 
 Or build from source (Rust 1.87+): `git clone https://github.com/garudust-org/garudust-agent && cargo build --release`
 
-**Configure**
+---
+
+**02 — Configure**
 
 ```bash
 garudust setup    # interactive wizard — picks provider, writes config.yaml + .env
 ```
 
-Or set your key directly in `~/.garudust/.env` (e.g. `ANTHROPIC_API_KEY=sk-ant-...`).
+Or set your key directly in `~/.garudust/.env` (e.g. `ANTHROPIC_API_KEY=sk-ant-...`). See [LLM Providers](#llm-providers) for all supported keys.
 
-**Run**
+---
+
+**03 — Run**
 
 ```bash
 garudust                           # interactive TUI
@@ -99,6 +105,41 @@ All adapters run in the same `garudust-server` process. Set the token in `~/.gar
 
 ---
 
+## LLM Providers
+
+Set `providers.default.name` in `config.yaml` and the corresponding key in `~/.garudust/.env`:
+
+| Provider | `name` | `.env` key |
+|----------|--------|------------|
+| Anthropic | `anthropic` | `ANTHROPIC_API_KEY` |
+| OpenAI | `openai` | `OPENAI_API_KEY` |
+| Google Gemini | `gemini` | `GEMINI_API_KEY` |
+| Groq | `groq` | `GROQ_API_KEY` |
+| Mistral | `mistral` | `MISTRAL_API_KEY` |
+| DeepSeek | `deepseek` | `DEEPSEEK_API_KEY` |
+| xAI (Grok) | `xai` | `XAI_API_KEY` |
+| OpenRouter | `openrouter` | `OPENROUTER_API_KEY` |
+| AWS Bedrock | `bedrock` | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` |
+| Ollama | `ollama` | *(none — add `url:` for custom endpoint)* |
+| vLLM | `vllm` | `VLLM_API_KEY` |
+| ThaiLLM | `thaillm` | `THAILLM_API_KEY` |
+| Together AI | `together` | `TOGETHER_API_KEY` |
+| Fireworks AI | `fireworks` | `FIREWORKS_API_KEY` |
+| Cerebras | `cerebras` | `CEREBRAS_API_KEY` |
+| Perplexity | `perplexity` | `PERPLEXITY_API_KEY` |
+| Cohere | `cohere` | `COHERE_API_KEY` |
+| NVIDIA NIM | `nvidia` | `NVIDIA_API_KEY` |
+| Alibaba DashScope | `alibaba` | `DASHSCOPE_API_KEY` |
+| ByteDance Doubao | `doubao` | `ARK_API_KEY` |
+| Zhipu AI (GLM) | `zhipu` | `ZHIPU_API_KEY` |
+| Moonshot (Kimi) | `moonshot` | `MOONSHOT_API_KEY` |
+| Baidu ERNIE | `baidu` | `QIANFAN_API_KEY` |
+| Any OpenAI-compat | *(omit `name:`, set `url:` in profile)* | relevant key |
+
+Fallback keys: set `LLM_FALLBACK_API_KEYS=key2,key3` in `.env` — rotated automatically on auth failure.
+
+---
+
 ## Architecture
 
 ```
@@ -142,7 +183,7 @@ Secrets → `~/.garudust/.env`. Everything else → `~/.garudust/config.yaml`.
 ```yaml
 providers:
   default:
-    name: anthropic          # 24 providers: anthropic | openai | gemini | groq | ollama | ...
+    name: anthropic          # see LLM Providers table above for all 24 options
     key: ${ANTHROPIC_API_KEY}
     model: claude-sonnet-4-6
 

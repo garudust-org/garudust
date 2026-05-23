@@ -28,7 +28,9 @@ AI agent runtime แบบ self-improving เขียนด้วย Rust — b
 
 ## เริ่มใช้งาน
 
-**ติดตั้ง** — ดาวน์โหลดจาก [GitHub Releases](https://github.com/garudust-org/garudust-agent/releases/latest) (macOS, Linux, Windows, ARM64):
+**01 — ติดตั้ง**
+
+ดาวน์โหลด binary สำเร็จรูปจาก [GitHub Releases](https://github.com/garudust-org/garudust-agent/releases/latest) (macOS, Linux, Windows, ARM64):
 
 ```bash
 ARCH=$(uname -m)
@@ -40,15 +42,19 @@ tar -xzf garudust-*.tar.gz && sudo mv garudust garudust-server /usr/local/bin/
 
 หรือ build จาก source (Rust 1.87+): `git clone https://github.com/garudust-org/garudust-agent && cargo build --release`
 
-**ตั้งค่า**
+---
+
+**02 — ตั้งค่า**
 
 ```bash
 garudust setup    # wizard ตั้งค่าครั้งแรก — เลือก provider เขียน config.yaml + .env
 ```
 
-หรือใส่ key ตรงใน `~/.garudust/.env` (เช่น `ANTHROPIC_API_KEY=sk-ant-...`)
+หรือใส่ key ตรงใน `~/.garudust/.env` (เช่น `ANTHROPIC_API_KEY=sk-ant-...`) ดู [LLM Provider](#llm-provider) สำหรับ key ทั้งหมดที่รองรับ
 
-**รัน**
+---
+
+**03 — รัน**
 
 ```bash
 garudust                           # interactive TUI
@@ -99,6 +105,41 @@ docker compose up -d
 
 ---
 
+## LLM Provider
+
+ตั้งค่า `providers.default.name` ใน `config.yaml` และ key ที่เกี่ยวข้องใน `~/.garudust/.env`:
+
+| Provider | `name` | `.env` key |
+|----------|--------|------------|
+| Anthropic | `anthropic` | `ANTHROPIC_API_KEY` |
+| OpenAI | `openai` | `OPENAI_API_KEY` |
+| Google Gemini | `gemini` | `GEMINI_API_KEY` |
+| Groq | `groq` | `GROQ_API_KEY` |
+| Mistral | `mistral` | `MISTRAL_API_KEY` |
+| DeepSeek | `deepseek` | `DEEPSEEK_API_KEY` |
+| xAI (Grok) | `xai` | `XAI_API_KEY` |
+| OpenRouter | `openrouter` | `OPENROUTER_API_KEY` |
+| AWS Bedrock | `bedrock` | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` |
+| Ollama | `ollama` | *(ไม่ต้องการ — เพิ่ม `url:` สำหรับ endpoint กำหนดเอง)* |
+| vLLM | `vllm` | `VLLM_API_KEY` |
+| ThaiLLM | `thaillm` | `THAILLM_API_KEY` |
+| Together AI | `together` | `TOGETHER_API_KEY` |
+| Fireworks AI | `fireworks` | `FIREWORKS_API_KEY` |
+| Cerebras | `cerebras` | `CEREBRAS_API_KEY` |
+| Perplexity | `perplexity` | `PERPLEXITY_API_KEY` |
+| Cohere | `cohere` | `COHERE_API_KEY` |
+| NVIDIA NIM | `nvidia` | `NVIDIA_API_KEY` |
+| Alibaba DashScope | `alibaba` | `DASHSCOPE_API_KEY` |
+| ByteDance Doubao | `doubao` | `ARK_API_KEY` |
+| Zhipu AI (GLM) | `zhipu` | `ZHIPU_API_KEY` |
+| Moonshot (Kimi) | `moonshot` | `MOONSHOT_API_KEY` |
+| Baidu ERNIE | `baidu` | `QIANFAN_API_KEY` |
+| OpenAI-compat อื่น ๆ | *(ไม่ใส่ `name:` ตั้ง `url:` ใน profile แทน)* | API key ที่เกี่ยวข้อง |
+
+Fallback keys: ตั้ง `LLM_FALLBACK_API_KEYS=key2,key3` ใน `.env` — สลับอัตโนมัติเมื่อ auth ล้มเหลว
+
+---
+
 ## สถาปัตยกรรม
 
 ```
@@ -142,7 +183,7 @@ Secret เก็บใน `~/.garudust/.env` ส่วนการตั้ง�
 ```yaml
 providers:
   default:
-    name: anthropic          # 24 provider: anthropic | openai | gemini | groq | ollama | ...
+    name: anthropic          # ดูตาราง LLM Provider ด้านบนสำหรับ 24 ตัวเลือก
     key: ${ANTHROPIC_API_KEY}
     model: claude-sonnet-4-6
 

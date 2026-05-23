@@ -28,7 +28,9 @@
 
 ## 快速开始
 
-**安装** — 从 [GitHub Releases](https://github.com/garudust-org/garudust-agent/releases/latest) 下载（macOS、Linux、Windows、ARM64）：
+**01 — 安装**
+
+从 [GitHub Releases](https://github.com/garudust-org/garudust-agent/releases/latest) 下载预构建 binary（macOS、Linux、Windows、ARM64）：
 
 ```bash
 ARCH=$(uname -m)
@@ -40,15 +42,19 @@ tar -xzf garudust-*.tar.gz && sudo mv garudust garudust-server /usr/local/bin/
 
 或从源码构建（需 Rust 1.87+）：`git clone https://github.com/garudust-org/garudust-agent && cargo build --release`
 
-**配置**
+---
+
+**02 — 配置**
 
 ```bash
 garudust setup    # 交互式向导 — 选择提供商，生成 config.yaml + .env
 ```
 
-或直接将密钥写入 `~/.garudust/.env`（如 `ANTHROPIC_API_KEY=sk-ant-...`）。
+或直接将密钥写入 `~/.garudust/.env`（如 `ANTHROPIC_API_KEY=sk-ant-...`）。支持的提供商列表见 [LLM 提供商](#llm-提供商)。
 
-**运行**
+---
+
+**03 — 运行**
 
 ```bash
 garudust                             # 交互式 TUI
@@ -99,6 +105,41 @@ docker compose up -d
 
 ---
 
+## LLM 提供商
+
+在 `config.yaml` 中设置 `providers.default.name`，并在 `~/.garudust/.env` 中填写对应密钥：
+
+| 提供商 | `name` | `.env` key |
+|--------|--------|------------|
+| Anthropic | `anthropic` | `ANTHROPIC_API_KEY` |
+| OpenAI | `openai` | `OPENAI_API_KEY` |
+| Google Gemini | `gemini` | `GEMINI_API_KEY` |
+| Groq | `groq` | `GROQ_API_KEY` |
+| Mistral | `mistral` | `MISTRAL_API_KEY` |
+| DeepSeek | `deepseek` | `DEEPSEEK_API_KEY` |
+| xAI (Grok) | `xai` | `XAI_API_KEY` |
+| OpenRouter | `openrouter` | `OPENROUTER_API_KEY` |
+| AWS Bedrock | `bedrock` | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` |
+| Ollama | `ollama` | *（无需 — 自定义端点请添加 `url:`）* |
+| vLLM | `vllm` | `VLLM_API_KEY` |
+| ThaiLLM | `thaillm` | `THAILLM_API_KEY` |
+| Together AI | `together` | `TOGETHER_API_KEY` |
+| Fireworks AI | `fireworks` | `FIREWORKS_API_KEY` |
+| Cerebras | `cerebras` | `CEREBRAS_API_KEY` |
+| Perplexity | `perplexity` | `PERPLEXITY_API_KEY` |
+| Cohere | `cohere` | `COHERE_API_KEY` |
+| NVIDIA NIM | `nvidia` | `NVIDIA_API_KEY` |
+| 阿里云百炼（DashScope） | `alibaba` | `DASHSCOPE_API_KEY` |
+| 字节豆包 | `doubao` | `ARK_API_KEY` |
+| 智谱 AI（GLM） | `zhipu` | `ZHIPU_API_KEY` |
+| Moonshot（Kimi） | `moonshot` | `MOONSHOT_API_KEY` |
+| 百度文心 | `baidu` | `QIANFAN_API_KEY` |
+| 任意 OpenAI 兼容 | *（省略 `name:`，在 profile 中设置 `url:`）* | 对应 API 密钥 |
+
+备用密钥：在 `.env` 中设置 `LLM_FALLBACK_API_KEYS=key2,key3` — 鉴权失败时自动轮换。
+
+---
+
 ## 架构
 
 ```
@@ -142,7 +183,7 @@ garudust-core — 共享类型 · 配置 · 特征（被以上所有 crate 使�
 ```yaml
 providers:
   default:
-    name: anthropic          # 24 个提供商: anthropic | openai | gemini | groq | ollama | ...
+    name: anthropic          # 完整列表见上方 LLM 提供商表格
     key: ${ANTHROPIC_API_KEY}
     model: claude-sonnet-4-6
 
