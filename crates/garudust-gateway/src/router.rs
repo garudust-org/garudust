@@ -74,6 +74,8 @@ struct HealthResponse {
 #[derive(Serialize)]
 struct HealthChecks {
     db: String,
+    #[serde(skip_serializing_if = "std::collections::HashMap::is_empty")]
+    platforms: std::collections::HashMap<String, String>,
 }
 
 async fn health(State(state): State<AppState>) -> (StatusCode, Json<HealthResponse>) {
@@ -81,10 +83,23 @@ async fn health(State(state): State<AppState>) -> (StatusCode, Json<HealthRespon
         Ok(()) => "ok".to_string(),
         Err(e) => format!("error: {e}"),
     };
-    let healthy = db_result == "ok";
+
+    let mut platforms = std::collections::HashMap::new();
+    for adapter in &state.platform_adapters {
+        let result = match adapter.health_check().await {
+            Ok(()) => "ok".to_string(),
+            Err(e) => format!("error: {e}"),
+        };
+        platforms.insert(adapter.name().to_string(), result);
+    }
+
+    let healthy = db_result == "ok" && platforms.values().all(|v| v == "ok");
     let resp = HealthResponse {
         status: if healthy { "ok" } else { "degraded" },
-        checks: HealthChecks { db: db_result },
+        checks: HealthChecks {
+            db: db_result,
+            platforms,
+        },
     };
     let code = if healthy {
         StatusCode::OK
@@ -400,6 +415,7 @@ mod tests {
             agent: Arc::new(arc_swap::ArcSwap::from(agent)),
             metrics: Arc::new(crate::metrics::Metrics::default()),
             approver: Arc::new(garudust_agent::AutoApprover),
+            platform_adapters: vec![],
         }
     }
 

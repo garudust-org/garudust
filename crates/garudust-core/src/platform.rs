@@ -20,6 +20,14 @@ pub trait PlatformAdapter: Send + Sync + 'static {
     /// rely on process exit). Adapters that own a JoinHandle should abort it here.
     async fn stop(&self) {}
 
+    /// Liveness probe called by the `/health` endpoint. Return `Ok(())` when the
+    /// adapter is operating normally, or an error string describing the fault.
+    /// Default implementation always returns `Ok(())` — adapters may override this
+    /// to ping their upstream API or check their internal connection state.
+    async fn health_check(&self) -> Result<(), String> {
+        Ok(())
+    }
+
     async fn send_message(
         &self,
         channel: &ChannelId,

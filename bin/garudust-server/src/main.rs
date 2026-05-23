@@ -832,6 +832,7 @@ async fn main() -> Result<()> {
         agent,
         metrics,
         approver,
+        platform_adapters: platform_adapters.clone(),
     };
     let router = create_router(state);
     let addr = format!("0.0.0.0:{port}");
