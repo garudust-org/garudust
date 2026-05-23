@@ -564,6 +564,10 @@ pub struct SecurityConfig {
     #[serde(default)]
     pub rate_limit_rpm: Option<u32>,
 
+    /// Per-(platform, user) rate limit in requests/minute. None = disabled.
+    #[serde(default)]
+    pub rate_limit_rpm_per_user: Option<u32>,
+
     /// Terminal execution sandbox. Default "none" (direct host execution).
     #[serde(default)]
     pub terminal_sandbox: TerminalSandbox,
@@ -594,6 +598,7 @@ impl Default for SecurityConfig {
             allowed_write_paths: Vec::new(),
             approval_mode: default_approval_mode(),
             rate_limit_rpm: None,
+            rate_limit_rpm_per_user: None,
             terminal_sandbox: TerminalSandbox::None,
             terminal_sandbox_image: default_sandbox_image(),
             terminal_sandbox_opts: Vec::new(),
@@ -992,6 +997,7 @@ impl Default for AgentConfig {
                 allowed_write_paths: vec![cwd],
                 approval_mode: default_approval_mode(),
                 rate_limit_rpm: None,
+                rate_limit_rpm_per_user: None,
                 terminal_sandbox: TerminalSandbox::None,
                 terminal_sandbox_image: default_sandbox_image(),
                 terminal_sandbox_opts: Vec::new(),
