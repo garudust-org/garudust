@@ -98,7 +98,9 @@ impl GatewayHandler {
         let window_start = now_secs - (now_secs % 60);
         let key = format!("{platform}:{user_id}");
         let entry = self.user_rate_limits.entry(key).or_default();
-        let mut state = entry.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut state = entry
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if state.0 != window_start {
             *state = (window_start, 0);
         }
@@ -1462,11 +1464,11 @@ mod tests {
             error::{AgentError, PlatformError, TransportError},
             memory::{MemoryContent, MemoryStore},
             platform::PlatformAdapter,
+            transport::{ApiMode, ProviderTransport, StreamResult},
             types::{
                 ChannelId, ContentPart, InferenceConfig, Message, OutboundMessage, StopReason,
                 StreamChunk, TokenUsage, ToolSchema, TransportResponse,
             },
-            transport::{ApiMode, ProviderTransport, StreamResult},
         };
         use garudust_memory::SessionDb;
         use garudust_tools::ToolRegistry;
@@ -1554,8 +1556,7 @@ mod tests {
         let transport = Arc::new(Echo);
         let tools = Arc::new(ToolRegistry::new());
         let memory = Arc::new(NopMem);
-        let tmp = std::env::temp_dir()
-            .join(format!("garudust-ratelimit-{}", uuid::Uuid::new_v4()));
+        let tmp = std::env::temp_dir().join(format!("garudust-ratelimit-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&tmp).unwrap();
         let db = Arc::new(SessionDb::open(&tmp).unwrap());
         let agent = Arc::new(
