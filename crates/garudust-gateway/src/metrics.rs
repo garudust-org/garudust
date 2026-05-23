@@ -104,9 +104,9 @@ impl Metrics {
                  # TYPE garudust_platform_messages_total counter\n",
             );
             for (platform, count) in &pm {
-                let _ = write!(
+                let _ = writeln!(
                     out,
-                    "garudust_platform_messages_total{{platform=\"{platform}\"}} {count}\n"
+                    "garudust_platform_messages_total{{platform=\"{platform}\"}} {count}"
                 );
             }
         }
@@ -124,9 +124,9 @@ impl Metrics {
                  # TYPE garudust_platform_errors_total counter\n",
             );
             for (platform, count) in &pe {
-                let _ = write!(
+                let _ = writeln!(
                     out,
-                    "garudust_platform_errors_total{{platform=\"{platform}\"}} {count}\n"
+                    "garudust_platform_errors_total{{platform=\"{platform}\"}} {count}"
                 );
             }
         }

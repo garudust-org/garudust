@@ -541,7 +541,7 @@ impl GatewayHandler {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         roles
             .invites
-            .retain(|_, code| code.expires_at.map_or(true, |exp| exp > now));
+            .retain(|_, code| code.expires_at.is_none_or(|exp| exp > now));
     }
 
     /// Bootstrap: if no admin exists yet and this is a DM, make the sender admin.
