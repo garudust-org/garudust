@@ -1311,19 +1311,15 @@ where
 
 /// Return the size of the file at `path`, or 0 on any I/O error.
 async fn file_size(path: &str) -> u64 {
-    tokio::fs::metadata(path)
-        .await
-        .map(|m| m.len())
-        .unwrap_or(0)
+    tokio::fs::metadata(path).await.map_or(0, |m| m.len())
 }
 
 /// True if the file at `path` starts with a recognised image magic-byte
 /// signature (JPEG, PNG, GIF, WebP). Returns true on any I/O error so
 /// that a header read failure never silently discards a valid image.
 async fn is_supported_image(path: &str) -> bool {
-    let mut f = match tokio::fs::File::open(path).await {
-        Ok(f) => f,
-        Err(_) => return true,
+    let Ok(mut f) = tokio::fs::File::open(path).await else {
+        return true;
     };
     let mut buf = [0u8; 12];
     let n = f.read(&mut buf).await.unwrap_or(0);
@@ -1348,6 +1344,10 @@ fn is_qr_hit(output: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Write as _;
+
+    use garudust_core::types::ImageAttachment;
+
     use super::{filter_oversized, is_qr_hit, is_supported_image, summarize_ingest};
 
     #[test]
@@ -1400,7 +1400,6 @@ mod tests {
     #[tokio::test]
     async fn jpeg_magic_bytes_accepted() {
         let mut f = tempfile::NamedTempFile::new().unwrap();
-        use std::io::Write as _;
         f.write_all(&[0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10]).unwrap();
         assert!(is_supported_image(f.path().to_str().unwrap()).await);
     }
@@ -1408,7 +1407,6 @@ mod tests {
     #[tokio::test]
     async fn png_magic_bytes_accepted() {
         let mut f = tempfile::NamedTempFile::new().unwrap();
-        use std::io::Write as _;
         f.write_all(&[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00])
             .unwrap();
         assert!(is_supported_image(f.path().to_str().unwrap()).await);
@@ -1417,7 +1415,6 @@ mod tests {
     #[tokio::test]
     async fn webp_magic_bytes_accepted() {
         let mut f = tempfile::NamedTempFile::new().unwrap();
-        use std::io::Write as _;
         f.write_all(b"RIFF\x00\x00\x00\x00WEBP").unwrap();
         assert!(is_supported_image(f.path().to_str().unwrap()).await);
     }
@@ -1425,7 +1422,6 @@ mod tests {
     #[tokio::test]
     async fn random_bytes_rejected() {
         let mut f = tempfile::NamedTempFile::new().unwrap();
-        use std::io::Write as _;
         f.write_all(b"%PDF-1.4 this is a pdf not an image").unwrap();
         assert!(!is_supported_image(f.path().to_str().unwrap()).await);
     }
@@ -1439,9 +1435,6 @@ mod tests {
 
     #[tokio::test]
     async fn filter_oversized_keeps_small_rejects_large() {
-        use garudust_core::types::ImageAttachment;
-        use std::io::Write as _;
-
         let small = tempfile::NamedTempFile::new().unwrap();
         let large = tempfile::NamedTempFile::new().unwrap();
         {
@@ -1449,12 +1442,16 @@ mod tests {
                 .write(true)
                 .open(large.path())
                 .unwrap();
-            lf.write_all(&vec![0u8; 200]).unwrap();
+            lf.write_all(&[0u8; 200]).unwrap();
         }
 
         let atts = vec![
-            ImageAttachment { path: small.path().to_str().unwrap().to_string() },
-            ImageAttachment { path: large.path().to_str().unwrap().to_string() },
+            ImageAttachment {
+                path: small.path().to_str().unwrap().to_string(),
+            },
+            ImageAttachment {
+                path: large.path().to_str().unwrap().to_string(),
+            },
         ];
 
         let (accepted, rejected) =
