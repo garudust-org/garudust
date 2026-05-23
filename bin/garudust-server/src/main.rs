@@ -243,6 +243,7 @@ async fn start_platform(
     approver: Arc<dyn CommandApprover>,
     config: Arc<AgentConfig>,
     db: Arc<SessionDb>,
+    metrics: Arc<Metrics>,
 ) -> Result<()> {
     let name = platform.name();
     let handler = Arc::new(GatewayHandler::new(
@@ -252,6 +253,7 @@ async fn start_platform(
         approver,
         config,
         Some(db),
+        metrics,
     ));
     handler.resume_pending();
     platform.start(handler).await?;
@@ -444,6 +446,9 @@ async fn main() -> Result<()> {
     // ── Platform adapters ─────────────────────────────────────────────────────
     // Collect all started adapters so we can call stop() on graceful shutdown.
     let mut platform_adapters: Vec<Arc<dyn PlatformAdapter>> = Vec::new();
+    // Shared metrics instance — passed to every GatewayHandler and to AppState
+    // so the HTTP /metrics endpoint reflects platform adapter activity too.
+    let metrics = Arc::new(Metrics::default());
     // For each adapter, the CLI flag takes precedence; otherwise the secret is
     // read from `~/.garudust/.env` via `get_secret` (in-memory map — never
     // exposed to subprocess tools). This mirrors the LINE/WhatsApp wiring
@@ -462,6 +467,7 @@ async fn main() -> Result<()> {
             approver.clone(),
             config.clone(),
             db.clone(),
+            metrics.clone(),
         )
         .await?;
     }
@@ -480,6 +486,7 @@ async fn main() -> Result<()> {
             approver.clone(),
             config.clone(),
             db.clone(),
+            metrics.clone(),
         )
         .await?;
     }
@@ -498,6 +505,7 @@ async fn main() -> Result<()> {
             approver.clone(),
             config.clone(),
             db.clone(),
+            metrics.clone(),
         )
         .await?;
     }
@@ -520,6 +528,7 @@ async fn main() -> Result<()> {
             approver.clone(),
             config.clone(),
             db.clone(),
+            metrics.clone(),
         )
         .await?;
     }
@@ -547,6 +556,7 @@ async fn main() -> Result<()> {
             approver.clone(),
             config.clone(),
             db.clone(),
+            metrics.clone(),
         )
         .await?;
     }
@@ -571,6 +581,7 @@ async fn main() -> Result<()> {
                 approver.clone(),
                 config.clone(),
                 db.clone(),
+                metrics.clone(),
             )
             .await?;
         } else {
@@ -602,6 +613,7 @@ async fn main() -> Result<()> {
                 approver.clone(),
                 config.clone(),
                 db.clone(),
+                metrics.clone(),
             )
             .await?;
         } else {
@@ -719,7 +731,7 @@ async fn main() -> Result<()> {
         config,
         session_db: db,
         agent,
-        metrics: Arc::new(Metrics::default()),
+        metrics,
         approver,
     };
     let router = create_router(state);

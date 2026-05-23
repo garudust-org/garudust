@@ -27,7 +27,7 @@ mod tests {
 
     use garudust_core::platform::MessageHandler as _;
 
-    use crate::{handler::GatewayHandler, sessions::SessionRegistry};
+    use crate::{handler::GatewayHandler, metrics::Metrics, sessions::SessionRegistry};
 
     // ── Minimal stubs ────────────────────────────────────────────────────────
 
@@ -198,6 +198,7 @@ mod tests {
             Arc::new(garudust_agent::AutoApprover),
             cfg,
             Some(db),
+            Arc::new(Metrics::default()),
         )
     }
 
