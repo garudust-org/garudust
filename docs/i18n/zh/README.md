@@ -323,6 +323,7 @@ security:
                               # 警告：none 直接在宿主机上执行 shell 命令
                               # 生产环境建议使用 docker 以隔离命令执行
   rate_limit_rpm: ~           # 每 IP 每分钟请求限制（~ = 不限）
+  rate_limit_rpm_per_user: ~  # 每（平台, 用户ID）每分钟请求限制（~ = 不限）
   allowed_read_paths: []      # 默认：cwd + home
   allowed_write_paths: []     # 默认：cwd
 
@@ -535,19 +536,20 @@ disabled_toolsets: ["rag"]
 
 ```bash
 garudust tool list                        # 浏览可用工具
-garudust tool install weather             # 下载到 ~/.garudust/tools/weather/
-garudust tool install hash_text
-garudust tool uninstall weather
+garudust tool install hash_text           # 下载到 ~/.garudust/tools/hash_text/
+garudust tool install read_qr
+garudust tool uninstall hash_text
 garudust tool update                      # 更新所有 hub 工具
 ```
 
-**Skills Hub**（[agentskills.io](https://agentskills.io)）
+**Skills Hub**（[garudust-hub](https://github.com/garudust-org/garudust-hub)）
 
 ```bash
 garudust skill list
-garudust skill install agentskills-org/hub/git-workflow
-garudust skill install https://example.com/skills/my-skill/SKILL.md
-garudust skill uninstall git-workflow
+garudust skill install weather            # 使用 http_request — 无需子进程
+garudust skill install fetch-title        # 使用 web_fetch — 无需 uv/Python
+garudust skill install git-workflow
+garudust skill uninstall weather
 ```
 
 ---

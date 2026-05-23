@@ -335,6 +335,7 @@ security:
                               # WARNING: none runs shell commands directly on the host.
                               # Use docker in production to isolate command execution.
   rate_limit_rpm: ~           # per-IP limit (~ = unlimited)
+  rate_limit_rpm_per_user: ~  # per-(platform, user_id) limit (~ = unlimited)
   allowed_read_paths: []      # defaults to cwd + home
   allowed_write_paths: []     # defaults to cwd
 
@@ -581,19 +582,20 @@ One command to extend the agent with community-built tools and skills.
 
 ```bash
 garudust tool list                        # browse available tools
-garudust tool install weather             # download to ~/.garudust/tools/weather/
-garudust tool install hash_text
-garudust tool uninstall weather
+garudust tool install hash_text           # download to ~/.garudust/tools/hash_text/
+garudust tool install read_qr
+garudust tool uninstall hash_text
 garudust tool update                      # re-fetch all hub tools
 ```
 
-**Skills Hub** ([agentskills.io](https://agentskills.io))
+**Skills Hub** ([garudust-hub](https://github.com/garudust-org/garudust-hub))
 
 ```bash
 garudust skill list
-garudust skill install agentskills-org/hub/git-workflow
-garudust skill install https://example.com/skills/my-skill/SKILL.md
-garudust skill uninstall git-workflow
+garudust skill install weather            # uses http_request — no subprocess needed
+garudust skill install fetch-title        # uses web_fetch — no uv/Python needed
+garudust skill install git-workflow
+garudust skill uninstall weather
 ```
 
 ---

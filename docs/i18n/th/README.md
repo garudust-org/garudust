@@ -323,6 +323,7 @@ security:
                               # คำเตือน: none รัน shell command บน host โดยตรง
                               # ใช้ docker ใน production เพื่อ isolate การรัน command
   rate_limit_rpm: ~           # จำกัด request ต่อ IP ต่อนาที (~ = ไม่จำกัด)
+  rate_limit_rpm_per_user: ~  # จำกัด request ต่อ (platform, user_id) ต่อนาที (~ = ไม่จำกัด)
   allowed_read_paths: []      # default: cwd + home
   allowed_write_paths: []     # default: cwd
 
@@ -535,19 +536,20 @@ disabled_toolsets: ["rag"]
 
 ```bash
 garudust tool list                        # ดู tool ที่มี
-garudust tool install weather             # ติดตั้งไปที่ ~/.garudust/tools/weather/
-garudust tool install hash_text
-garudust tool uninstall weather
+garudust tool install hash_text           # ติดตั้งไปที่ ~/.garudust/tools/hash_text/
+garudust tool install read_qr
+garudust tool uninstall hash_text
 garudust tool update                      # อัปเดต hub tools ทั้งหมด
 ```
 
-**Skills Hub** ([agentskills.io](https://agentskills.io))
+**Skills Hub** ([garudust-hub](https://github.com/garudust-org/garudust-hub))
 
 ```bash
 garudust skill list
-garudust skill install agentskills-org/hub/git-workflow
-garudust skill install https://example.com/skills/my-skill/SKILL.md
-garudust skill uninstall git-workflow
+garudust skill install weather            # ใช้ http_request — ไม่ต้องใช้ subprocess
+garudust skill install fetch-title        # ใช้ web_fetch — ไม่ต้องใช้ uv/Python
+garudust skill install git-workflow
+garudust skill uninstall weather
 ```
 
 ---
