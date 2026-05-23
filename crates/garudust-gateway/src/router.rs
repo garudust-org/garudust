@@ -164,11 +164,12 @@ async fn chat_stream(
     State(state): State<AppState>,
     Json(req): Json<ChatRequest>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    state.metrics.inc_request();
     let (chunk_tx, chunk_rx) = mpsc::unbounded_channel::<String>();
 
     let approver = state.approver.clone();
     tokio::spawn(async move {
-        let _ = state
+        match state
             .agent
             .load_full()
             .run_streaming(
@@ -180,7 +181,16 @@ async fn chat_stream(
                 req.hint.as_deref(),
                 req.session_key.as_deref(),
             )
-            .await;
+            .await
+        {
+            Ok(result) => {
+                state
+                    .metrics
+                    .add_tokens(result.usage.input_tokens, result.usage.output_tokens);
+            }
+            Err(_) => state.metrics.inc_error(),
+        }
+        state.metrics.dec_active();
     });
 
     let stream =
@@ -216,7 +226,7 @@ async fn handle_ws(mut socket: WebSocket, state: AppState) {
 
     let approver2 = state2.approver.clone();
     tokio::spawn(async move {
-        let _ = state2
+        match state2
             .agent
             .load_full()
             .run_streaming(
@@ -228,7 +238,15 @@ async fn handle_ws(mut socket: WebSocket, state: AppState) {
                 ws_hint.as_deref(),
                 ws_session_key.as_deref(),
             )
-            .await;
+            .await
+        {
+            Ok(result) => {
+                state2
+                    .metrics
+                    .add_tokens(result.usage.input_tokens, result.usage.output_tokens);
+            }
+            Err(_) => state2.metrics.inc_error(),
+        }
     });
 
     while let Some(chunk) = chunk_rx.recv().await {

@@ -139,7 +139,15 @@ mod tests {
         r.touch("a", "slack", "u1").await;
         r.touch("b", "slack", "u2").await;
 
-        // max_age = 0 → cutoff is now → everything is "old"
+        // Back-date both sessions so last_seen is strictly before cutoff even
+        // when max_age = 0 (cutoff = Utc::now(), strict `<` comparison).
+        {
+            let mut map = r.sessions.write().await;
+            let past = Utc::now() - chrono::Duration::milliseconds(100);
+            map.get_mut("a").unwrap().last_seen = past;
+            map.get_mut("b").unwrap().last_seen = past;
+        }
+
         let evicted = r.cleanup_idle(std::time::Duration::ZERO).await;
         assert_eq!(evicted.len(), 2);
         assert_eq!(r.count().await, 0);

@@ -256,6 +256,16 @@ async fn start_platform(
         metrics,
     ));
     handler.resume_pending();
+
+    // Sweep expired invite codes once per hour so live_roles doesn't accumulate dead entries.
+    let handler_cleanup = handler.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+            handler_cleanup.cleanup_expired_invites();
+        }
+    });
+
     platform.start(handler).await?;
     tracing::info!("{name} adapter started");
     Ok(())
@@ -708,6 +718,7 @@ async fn main() -> Result<()> {
         let idle_secs = config.session_idle_timeout_secs;
         let sessions_gc = sessions.clone();
         let agent_gc = agent.clone();
+        let metrics_gc = metrics.clone();
         tokio::spawn(async move {
             let interval = std::time::Duration::from_secs(idle_secs.min(300));
             let max_age = std::time::Duration::from_secs(idle_secs);
@@ -721,6 +732,8 @@ async fn main() -> Result<()> {
                     }
                     tracing::info!(count = evicted.len(), "evicted idle sessions");
                 }
+                #[allow(clippy::cast_possible_truncation)]
+                metrics_gc.set_sessions_active(sessions_gc.count().await as u64);
             }
         });
     }
