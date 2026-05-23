@@ -115,6 +115,7 @@ impl GatewayHandler {
     }
 
     /// Handle /whoami, /role … commands. Returns true if the command was handled.
+    #[tracing::instrument(skip_all, fields(command = %msg.text.trim()))]
     async fn handle_role_command(&self, msg: &InboundMessage) -> anyhow::Result<bool> {
         let trimmed = msg.text.trim();
         let platform = &msg.channel.platform;
@@ -601,6 +602,7 @@ impl GatewayHandler {
 
     /// Analyse image attachments via the registered view_image tool and inject
     /// the descriptions into conversation history.
+    #[tracing::instrument(skip_all, fields(session_key = session_key, images = attachments.len()))]
     async fn process_images(
         &self,
         attachments: &[ImageAttachment],
@@ -698,6 +700,7 @@ impl GatewayHandler {
     /// can later ingest on confirmation) and spawn an agent turn that asks the
     /// user whether they want the file ingested into the RAG store.  The LLM
     /// generates the question in whichever language the conversation is in.
+    #[tracing::instrument(skip_all, fields(session_key = session_key, docs = attachments.len()))]
     async fn process_docs(
         &self,
         attachments: &[DocAttachment],
