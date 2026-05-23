@@ -671,8 +671,7 @@ async fn run_loop_triggers_compression_when_threshold_exceeded() {
         stop_reason: StopReason::EndTurn,
     };
     let (compress_transport, _) = ScriptedTransport::new(vec![summary_resp]);
-    let compressor = ContextCompressor::new(compress_transport, "m".into())
-        .with_context_limit(1); // threshold = 1 token → always fires
+    let compressor = ContextCompressor::new(compress_transport, "m".into()).with_context_limit(1); // threshold = 1 token → always fires
 
     let mut config = AgentConfig::default();
     config.compression.enabled = true;
@@ -689,7 +688,13 @@ async fn run_loop_triggers_compression_when_threshold_exceeded() {
     );
 
     let result = agent
-        .run("trigger compress", Arc::new(AutoApprove), "test", None, None)
+        .run(
+            "trigger compress",
+            Arc::new(AutoApprove),
+            "test",
+            None,
+            None,
+        )
         .await
         .unwrap();
 

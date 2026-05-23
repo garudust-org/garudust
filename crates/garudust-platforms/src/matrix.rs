@@ -156,7 +156,13 @@ impl PlatformAdapter for MatrixAdapter {
                 let (text, attachments, doc_attachments) = match ev.content.msgtype {
                     MessageType::Text(c) => (c.body, vec![], vec![]),
                     MessageType::Image(c) => {
-                        let atts = download_matrix_image(&dl_client, &c.source, &ev.event_id.to_string(), "jpg").await;
+                        let atts = download_matrix_image(
+                            &dl_client,
+                            &c.source,
+                            &ev.event_id.to_string(),
+                            "jpg",
+                        )
+                        .await;
                         (String::new(), atts, vec![])
                     }
                     MessageType::File(c) => {
@@ -164,7 +170,14 @@ impl PlatformAdapter for MatrixAdapter {
                             .extension()
                             .and_then(|e| e.to_str())
                             .unwrap_or("bin");
-                        let docs = download_matrix_doc(&dl_client, &c.source, &ev.event_id.to_string(), ext, &c.body).await;
+                        let docs = download_matrix_doc(
+                            &dl_client,
+                            &c.source,
+                            &ev.event_id.to_string(),
+                            ext,
+                            &c.body,
+                        )
+                        .await;
                         (String::new(), vec![], docs)
                     }
                     _ => return,

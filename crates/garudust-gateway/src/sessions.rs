@@ -114,8 +114,7 @@ mod tests {
         // Back-date "old" by writing directly into the map
         {
             let mut map = r.sessions.write().await;
-            map.get_mut("old").unwrap().last_seen =
-                Utc::now() - chrono::Duration::hours(2);
+            map.get_mut("old").unwrap().last_seen = Utc::now() - chrono::Duration::hours(2);
         }
 
         let evicted = r.cleanup_idle(std::time::Duration::from_secs(3600)).await;

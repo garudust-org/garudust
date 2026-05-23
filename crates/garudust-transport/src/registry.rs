@@ -389,7 +389,11 @@ mod tests {
     #[test]
     fn all_builtin_providers_have_non_empty_base_url() {
         for p in garudust_core::config::BUILTIN_PROVIDERS {
-            assert!(!p.base_url.is_empty(), "provider '{}' has empty base_url", p.name);
+            assert!(
+                !p.base_url.is_empty(),
+                "provider '{}' has empty base_url",
+                p.name
+            );
         }
     }
 
@@ -439,8 +443,7 @@ mod tests {
             assert!(
                 valid,
                 "provider '{}' api_key_env '{}' is not SCREAMING_SNAKE_CASE",
-                p.name,
-                p.api_key_env
+                p.name, p.api_key_env
             );
         }
     }
@@ -461,7 +464,11 @@ mod tests {
                 "provider '{}' resolved to wrong base_url",
                 p.name
             );
-            assert_eq!(model, "some-model", "provider '{}' model was mangled", p.name);
+            assert_eq!(
+                model, "some-model",
+                "provider '{}' model was mangled",
+                p.name
+            );
         }
     }
 

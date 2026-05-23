@@ -215,7 +215,12 @@ mod tests {
     impl RecordingTransport {
         fn new() -> (Arc<Self>, Arc<std::sync::Mutex<Vec<InferenceConfig>>>) {
             let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
-            (Arc::new(Self { calls: calls.clone() }), calls)
+            (
+                Arc::new(Self {
+                    calls: calls.clone(),
+                }),
+                calls,
+            )
         }
     }
 
@@ -301,8 +306,8 @@ mod tests {
     #[tokio::test]
     async fn compress_uses_configured_model_name() {
         let (transport, calls) = RecordingTransport::new();
-        let compressor = ContextCompressor::new(transport, "claude-haiku-test".into())
-            .with_context_limit(100);
+        let compressor =
+            ContextCompressor::new(transport, "claude-haiku-test".into()).with_context_limit(100);
 
         // Build enough messages that there is a middle region to summarise.
         // head=1, tail=tail_turns*2=12; we need >13 to have a non-empty middle.
@@ -320,7 +325,10 @@ mod tests {
         let _ = compressor.compress(msgs).await.unwrap();
 
         let recorded = calls.lock().unwrap();
-        assert!(!recorded.is_empty(), "compress() must call transport.chat()");
+        assert!(
+            !recorded.is_empty(),
+            "compress() must call transport.chat()"
+        );
         assert_eq!(
             recorded[0].model, "claude-haiku-test",
             "compress must forward the configured model name, not fall back to main model"
@@ -330,8 +338,8 @@ mod tests {
     #[tokio::test]
     async fn compress_too_short_skips_llm_call() {
         let (transport, calls) = RecordingTransport::new();
-        let compressor = ContextCompressor::new(transport, "any-model".into())
-            .with_context_limit(100);
+        let compressor =
+            ContextCompressor::new(transport, "any-model".into()).with_context_limit(100);
 
         // Only 5 messages — not enough to have a middle region.
         let msgs: Vec<Message> = (0..5)
@@ -342,8 +350,15 @@ mod tests {
             .collect();
 
         let (result, usage) = compressor.compress(msgs.clone()).await.unwrap();
-        assert_eq!(result.len(), msgs.len(), "short history must be returned unchanged");
+        assert_eq!(
+            result.len(),
+            msgs.len(),
+            "short history must be returned unchanged"
+        );
         assert_eq!(usage.input_tokens, 0, "no LLM call means zero token usage");
-        assert!(calls.lock().unwrap().is_empty(), "short history must not call transport");
+        assert!(
+            calls.lock().unwrap().is_empty(),
+            "short history must not call transport"
+        );
     }
 }
