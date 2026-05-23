@@ -26,7 +26,11 @@
 
 ---
 
-## 支持的操作系统
+## 快速开始
+
+**01 — 安装**
+
+从 [GitHub Releases](https://github.com/garudust-org/garudust-agent/releases/latest) 下载预构建 binary：
 
 | 操作系统 | 架构 | 文件 |
 |---------|------|------|
@@ -35,16 +39,6 @@
 | Linux | x86_64 | `garudust-*-x86_64-unknown-linux-musl.tar.gz` |
 | Linux | ARM64（Raspberry Pi 4/5、Jetson） | `garudust-*-aarch64-unknown-linux-musl.tar.gz` |
 | Windows | x86_64 | `garudust-*-x86_64-pc-windows-msvc.zip` |
-
-从 [GitHub Releases](https://github.com/garudust-org/garudust-agent/releases/latest) 下载 — 无需安装 Rust。
-
----
-
-## 快速开始
-
-**01 — 安装**
-
-从 [GitHub Releases](https://github.com/garudust-org/garudust-agent/releases/latest) 下载预构建 binary（macOS、Linux、Windows、ARM64）：
 
 ```bash
 ARCH=$(uname -m)

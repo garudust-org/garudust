@@ -26,7 +26,11 @@ A self-improving AI agent runtime written in Rust — ~10 MB binary, no runtime 
 
 ---
 
-## Supported OS
+## Quick Start
+
+**01 — Install**
+
+Download a pre-built binary from [GitHub Releases](https://github.com/garudust-org/garudust-agent/releases/latest):
 
 | OS | Architecture | Binary |
 |----|-------------|--------|
@@ -35,16 +39,6 @@ A self-improving AI agent runtime written in Rust — ~10 MB binary, no runtime 
 | Linux | x86_64 | `garudust-*-x86_64-unknown-linux-musl.tar.gz` |
 | Linux | ARM64 (Raspberry Pi 4/5, Jetson) | `garudust-*-aarch64-unknown-linux-musl.tar.gz` |
 | Windows | x86_64 | `garudust-*-x86_64-pc-windows-msvc.zip` |
-
-Download from [GitHub Releases](https://github.com/garudust-org/garudust-agent/releases/latest) — no Rust required.
-
----
-
-## Quick Start
-
-**01 — Install**
-
-Download a pre-built binary from [GitHub Releases](https://github.com/garudust-org/garudust-agent/releases/latest) (macOS, Linux, Windows, ARM64):
 
 ```bash
 ARCH=$(uname -m)
