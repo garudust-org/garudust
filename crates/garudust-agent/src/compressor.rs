@@ -239,7 +239,7 @@ mod tests {
             Ok(TransportResponse {
                 content: vec![ContentPart::Text("summary".into())],
                 tool_calls: vec![],
-                usage: Default::default(),
+                usage: TokenUsage::default(),
                 stop_reason: garudust_core::types::StopReason::EndTurn,
             })
         }

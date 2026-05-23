@@ -167,7 +167,7 @@ impl PlatformAdapter for MatrixAdapter {
                         let atts = download_matrix_image(
                             &dl_client,
                             &c.source,
-                            &ev.event_id.to_string(),
+                            ev.event_id.as_ref(),
                             "jpg",
                         )
                         .await;
@@ -181,7 +181,7 @@ impl PlatformAdapter for MatrixAdapter {
                         let docs = download_matrix_doc(
                             &dl_client,
                             &c.source,
-                            &ev.event_id.to_string(),
+                            ev.event_id.as_ref(),
                             ext,
                             &c.body,
                         )

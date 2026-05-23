@@ -478,7 +478,7 @@ async fn run_stops_at_max_iterations() {
         usage: TokenUsage::default(),
         stop_reason: StopReason::ToolUse,
     };
-    let responses: Vec<TransportResponse> = std::iter::repeat(tool_turn).take(20).collect();
+    let responses: Vec<TransportResponse> = std::iter::repeat_n(tool_turn, 20).collect();
     let (transport, _) = ScriptedTransport::new(responses);
 
     let mut registry = ToolRegistry::new();
