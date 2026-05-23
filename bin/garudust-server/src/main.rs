@@ -4,7 +4,9 @@ use anyhow::Result;
 use arc_swap::ArcSwap;
 use clap::Parser;
 use garudust_agent::{Agent, AutoApprover, ConstitutionalApprover, DenyApprover};
-use garudust_core::config::{get_secret, McpServerConfig, WebhookPlatformConfig};
+use garudust_core::config::{
+    get_secret, McpServerConfig, WebhookPlatformConfig, BUILTIN_PROVIDERS,
+};
 use garudust_core::{
     config::AgentConfig, cron::CronManager, platform::PlatformAdapter, tool::CommandApprover,
 };
@@ -360,6 +362,89 @@ fn spawn_config_watcher(
     });
 }
 
+const VALID_APPROVAL_MODES: &[&str] = &["auto", "smart", "deny", "interactive"];
+
+/// Validate config before the server accepts any requests.
+/// Returns a clear, operator-readable error for each class of misconfiguration.
+fn validate_config(config: &AgentConfig, gateway_port: u16) -> Result<()> {
+    // 1. model must be non-empty
+    if config.model.trim().is_empty() {
+        anyhow::bail!(
+            "config error: `model` is empty — set it in config.yaml or pass --model <name>"
+        );
+    }
+
+    // 2. every routing hint must reference a known provider or profile
+    let known_providers: std::collections::HashSet<&str> = BUILTIN_PROVIDERS
+        .iter()
+        .map(|p| p.name)
+        .chain(["anthropic", "bedrock", "ollama", "codex"])
+        .chain(config.providers.keys().map(String::as_str))
+        .collect();
+    for (hint, target) in &config.routing {
+        let provider = target.split('/').next().unwrap_or(target.as_str());
+        if !known_providers.contains(provider) {
+            let mut known_sorted: Vec<&str> = known_providers.iter().copied().collect();
+            known_sorted.sort_unstable();
+            anyhow::bail!(
+                "config error: routing hint `{hint}` references unknown provider `{provider}` \
+                 (value: `{target}`). Known providers: {}",
+                known_sorted.join(", ")
+            );
+        }
+    }
+
+    // 3. role approval_mode values must be recognised
+    for (role_name, def) in &config.roles.definitions {
+        if let Some(mode) = &def.approval_mode {
+            if !VALID_APPROVAL_MODES.contains(&mode.as_str()) {
+                anyhow::bail!(
+                    "config error: role `{role_name}` has invalid approval_mode `{mode}`. \
+                     Valid values: {}",
+                    VALID_APPROVAL_MODES.join(", ")
+                );
+            }
+        }
+    }
+
+    // 4. webhook-based platform adapters must not share a port with each other
+    //    or with the HTTP gateway
+    let mut port_map: std::collections::HashMap<u16, &str> = std::collections::HashMap::new();
+    port_map.insert(gateway_port, "HTTP gateway");
+    for (port, name) in [
+        config
+            .platforms
+            .webhook
+            .as_ref()
+            .filter(|c| c.enabled)
+            .map(|c| (c.port, "webhook")),
+        config
+            .platforms
+            .line
+            .as_ref()
+            .filter(|c| c.enabled)
+            .map(|c| (c.port, "line")),
+        config
+            .platforms
+            .whatsapp
+            .as_ref()
+            .filter(|c| c.enabled)
+            .map(|c| (c.port, "whatsapp")),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if let Some(existing) = port_map.insert(port, name) {
+            anyhow::bail!(
+                "config error: port {port} is claimed by both `{existing}` and `{name}` — \
+                 assign a unique port to each platform adapter"
+            );
+        }
+    }
+
+    Ok(())
+}
+
 /// Resolves when SIGINT (Ctrl-C) or SIGTERM is received.
 /// If a signal handler cannot be installed, falls back to pending() for that
 /// signal so the server degrades gracefully (Ctrl-C only) rather than shutting
@@ -409,6 +494,7 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     let config = build_config(&cli);
     let port = cli.port.unwrap_or(config.server.port);
+    validate_config(&config, port)?;
 
     tracing::info!(
         "garudust-server {}  |  model: {}  |  provider: {}  |  port: {}",
@@ -784,4 +870,104 @@ async fn main() -> Result<()> {
     tracing::info!("shutdown complete");
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use garudust_core::config::{AgentConfig, RoleDefinition, RolesConfig, WebhookPlatformConfig};
+
+    use super::validate_config;
+
+    fn base_config() -> AgentConfig {
+        AgentConfig {
+            model: "claude-3-5-sonnet".to_string(),
+            ..AgentConfig::default()
+        }
+    }
+
+    #[test]
+    fn valid_default_config_passes() {
+        assert!(validate_config(&base_config(), 3000).is_ok());
+    }
+
+    #[test]
+    fn empty_model_is_rejected() {
+        let mut cfg = base_config();
+        cfg.model = String::new();
+        assert!(validate_config(&cfg, 3000).is_err());
+    }
+
+    #[test]
+    fn whitespace_only_model_is_rejected() {
+        let mut cfg = base_config();
+        cfg.model = "   ".to_string();
+        assert!(validate_config(&cfg, 3000).is_err());
+    }
+
+    #[test]
+    fn routing_to_known_builtin_passes() {
+        let mut cfg = base_config();
+        cfg.routing
+            .insert("cheap".to_string(), "groq/llama-3.1-8b".to_string());
+        assert!(validate_config(&cfg, 3000).is_ok());
+    }
+
+    #[test]
+    fn routing_to_unknown_provider_is_rejected() {
+        let mut cfg = base_config();
+        cfg.routing
+            .insert("fast".to_string(), "nonexistent-llm/model-x".to_string());
+        let err = validate_config(&cfg, 3000).unwrap_err();
+        assert!(err.to_string().contains("nonexistent-llm"));
+    }
+
+    #[test]
+    fn valid_role_approval_mode_passes() {
+        let mut cfg = base_config();
+        cfg.roles.definitions.insert(
+            "member".to_string(),
+            RoleDefinition {
+                approval_mode: Some("smart".to_string()),
+                ..RoleDefinition::default()
+            },
+        );
+        assert!(validate_config(&cfg, 3000).is_ok());
+    }
+
+    #[test]
+    fn invalid_role_approval_mode_is_rejected() {
+        let mut cfg = base_config();
+        cfg.roles.definitions.insert(
+            "member".to_string(),
+            RoleDefinition {
+                approval_mode: Some("yolo".to_string()),
+                ..RoleDefinition::default()
+            },
+        );
+        let err = validate_config(&cfg, 3000).unwrap_err();
+        assert!(err.to_string().contains("yolo"));
+    }
+
+    #[test]
+    fn port_conflict_between_gateway_and_webhook_is_rejected() {
+        let mut cfg = base_config();
+        cfg.platforms.webhook = Some(WebhookPlatformConfig {
+            enabled: true,
+            port: 3000,
+            ..WebhookPlatformConfig::default_webhook()
+        });
+        let err = validate_config(&cfg, 3000).unwrap_err();
+        assert!(err.to_string().contains("3000"));
+    }
+
+    #[test]
+    fn disabled_platform_port_conflict_is_ignored() {
+        let mut cfg = base_config();
+        cfg.platforms.webhook = Some(WebhookPlatformConfig {
+            enabled: false,
+            port: 3000,
+            ..WebhookPlatformConfig::default_webhook()
+        });
+        assert!(validate_config(&cfg, 3000).is_ok());
+    }
 }
