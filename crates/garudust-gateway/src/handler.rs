@@ -1598,25 +1598,13 @@ mod tests {
 
     #[test]
     fn rate_limit_disabled_when_none() {
-        // When rate_limit_rpm_per_user is None, check_user_rate_limit must always return true.
-        // We test this by using a high limit and confirming no rejection after many calls.
-        // (A proper None path is exercised here via config.security check inside the helper.)
-        use std::sync::Arc;
         use garudust_core::config::AgentConfig;
+        use std::sync::Arc;
         let config = Arc::new(AgentConfig::default());
-        // Confirm default has no per-user limit set.
         assert!(config.security.rate_limit_rpm_per_user.is_none());
-
-        // Build a handler with limit set, then assert the None branch returns true
-        // by simulating the same logic inline.
-        let config_none: Option<u32> = None;
-        for _ in 0..200 {
-            let allowed = config_none.map_or(true, |limit| {
-                let _ = limit;
-                false // would count — but we're checking the None short-circuit
-            });
-            assert!(allowed);
-        }
+        // None short-circuits to true regardless of the closure.
+        let limit: Option<u32> = None;
+        assert!(limit.is_none_or(|_| false));
     }
 
     // ── filter_oversized ──────────────────────────────────────────────────────
