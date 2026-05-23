@@ -1,3 +1,4 @@
+use std::fmt::Write as _;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use dashmap::DashMap;
@@ -103,9 +104,10 @@ impl Metrics {
                  # TYPE garudust_platform_messages_total counter\n",
             );
             for (platform, count) in &pm {
-                out.push_str(&format!(
+                let _ = write!(
+                    out,
                     "garudust_platform_messages_total{{platform=\"{platform}\"}} {count}\n"
-                ));
+                );
             }
         }
 
@@ -122,9 +124,10 @@ impl Metrics {
                  # TYPE garudust_platform_errors_total counter\n",
             );
             for (platform, count) in &pe {
-                out.push_str(&format!(
+                let _ = write!(
+                    out,
                     "garudust_platform_errors_total{{platform=\"{platform}\"}} {count}\n"
-                ));
+                );
             }
         }
 
