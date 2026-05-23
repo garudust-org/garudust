@@ -874,7 +874,7 @@ async fn main() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use garudust_core::config::{AgentConfig, RoleDefinition, RolesConfig, WebhookPlatformConfig};
+    use garudust_core::config::{AgentConfig, RoleDefinition, WebhookPlatformConfig};
 
     use super::validate_config;
 
