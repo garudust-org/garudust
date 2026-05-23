@@ -12,12 +12,14 @@ use teloxide::{net::Download, prelude::*};
 
 pub struct TelegramAdapter {
     bot: Bot,
+    task: Arc<std::sync::Mutex<Option<tokio::task::JoinHandle<()>>>>,
 }
 
 impl TelegramAdapter {
     pub fn new(token: String) -> Self {
         Self {
             bot: Bot::new(token),
+            task: Arc::new(std::sync::Mutex::new(None)),
         }
     }
 }
@@ -28,9 +30,15 @@ impl PlatformAdapter for TelegramAdapter {
         "telegram"
     }
 
+    async fn stop(&self) {
+        if let Some(h) = self.task.lock().unwrap().take() {
+            h.abort();
+        }
+    }
+
     async fn start(&self, handler: Arc<dyn MessageHandler>) -> Result<(), PlatformError> {
         let bot = self.bot.clone();
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             teloxide::repl(bot, move |bot: Bot, msg: Message| {
                 let handler = handler.clone();
                 async move {
@@ -171,6 +179,7 @@ impl PlatformAdapter for TelegramAdapter {
             })
             .await;
         });
+        *self.task.lock().unwrap() = Some(handle);
         Ok(())
     }
 

@@ -65,8 +65,33 @@ async fn require_auth(
     next.run(req).await
 }
 
-async fn health() -> &'static str {
-    "ok"
+#[derive(Serialize)]
+struct HealthResponse {
+    status: &'static str,
+    checks: HealthChecks,
+}
+
+#[derive(Serialize)]
+struct HealthChecks {
+    db: String,
+}
+
+async fn health(State(state): State<AppState>) -> (StatusCode, Json<HealthResponse>) {
+    let db_result = match state.session_db.health_check() {
+        Ok(()) => "ok".to_string(),
+        Err(e) => format!("error: {e}"),
+    };
+    let healthy = db_result == "ok";
+    let resp = HealthResponse {
+        status: if healthy { "ok" } else { "degraded" },
+        checks: HealthChecks { db: db_result },
+    };
+    let code = if healthy {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    };
+    (code, Json(resp))
 }
 
 async fn metrics(State(state): State<AppState>) -> Response {
@@ -388,7 +413,9 @@ mod tests {
             .unwrap();
         assert_eq!(response.status(), 200);
         let body = response.into_body().collect().await.unwrap().to_bytes();
-        assert_eq!(&body[..], b"ok");
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["status"], "ok");
+        assert_eq!(json["checks"]["db"], "ok");
     }
 
     #[tokio::test]

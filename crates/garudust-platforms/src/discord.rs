@@ -116,6 +116,7 @@ impl EventHandler for DiscordHandler {
 pub struct DiscordAdapter {
     token: String,
     ctx_store: Arc<Mutex<Option<Context>>>,
+    task: Arc<std::sync::Mutex<Option<tokio::task::JoinHandle<()>>>>,
 }
 
 impl DiscordAdapter {
@@ -123,6 +124,7 @@ impl DiscordAdapter {
         Self {
             token,
             ctx_store: Arc::new(Mutex::new(None)),
+            task: Arc::new(std::sync::Mutex::new(None)),
         }
     }
 }
@@ -133,10 +135,16 @@ impl PlatformAdapter for DiscordAdapter {
         "discord"
     }
 
+    async fn stop(&self) {
+        if let Some(h) = self.task.lock().unwrap().take() {
+            h.abort();
+        }
+    }
+
     async fn start(&self, handler: Arc<dyn MessageHandler>) -> Result<(), PlatformError> {
         let token = self.token.clone();
         let ctx_store = self.ctx_store.clone();
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             let intents = GatewayIntents::GUILD_MESSAGES
                 | GatewayIntents::DIRECT_MESSAGES
                 | GatewayIntents::MESSAGE_CONTENT;
@@ -146,6 +154,7 @@ impl PlatformAdapter for DiscordAdapter {
                 .expect("Discord client failed");
             client.start().await.expect("Discord start failed");
         });
+        *self.task.lock().unwrap() = Some(handle);
         Ok(())
     }
 

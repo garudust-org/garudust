@@ -15,6 +15,11 @@ pub trait PlatformAdapter: Send + Sync + 'static {
 
     async fn start(&self, handler: Arc<dyn MessageHandler>) -> Result<(), PlatformError>;
 
+    /// Signal the platform's background task to stop. Default no-op for adapters
+    /// that do not support clean cancellation (e.g. axum-based HTTP servers that
+    /// rely on process exit). Adapters that own a JoinHandle should abort it here.
+    async fn stop(&self) {}
+
     async fn send_message(
         &self,
         channel: &ChannelId,

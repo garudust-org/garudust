@@ -97,6 +97,7 @@ pub struct MatrixAdapter {
     username: String,
     password: String,
     client: Arc<OnceCell<Client>>,
+    task: Arc<std::sync::Mutex<Option<tokio::task::JoinHandle<()>>>>,
 }
 
 impl MatrixAdapter {
@@ -106,6 +107,7 @@ impl MatrixAdapter {
             username,
             password,
             client: Arc::new(OnceCell::new()),
+            task: Arc::new(std::sync::Mutex::new(None)),
         }
     }
 }
@@ -114,6 +116,12 @@ impl MatrixAdapter {
 impl PlatformAdapter for MatrixAdapter {
     fn name(&self) -> &'static str {
         "matrix"
+    }
+
+    async fn stop(&self) {
+        if let Some(h) = self.task.lock().unwrap().take() {
+            h.abort();
+        }
     }
 
     async fn start(&self, handler: Arc<dyn MessageHandler>) -> Result<(), PlatformError> {
@@ -207,11 +215,12 @@ impl PlatformAdapter for MatrixAdapter {
         });
 
         // Long-poll sync loop in background
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             if let Err(e) = client.sync(SyncSettings::default()).await {
                 tracing::error!("Matrix sync error: {e}");
             }
         });
+        *self.task.lock().unwrap() = Some(handle);
 
         Ok(())
     }

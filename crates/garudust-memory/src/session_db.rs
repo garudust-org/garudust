@@ -164,6 +164,13 @@ impl SessionDb {
         Ok(tasks)
     }
 
+    /// Lightweight connectivity probe used by the /health endpoint.
+    pub fn health_check(&self) -> anyhow::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute_batch("SELECT 1")?;
+        Ok(())
+    }
+
     pub fn search(&self, query: &str, limit: usize) -> anyhow::Result<Vec<String>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt =

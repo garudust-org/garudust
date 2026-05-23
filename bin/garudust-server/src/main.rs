@@ -442,6 +442,8 @@ async fn main() -> Result<()> {
     );
 
     // ── Platform adapters ─────────────────────────────────────────────────────
+    // Collect all started adapters so we can call stop() on graceful shutdown.
+    let mut platform_adapters: Vec<Arc<dyn PlatformAdapter>> = Vec::new();
     // For each adapter, the CLI flag takes precedence; otherwise the secret is
     // read from `~/.garudust/.env` via `get_secret` (in-memory map — never
     // exposed to subprocess tools). This mirrors the LINE/WhatsApp wiring
@@ -452,6 +454,7 @@ async fn main() -> Result<()> {
         .or_else(|| get_secret("TELEGRAM_TOKEN"))
     {
         let platform: Arc<dyn PlatformAdapter> = Arc::new(TelegramAdapter::new(token));
+        platform_adapters.push(platform.clone());
         start_platform(
             platform,
             agent.load_full(),
@@ -469,6 +472,7 @@ async fn main() -> Result<()> {
         .or_else(|| get_secret("DISCORD_TOKEN"))
     {
         let platform: Arc<dyn PlatformAdapter> = Arc::new(DiscordAdapter::new(token));
+        platform_adapters.push(platform.clone());
         start_platform(
             platform,
             agent.load_full(),
@@ -486,6 +490,7 @@ async fn main() -> Result<()> {
             cfg.webhook_path.clone(),
             cfg.hmac_secret.clone(),
         ));
+        platform_adapters.push(platform.clone());
         start_platform(
             platform,
             agent.load_full(),
@@ -507,6 +512,7 @@ async fn main() -> Result<()> {
         .or_else(|| get_secret("SLACK_APP_TOKEN"));
     if let (Some(bot_token), Some(app_token)) = (slack_bot, slack_app) {
         let platform: Arc<dyn PlatformAdapter> = Arc::new(SlackAdapter::new(bot_token, app_token));
+        platform_adapters.push(platform.clone());
         start_platform(
             platform,
             agent.load_full(),
@@ -533,6 +539,7 @@ async fn main() -> Result<()> {
     if let (Some(homeserver), Some(user), Some(password)) = (matrix_hs, matrix_user, matrix_pw) {
         let platform: Arc<dyn PlatformAdapter> =
             Arc::new(MatrixAdapter::new(homeserver, user, password));
+        platform_adapters.push(platform.clone());
         start_platform(
             platform,
             agent.load_full(),
@@ -556,6 +563,7 @@ async fn main() -> Result<()> {
                 cfg.webhook_path.clone(),
                 &config.home_dir,
             ));
+            platform_adapters.push(platform.clone());
             start_platform(
                 platform,
                 agent.load_full(),
@@ -586,6 +594,7 @@ async fn main() -> Result<()> {
                 cfg.port,
                 cfg.webhook_path.clone(),
             ));
+            platform_adapters.push(platform.clone());
             start_platform(
                 platform,
                 agent.load_full(),
@@ -724,6 +733,11 @@ async fn main() -> Result<()> {
     let serve = axum::serve(listener, router).with_graceful_shutdown(async move {
         shutdown_signal().await;
         tracing::info!(drain_secs = shutdown_secs, "draining in-flight requests");
+        // Stop all platform adapter background tasks cleanly.
+        for p in &platform_adapters {
+            p.stop().await;
+        }
+        tracing::info!(count = platform_adapters.len(), "platform adapters stopped");
         let _ = drain_tx.send(true);
     });
     tokio::spawn(async move {

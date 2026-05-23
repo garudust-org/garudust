@@ -16,6 +16,7 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 pub struct SlackAdapter {
     bot_token: String,
     app_token: String,
+    task: Arc<std::sync::Mutex<Option<tokio::task::JoinHandle<()>>>>,
 }
 
 impl SlackAdapter {
@@ -23,6 +24,7 @@ impl SlackAdapter {
         Self {
             bot_token,
             app_token,
+            task: Arc::new(std::sync::Mutex::new(None)),
         }
     }
 }
@@ -215,13 +217,19 @@ impl PlatformAdapter for SlackAdapter {
         "slack"
     }
 
+    async fn stop(&self) {
+        if let Some(h) = self.task.lock().unwrap().take() {
+            h.abort();
+        }
+    }
+
     async fn start(&self, handler: Arc<dyn MessageHandler>) -> Result<(), PlatformError> {
         let app_token = self.app_token.clone();
         let bot_token = Arc::new(self.bot_token.clone());
         let client = Arc::new(reqwest::Client::new());
         let name_cache: Arc<DashMap<String, String>> = Arc::new(DashMap::new());
 
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             loop {
                 match open_connection(&app_token).await {
                     Ok(url) => {
@@ -243,6 +251,7 @@ impl PlatformAdapter for SlackAdapter {
                 tokio::time::sleep(Duration::from_secs(3)).await;
             }
         });
+        *self.task.lock().unwrap() = Some(handle);
 
         Ok(())
     }

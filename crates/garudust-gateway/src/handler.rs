@@ -756,6 +756,23 @@ impl GatewayHandler {
 #[async_trait]
 impl MessageHandler for GatewayHandler {
     async fn handle(&self, mut msg: InboundMessage) -> Result<(), anyhow::Error> {
+        let request_id = uuid::Uuid::new_v4().to_string();
+        let started_at = std::time::Instant::now();
+        let span = tracing::info_span!(
+            "handle",
+            request_id = %request_id,
+            platform = %msg.channel.platform,
+            user_id = %msg.user_id,
+            chat_id = %msg.channel.chat_id,
+        );
+        let _enter = span.enter();
+        tracing::info!(
+            has_text = !msg.text.is_empty(),
+            images = msg.attachments.len(),
+            docs = msg.doc_attachments.len(),
+            "message received"
+        );
+
         let pcfg = &self.config.platform;
 
         // Per-user session isolation — only for non-group (DM) chats.
@@ -1087,7 +1104,16 @@ impl MessageHandler for GatewayHandler {
         }
         let session_db = self.session_db.clone();
 
+        let enqueue_elapsed = started_at.elapsed();
+        tracing::info!(
+            task_id = %task_id,
+            session_key = %session_key,
+            enqueue_ms = enqueue_elapsed.as_millis(),
+            "dispatching to agent"
+        );
+
         tokio::spawn(async move {
+            let agent_start = std::time::Instant::now();
             match agent
                 .run_for_user(
                     &task,
@@ -1103,15 +1129,29 @@ impl MessageHandler for GatewayHandler {
                     if let Some(db) = &session_db {
                         let _ = db.finish_task(&task_id);
                     }
+                    tracing::info!(
+                        task_id = %task_id,
+                        iterations = result.iterations,
+                        input_tokens = result.usage.input_tokens,
+                        output_tokens = result.usage.output_tokens,
+                        elapsed_ms = agent_start.elapsed().as_millis(),
+                        "agent completed"
+                    );
                     let reply = OutboundMessage::markdown(result.output);
                     if let Err(e) = platform.send_message(&channel, reply).await {
-                        tracing::error!("send_message failed: {e}");
+                        tracing::error!(task_id = %task_id, error = %e, "send_message failed");
                     }
                 }
                 Err(e) => {
                     if let Some(db) = &session_db {
                         let _ = db.finish_task(&task_id);
                     }
+                    tracing::warn!(
+                        task_id = %task_id,
+                        error = %e,
+                        elapsed_ms = agent_start.elapsed().as_millis(),
+                        "agent error"
+                    );
                     let reply = OutboundMessage::text(format!("Error: {e}"));
                     let _ = platform.send_message(&channel, reply).await;
                 }
