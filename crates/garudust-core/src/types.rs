@@ -129,8 +129,6 @@ pub struct InferenceConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ReasoningEffort {
-    /// Disable reasoning / extended thinking entirely.
-    None,
     /// Very light thinking pass — minimal token budget.
     Minimal,
     Low,
