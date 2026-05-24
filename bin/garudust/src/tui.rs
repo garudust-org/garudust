@@ -5,7 +5,7 @@ use garudust_core::pricing::estimate_cost_usd;
 
 use crossterm::{
     cursor::{Hide, Show},
-    event::{self, Event, KeyCode, KeyModifiers},
+    event::{self, Event, KeyCode, KeyModifiers, MouseEventKind},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -255,7 +255,12 @@ impl Tui {
     ) -> io::Result<()> {
         enable_raw_mode()?;
         let mut stdout = io::stdout();
-        execute!(stdout, EnterAlternateScreen, Hide)?;
+        execute!(
+            stdout,
+            EnterAlternateScreen,
+            Hide,
+            event::EnableMouseCapture
+        )?;
         let backend = CrosstermBackend::new(stdout);
         let mut term = Terminal::new(backend)?;
 
@@ -273,128 +278,139 @@ impl Tui {
             term.draw(|f| tui.render(f))?;
 
             if event::poll(std::time::Duration::from_millis(50))? {
-                if let Event::Key(key) = event::read()? {
-                    // ── Global keys (always active) ───────────────────────────
-                    match (key.code, key.modifiers) {
-                        (KeyCode::Char('c' | 'q'), KeyModifiers::CONTROL) => {
-                            let _ = tx_event.send(TuiEvent::Quit).await;
-                            break;
+                match event::read()? {
+                    Event::Mouse(mouse) => match mouse.kind {
+                        MouseEventKind::ScrollUp => {
+                            tui.scroll = tui.scroll.saturating_sub(3);
                         }
-                        // Tab toggles focus between chat input and sidebar.
-                        (KeyCode::Tab, _) => {
-                            if tui.focus == Focus::Chat {
-                                tui.focus = Focus::Sidebar;
-                                tui.sidebar_focus_active();
-                            } else {
-                                tui.focus = Focus::Chat;
+                        MouseEventKind::ScrollDown => {
+                            tui.scroll = tui.scroll.saturating_add(3);
+                        }
+                        _ => {}
+                    },
+                    Event::Key(key) => {
+                        // ── Global keys (always active) ───────────────────────────
+                        match (key.code, key.modifiers) {
+                            (KeyCode::Char('c' | 'q'), KeyModifiers::CONTROL) => {
+                                let _ = tx_event.send(TuiEvent::Quit).await;
+                                break;
                             }
-                        }
-                        _ => {
-                            if tui.focus == Focus::Sidebar {
-                                // ── Sidebar navigation ────────────────────────
-                                match key.code {
-                                    KeyCode::Up if tui.sidebar_cursor > 0 => {
-                                        tui.sidebar_cursor -= 1;
-                                    }
-                                    KeyCode::Down
-                                        if !tui.profiles.is_empty()
-                                            && tui.sidebar_cursor < tui.profiles.len() - 1 =>
-                                    {
-                                        tui.sidebar_cursor += 1;
-                                    }
-                                    KeyCode::Char(' ') | KeyCode::Enter => {
-                                        if let Some((key, _)) = tui.profiles.get(tui.sidebar_cursor)
-                                        {
-                                            let profile = key.clone();
-                                            tui.messages.push((
-                                                Role::Assistant,
-                                                format!("Switching to profile '{profile}'…"),
-                                            ));
-                                            let _ = tx_event
-                                                .send(TuiEvent::SwitchProfile(profile))
-                                                .await;
-                                        }
-                                        tui.focus = Focus::Chat;
-                                    }
-                                    KeyCode::Esc => {
-                                        tui.focus = Focus::Chat;
-                                    }
-                                    _ => {}
+                            // Tab toggles focus between chat input and sidebar.
+                            (KeyCode::Tab, _) => {
+                                if tui.focus == Focus::Chat {
+                                    tui.focus = Focus::Sidebar;
+                                    tui.sidebar_focus_active();
+                                } else {
+                                    tui.focus = Focus::Chat;
                                 }
-                            } else {
-                                // ── Chat / input keys ─────────────────────────
-                                match (key.code, key.modifiers) {
-                                    (KeyCode::Enter, _) => {
-                                        let text = tui.input.trim().to_string();
-                                        tui.clear_input();
-                                        if !text.is_empty() {
-                                            if let Some(rest) = text.strip_prefix('/') {
-                                                let (cmd, args) = rest
-                                                    .split_once(' ')
-                                                    .map_or((rest, None), |(c, a)| {
-                                                        (c, Some(a.trim()))
-                                                    });
-                                                match cmd {
-                                                    "new" | "clear" => {
-                                                        tui.messages.clear();
-                                                        tui.session_id = new_session_id();
-                                                        tui.session_input_tokens = 0;
-                                                        tui.session_output_tokens = 0;
-                                                        tui.session_turns = 0;
-                                                        tui.messages.push((
-                                                            Role::Assistant,
-                                                            "New session started.".into(),
-                                                        ));
-                                                        let _ = tx_event
-                                                            .send(TuiEvent::NewSession)
-                                                            .await;
-                                                    }
-                                                    "model" => match args {
-                                                        Some(m) if !m.is_empty() => {
+                            }
+                            _ => {
+                                if tui.focus == Focus::Sidebar {
+                                    // ── Sidebar navigation ────────────────────────
+                                    match key.code {
+                                        KeyCode::Up if tui.sidebar_cursor > 0 => {
+                                            tui.sidebar_cursor -= 1;
+                                        }
+                                        KeyCode::Down
+                                            if !tui.profiles.is_empty()
+                                                && tui.sidebar_cursor < tui.profiles.len() - 1 =>
+                                        {
+                                            tui.sidebar_cursor += 1;
+                                        }
+                                        KeyCode::Char(' ') | KeyCode::Enter => {
+                                            if let Some((key, _)) =
+                                                tui.profiles.get(tui.sidebar_cursor)
+                                            {
+                                                let profile = key.clone();
+                                                tui.messages.push((
+                                                    Role::Assistant,
+                                                    format!("Switching to profile '{profile}'…"),
+                                                ));
+                                                let _ = tx_event
+                                                    .send(TuiEvent::SwitchProfile(profile))
+                                                    .await;
+                                            }
+                                            tui.focus = Focus::Chat;
+                                        }
+                                        KeyCode::Esc => {
+                                            tui.focus = Focus::Chat;
+                                        }
+                                        _ => {}
+                                    }
+                                } else {
+                                    // ── Chat / input keys ─────────────────────────
+                                    match (key.code, key.modifiers) {
+                                        (KeyCode::Enter, _) => {
+                                            let text = tui.input.trim().to_string();
+                                            tui.clear_input();
+                                            if !text.is_empty() {
+                                                if let Some(rest) = text.strip_prefix('/') {
+                                                    let (cmd, args) = rest
+                                                        .split_once(' ')
+                                                        .map_or((rest, None), |(c, a)| {
+                                                            (c, Some(a.trim()))
+                                                        });
+                                                    match cmd {
+                                                        "new" | "clear" => {
+                                                            tui.messages.clear();
+                                                            tui.session_id = new_session_id();
+                                                            tui.session_input_tokens = 0;
+                                                            tui.session_output_tokens = 0;
+                                                            tui.session_turns = 0;
                                                             tui.messages.push((
                                                                 Role::Assistant,
-                                                                format!("Model → {m}"),
+                                                                "New session started.".into(),
                                                             ));
                                                             let _ = tx_event
-                                                                .send(TuiEvent::ChangeModel(
-                                                                    m.to_string(),
-                                                                ))
+                                                                .send(TuiEvent::NewSession)
                                                                 .await;
                                                         }
-                                                        _ => tui.messages.push((
-                                                            Role::Error,
-                                                            "Usage: /model <model-name>".into(),
-                                                        )),
-                                                    },
-                                                    "profile" => match args {
-                                                        Some(p) if !p.is_empty() => {
-                                                            tui.messages.push((
-                                                                Role::Assistant,
-                                                                format!(
+                                                        "model" => match args {
+                                                            Some(m) if !m.is_empty() => {
+                                                                tui.messages.push((
+                                                                    Role::Assistant,
+                                                                    format!("Model → {m}"),
+                                                                ));
+                                                                let _ = tx_event
+                                                                    .send(TuiEvent::ChangeModel(
+                                                                        m.to_string(),
+                                                                    ))
+                                                                    .await;
+                                                            }
+                                                            _ => tui.messages.push((
+                                                                Role::Error,
+                                                                "Usage: /model <model-name>".into(),
+                                                            )),
+                                                        },
+                                                        "profile" => match args {
+                                                            Some(p) if !p.is_empty() => {
+                                                                tui.messages.push((
+                                                                    Role::Assistant,
+                                                                    format!(
                                                                     "Switching to profile '{p}'…"
                                                                 ),
-                                                            ));
-                                                            let _ = tx_event
-                                                                .send(TuiEvent::SwitchProfile(
-                                                                    p.to_string(),
-                                                                ))
-                                                                .await;
-                                                        }
-                                                        _ => {
-                                                            let list = tui
-                                                                .profiles
-                                                                .iter()
-                                                                .map(|(k, _)| k.as_str())
-                                                                .collect::<Vec<_>>()
-                                                                .join(", ");
-                                                            tui.messages.push((
+                                                                ));
+                                                                let _ = tx_event
+                                                                    .send(TuiEvent::SwitchProfile(
+                                                                        p.to_string(),
+                                                                    ))
+                                                                    .await;
+                                                            }
+                                                            _ => {
+                                                                let list = tui
+                                                                    .profiles
+                                                                    .iter()
+                                                                    .map(|(k, _)| k.as_str())
+                                                                    .collect::<Vec<_>>()
+                                                                    .join(", ");
+                                                                tui.messages.push((
                                                                 Role::Error,
                                                                 format!("Usage: /profile <name>  (available: {list})"),
                                                             ));
-                                                        }
-                                                    },
-                                                    "help" => {
-                                                        tui.messages.push((
+                                                            }
+                                                        },
+                                                        "help" => {
+                                                            tui.messages.push((
                                                             Role::Assistant,
                                                             "/new|/clear      — start fresh session\n\
                                                              /model <name>    — override model string\n\
@@ -403,69 +419,77 @@ impl Tui {
                                                              /help            — show this help"
                                                                 .into(),
                                                         ));
-                                                    }
-                                                    _ => {
-                                                        tui.messages.push((
+                                                        }
+                                                        _ => {
+                                                            tui.messages.push((
                                                             Role::Error,
                                                             format!("Unknown command /{cmd}. Type /help for help."),
                                                         ));
+                                                        }
                                                     }
+                                                } else {
+                                                    tui.messages.push((Role::User, text.clone()));
+                                                    tui.status = "Thinking…".into();
+                                                    let _ =
+                                                        tx_event.send(TuiEvent::Submit(text)).await;
                                                 }
-                                            } else {
-                                                tui.messages.push((Role::User, text.clone()));
-                                                tui.status = "Thinking…".into();
-                                                let _ = tx_event.send(TuiEvent::Submit(text)).await;
                                             }
                                         }
-                                    }
 
-                                    // ── Cursor movement ───────────────────────
-                                    (KeyCode::Left, KeyModifiers::CONTROL) => {
-                                        tui.move_word_left();
-                                    }
-                                    (KeyCode::Right, KeyModifiers::CONTROL) => {
-                                        tui.move_word_right();
-                                    }
-                                    (KeyCode::Left, _) => tui.move_left(),
-                                    (KeyCode::Right, _) => tui.move_right(),
-                                    (KeyCode::Home, _)
-                                    | (KeyCode::Char('a'), KeyModifiers::CONTROL) => {
-                                        tui.move_home();
-                                    }
-                                    (KeyCode::End, _)
-                                    | (KeyCode::Char('e'), KeyModifiers::CONTROL) => {
-                                        tui.move_end();
-                                    }
+                                        // ── Cursor movement ───────────────────────
+                                        (KeyCode::Left, KeyModifiers::CONTROL) => {
+                                            tui.move_word_left();
+                                        }
+                                        (KeyCode::Right, KeyModifiers::CONTROL) => {
+                                            tui.move_word_right();
+                                        }
+                                        (KeyCode::Left, _) => tui.move_left(),
+                                        (KeyCode::Right, _) => tui.move_right(),
+                                        (KeyCode::Home, _)
+                                        | (KeyCode::Char('a'), KeyModifiers::CONTROL) => {
+                                            tui.move_home();
+                                        }
+                                        (KeyCode::End, _)
+                                        | (KeyCode::Char('e'), KeyModifiers::CONTROL) => {
+                                            tui.move_end();
+                                        }
 
-                                    // ── Deletion ──────────────────────────────
-                                    (KeyCode::Backspace, _) => tui.delete_before_cursor(),
-                                    (KeyCode::Delete, _) => tui.delete_after_cursor(),
-                                    (KeyCode::Char('u'), KeyModifiers::CONTROL) => {
-                                        tui.clear_input();
-                                    }
+                                        // ── Deletion ──────────────────────────────
+                                        (KeyCode::Backspace, _) => tui.delete_before_cursor(),
+                                        (KeyCode::Delete, _) => tui.delete_after_cursor(),
+                                        (KeyCode::Char('u'), KeyModifiers::CONTROL) => {
+                                            tui.clear_input();
+                                        }
 
-                                    // ── Chat scroll ───────────────────────────
-                                    (KeyCode::Up | KeyCode::PageUp, _) => {
-                                        tui.scroll = tui.scroll.saturating_sub(1);
-                                    }
-                                    (KeyCode::Down | KeyCode::PageDown, _) => {
-                                        tui.scroll = tui.scroll.saturating_add(1);
-                                    }
+                                        // ── Chat scroll ───────────────────────────
+                                        (KeyCode::Up | KeyCode::PageUp, _) => {
+                                            tui.scroll = tui.scroll.saturating_sub(1);
+                                        }
+                                        (KeyCode::Down | KeyCode::PageDown, _) => {
+                                            tui.scroll = tui.scroll.saturating_add(1);
+                                        }
 
-                                    // ── Character input ───────────────────────
-                                    (KeyCode::Char(c), _) => tui.insert_char(c),
+                                        // ── Character input ───────────────────────
+                                        (KeyCode::Char(c), _) => tui.insert_char(c),
 
-                                    _ => {}
+                                        _ => {}
+                                    }
                                 }
                             }
                         }
                     }
+                    _ => {}
                 }
             }
         }
 
         disable_raw_mode()?;
-        execute!(term.backend_mut(), LeaveAlternateScreen, Show)?;
+        execute!(
+            term.backend_mut(),
+            LeaveAlternateScreen,
+            Show,
+            event::DisableMouseCapture
+        )?;
         Ok(())
     }
 
