@@ -44,10 +44,14 @@ pub enum AgentEvent {
         output_tokens: u32,
     },
     Error(String),
-    /// Sent after each agent turn and after model switch to refresh the sidebar.
+    /// Sent after each agent turn, model switch, or profile switch to refresh the sidebar.
     SidebarUpdate {
         toolsets: BTreeMap<String, Vec<String>>,
         skill_names: Vec<String>,
+        model: String,
+        active_profile: String,
+        /// (profile_key, model_label) pairs, sorted with "default" first.
+        profiles: Vec<(String, String)>,
     },
 }
 
@@ -57,6 +61,7 @@ pub enum TuiEvent {
     Quit,
     NewSession,
     ChangeModel(String),
+    SwitchProfile(String),
 }
 
 pub struct Tui {
@@ -71,6 +76,9 @@ pub struct Tui {
     toolsets: BTreeMap<String, Vec<String>>,
     skill_names: Vec<String>,
     model: String,
+    active_profile: String,
+    /// (profile_key, model_label) pairs for the sidebar.
+    profiles: Vec<(String, String)>,
     session_input_tokens: u32,
     session_output_tokens: u32,
     session_turns: u32,
@@ -86,7 +94,6 @@ enum Role {
 
 // ── Cursor helpers ────────────────────────────────────────────────────────────
 
-/// Move byte offset one Unicode scalar value to the left.
 fn prev_char_boundary(s: &str, cursor: usize) -> usize {
     let mut c = cursor;
     if c == 0 {
@@ -99,7 +106,6 @@ fn prev_char_boundary(s: &str, cursor: usize) -> usize {
     c
 }
 
-/// Move byte offset one Unicode scalar value to the right.
 fn next_char_boundary(s: &str, cursor: usize) -> usize {
     if cursor >= s.len() {
         return s.len();
@@ -111,30 +117,24 @@ fn next_char_boundary(s: &str, cursor: usize) -> usize {
     c
 }
 
-/// Jump left past a word boundary (Ctrl+Left).
 fn prev_word(s: &str, cursor: usize) -> usize {
     let chars: Vec<(usize, char)> = s[..cursor].char_indices().collect();
     let mut i = chars.len();
-    // skip trailing spaces
     while i > 0 && chars[i - 1].1 == ' ' {
         i -= 1;
     }
-    // skip word chars
     while i > 0 && chars[i - 1].1 != ' ' {
         i -= 1;
     }
     chars.get(i).map_or(0, |(b, _)| *b)
 }
 
-/// Jump right past a word boundary (Ctrl+Right).
 fn next_word(s: &str, cursor: usize) -> usize {
     let chars: Vec<(usize, char)> = s[cursor..].char_indices().collect();
     let mut i = 0;
-    // skip trailing spaces
     while i < chars.len() && chars[i].1 == ' ' {
         i += 1;
     }
-    // skip word chars
     while i < chars.len() && chars[i].1 != ' ' {
         i += 1;
     }
@@ -146,6 +146,8 @@ impl Tui {
         toolsets: BTreeMap<String, Vec<String>>,
         skill_names: Vec<String>,
         model: String,
+        active_profile: String,
+        profiles: Vec<(String, String)>,
     ) -> Self {
         Self {
             input: String::new(),
@@ -158,6 +160,8 @@ impl Tui {
             toolsets,
             skill_names,
             model,
+            active_profile,
+            profiles,
             session_input_tokens: 0,
             session_output_tokens: 0,
             session_turns: 0,
@@ -226,6 +230,8 @@ impl Tui {
         toolsets: BTreeMap<String, Vec<String>>,
         skill_names: Vec<String>,
         model: String,
+        active_profile: String,
+        profiles: Vec<(String, String)>,
     ) -> io::Result<()> {
         enable_raw_mode()?;
         let mut stdout = io::stdout();
@@ -233,7 +239,7 @@ impl Tui {
         let backend = CrosstermBackend::new(stdout);
         let mut term = Terminal::new(backend)?;
 
-        let mut tui = Tui::new(toolsets, skill_names, model);
+        let mut tui = Tui::new(toolsets, skill_names, model, active_profile, profiles);
         tui.messages.push((
             Role::Assistant,
             "Type your task and press Enter.  /help for commands.".into(),
@@ -289,12 +295,36 @@ impl Tui {
                                                 "Usage: /model <model-name>".into(),
                                             )),
                                         },
+                                        "profile" => match args {
+                                            Some(p) if !p.is_empty() => {
+                                                tui.messages.push((
+                                                    Role::Assistant,
+                                                    format!("Switching to profile '{p}'…"),
+                                                ));
+                                                let _ = tx_event
+                                                    .send(TuiEvent::SwitchProfile(p.to_string()))
+                                                    .await;
+                                            }
+                                            _ => {
+                                                let list = tui
+                                                    .profiles
+                                                    .iter()
+                                                    .map(|(k, _)| k.as_str())
+                                                    .collect::<Vec<_>>()
+                                                    .join(", ");
+                                                tui.messages.push((
+                                                    Role::Error,
+                                                    format!("Usage: /profile <name>  (available: {list})"),
+                                                ));
+                                            }
+                                        },
                                         "help" => {
                                             tui.messages.push((
                                                 Role::Assistant,
-                                                "/new|/clear — start fresh (clears history)\n\
-                                                 /model <n>  — switch to a different model\n\
-                                                 /help       — show this help"
+                                                "/new|/clear      — start fresh session\n\
+                                                 /model <name>    — override model string\n\
+                                                 /profile <name>  — switch provider profile\n\
+                                                 /help            — show this help"
                                                     .into(),
                                             ));
                                         }
@@ -330,7 +360,6 @@ impl Tui {
                         // ── Deletion ──────────────────────────────────────────
                         (KeyCode::Backspace, _) => tui.delete_before_cursor(),
                         (KeyCode::Delete, _) => tui.delete_after_cursor(),
-                        // Ctrl+U — kill line (clear all input)
                         (KeyCode::Char('u'), KeyModifiers::CONTROL) => tui.clear_input(),
 
                         // ── Scroll ────────────────────────────────────────────
@@ -410,14 +439,19 @@ impl Tui {
             AgentEvent::SidebarUpdate {
                 toolsets,
                 skill_names,
+                model,
+                active_profile,
+                profiles,
             } => {
                 self.toolsets = toolsets;
                 self.skill_names = skill_names;
+                self.model = model;
+                self.active_profile = active_profile;
+                self.profiles = profiles;
             }
         }
     }
 
-    // Logo-only banner at the top of the chat pane.
     fn build_banner_lines(&self, pane_w: u16) -> Vec<Line<'static>> {
         const LOGO: &[&str] = &[
             "        ★          ",
@@ -453,17 +487,44 @@ impl Tui {
         let label_style = Style::default()
             .fg(Color::Rgb(170, 170, 170))
             .add_modifier(Modifier::BOLD);
-        let toolset_style = Style::default().fg(Color::Rgb(90, 90, 90));
+        let active_style = Style::default()
+            .fg(Color::Rgb(245, 166, 35))
+            .add_modifier(Modifier::BOLD);
         let item_style = Style::default().fg(Color::Rgb(120, 120, 120));
+        let dim_style = Style::default().fg(Color::Rgb(90, 90, 90));
 
         let mut lines: Vec<Line<'static>> = Vec::new();
 
-        // Session ID
+        // ── Session ───────────────────────────────────────────────────────────
         lines.push(Line::from(Span::styled("SESSION", label_style)));
         lines.push(Line::from(Span::styled(self.session_id.clone(), item_style)));
         lines.push(Line::from(""));
 
-        // Tools
+        // ── Profiles ──────────────────────────────────────────────────────────
+        lines.push(Line::from(Span::styled("PROFILE", label_style)));
+        for (key, model_label) in &self.profiles {
+            let is_active = key == &self.active_profile;
+            // " ▸ key" or "   key"
+            let prefix = if is_active { " ▸ " } else { "   " };
+            let entry = format!("{prefix}{key}");
+            let entry_display = if entry.len() > w {
+                entry[..w].to_string()
+            } else {
+                entry
+            };
+            let entry_style = if is_active { active_style } else { item_style };
+            lines.push(Line::from(Span::styled(entry_display, entry_style)));
+
+            // Show model label as a sub-line, indented and dimmed
+            if !model_label.is_empty() && model_label != "—" {
+                let sub = format!("     {model_label}");
+                let sub_display = if sub.len() > w { sub[..w].to_string() } else { sub };
+                lines.push(Line::from(Span::styled(sub_display, dim_style)));
+            }
+        }
+        lines.push(Line::from(""));
+
+        // ── Tools ─────────────────────────────────────────────────────────────
         let tool_total: usize = self.toolsets.values().map(Vec::len).sum();
         lines.push(Line::from(Span::styled(
             format!("TOOLS ({tool_total})"),
@@ -472,7 +533,7 @@ impl Tui {
         for (toolset, names) in &self.toolsets {
             let ts = format!(" {toolset}");
             let ts_display = if ts.len() > w { ts[..w].to_string() } else { ts };
-            lines.push(Line::from(Span::styled(ts_display, toolset_style)));
+            lines.push(Line::from(Span::styled(ts_display, dim_style)));
             for name in names {
                 let s = format!("  · {name}");
                 let display = if s.len() > w { s[..w].to_string() } else { s };
@@ -481,14 +542,14 @@ impl Tui {
         }
         lines.push(Line::from(""));
 
-        // Skills
+        // ── Skills ────────────────────────────────────────────────────────────
         let skill_total = self.skill_names.len();
         lines.push(Line::from(Span::styled(
             format!("SKILLS ({skill_total})"),
             label_style,
         )));
         if self.skill_names.is_empty() {
-            lines.push(Line::from(Span::styled(" —", toolset_style)));
+            lines.push(Line::from(Span::styled(" —", dim_style)));
         } else {
             for name in &self.skill_names {
                 let s = format!(" {name}");
@@ -517,7 +578,7 @@ impl Tui {
             ])
             .split(area);
 
-        // Content area: chat | vbar | sidebar
+        // Content: chat | vbar | sidebar
         let content_chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
@@ -558,7 +619,6 @@ impl Tui {
             cost_sfx,
         );
         let pad = w.saturating_sub(left.len() + right.len());
-
         let header = Line::from(vec![
             Span::styled(left, accent),
             Span::raw(" ".repeat(pad)),
@@ -569,7 +629,7 @@ impl Tui {
         // ── Separator ─────────────────────────────────────────────────────────
         f.render_widget(Paragraph::new(sep.as_str()).style(sep_style), chunks[1]);
 
-        // ── Vertical bar (chat | sidebar) ─────────────────────────────────────
+        // ── Vertical bar ──────────────────────────────────────────────────────
         let vbar_lines: Vec<Line<'static>> = (0..vbar_area.height)
             .map(|_| Line::from(Span::styled("│", sep_style)))
             .collect();
@@ -615,8 +675,7 @@ impl Tui {
         let all_lines: Vec<Line<'static>> = banner.into_iter().chain(chat_lines).collect();
         let visible = chat_area.height;
 
-        let messages =
-            Paragraph::new(Text::from(all_lines)).wrap(Wrap { trim: false });
+        let messages = Paragraph::new(Text::from(all_lines)).wrap(Wrap { trim: false });
 
         let total_visual =
             u16::try_from(messages.line_count(chat_area.width)).unwrap_or(u16::MAX);

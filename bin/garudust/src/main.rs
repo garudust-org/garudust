@@ -283,6 +283,28 @@ async fn sidebar_skill_names(config: &AgentConfig) -> Vec<String> {
         .collect()
 }
 
+/// Build the profile list for the sidebar: (key, model_label), "default" first.
+fn sidebar_profiles(config: &AgentConfig) -> Vec<(String, String)> {
+    let mut v: Vec<(String, String)> = config
+        .providers
+        .iter()
+        .map(|(k, p)| {
+            let model = p.model.clone().unwrap_or_else(|| "—".into());
+            (k.clone(), model)
+        })
+        .collect();
+    v.sort_by(|a, b| {
+        if a.0 == "default" {
+            return std::cmp::Ordering::Less;
+        }
+        if b.0 == "default" {
+            return std::cmp::Ordering::Greater;
+        }
+        a.0.cmp(&b.0)
+    });
+    v
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -488,7 +510,17 @@ async fn main() -> Result<()> {
             });
         }
 
+        let initial_active_profile = if shared_config.providers.contains_key("default") {
+            "default".to_string()
+        } else {
+            String::new()
+        };
+        // Cloned for the event-loop task (shared_config is Arc, clone is cheap).
+        let active_profile_init = initial_active_profile.clone();
+
         tokio::spawn(async move {
+            let mut active_profile = active_profile_init;
+
             while let Some(ev) = rx_event.recv().await {
                 match ev {
                     TuiEvent::Quit => break,
@@ -497,9 +529,11 @@ async fn main() -> Result<()> {
                     }
                     TuiEvent::ChangeModel(model) => {
                         let mut new_cfg = (*shared_config).clone();
-                        new_cfg.model = model;
+                        new_cfg.model = model.clone();
+                        if let Some(p) = new_cfg.providers.get_mut("default") {
+                            p.model = Some(model.clone());
+                        }
                         let (new_agent, new_handles) = build_agent(Arc::new(new_cfg)).await;
-                        // Drop old handles first — terminates previous MCP child processes.
                         *shared_handles.lock().await = new_handles;
                         *shared_agent.write().await = new_agent.clone();
                         let skill_names = sidebar_skill_names(&shared_config).await;
@@ -507,8 +541,37 @@ async fn main() -> Result<()> {
                             .send(AgentEvent::SidebarUpdate {
                                 toolsets: new_agent.tool_names_by_toolset(),
                                 skill_names,
+                                model,
+                                active_profile: active_profile.clone(),
+                                profiles: sidebar_profiles(&shared_config),
                             })
                             .await;
+                    }
+                    TuiEvent::SwitchProfile(profile_name) => {
+                        let mut new_cfg = (*shared_config).clone();
+                        if let Some(profile) = new_cfg.providers.get(&profile_name).cloned() {
+                            new_cfg.providers.insert("default".into(), profile.clone());
+                            if let Some(m) = &profile.model {
+                                new_cfg.model = m.clone();
+                            }
+                            active_profile = profile_name.clone();
+                            let new_model = new_cfg.model.clone();
+                            let (new_agent, new_handles) = build_agent(Arc::new(new_cfg)).await;
+                            *shared_handles.lock().await = new_handles;
+                            *shared_agent.write().await = new_agent.clone();
+                            let skill_names = sidebar_skill_names(&shared_config).await;
+                            let _ = tx_agent2
+                                .send(AgentEvent::SidebarUpdate {
+                                    toolsets: new_agent.tool_names_by_toolset(),
+                                    skill_names,
+                                    model: new_model,
+                                    active_profile: active_profile.clone(),
+                                    profiles: sidebar_profiles(&shared_config),
+                                })
+                                .await;
+                        } else {
+                            tracing::warn!(profile = %profile_name, "unknown profile");
+                        }
                     }
                     TuiEvent::Submit(task) => {
                         let _ = tx_agent2.send(AgentEvent::Thinking).await;
@@ -555,6 +618,9 @@ async fn main() -> Result<()> {
                                     .send(AgentEvent::SidebarUpdate {
                                         toolsets: current_agent.tool_names_by_toolset(),
                                         skill_names,
+                                        model: shared_config.model.clone(),
+                                        active_profile: active_profile.clone(),
+                                        profiles: sidebar_profiles(&shared_config),
                                     })
                                     .await;
                             }
@@ -568,18 +634,16 @@ async fn main() -> Result<()> {
         });
 
         let toolsets = agent.tool_names_by_toolset();
-        let skill_names =
-            garudust_tools::toolsets::skills::load_skills_from_dir(&config.home_dir.join("skills"))
-                .await
-                .into_iter()
-                .map(|s| s.name)
-                .collect::<Vec<_>>();
+        let skill_names = sidebar_skill_names(&config).await;
+        let profiles = sidebar_profiles(&config);
         tui::Tui::run(
             tx_event,
             rx_agent,
             toolsets,
             skill_names,
             config.model.clone(),
+            initial_active_profile,
+            profiles,
         )
         .await?;
     }
