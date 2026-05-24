@@ -599,12 +599,17 @@ impl Agent {
 
         // Universal skill-check note — appended to every message when skills exist so
         // the model reliably calls skill_view regardless of the user's input language.
+        // Deliberately conservative: only load a skill when the user's request is a
+        // clear, direct match for what that skill does. Partial or speculative matches
+        // cause required_tools enforcement to fire for tools that are never available,
+        // producing confusing retry loops.
         let user_msg = if has_skills(&self.config.home_dir) {
             format!(
-                "{user_msg}\n\n[System: Before proceeding, scan the '# Skills' section. \
-                 Match skills by meaning — not just keywords — regardless of the user's language. \
-                 If any skill is relevant to this task — even partially — call skill_view \
-                 first to load its full instructions.]"
+                "{user_msg}\n\n[System: Before proceeding, check the '# Skills' section. \
+                 Call skill_view ONLY when the user's request is a clear, direct match for \
+                 what that skill does — match by meaning across languages, not just keywords. \
+                 Do NOT load a skill based on superficial or partial similarity. \
+                 When in doubt, skip skill_view and proceed without it.]"
             )
         } else {
             user_msg
