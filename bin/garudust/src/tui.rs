@@ -92,6 +92,8 @@ pub struct Tui {
     focus: Focus,
     /// Cursor index into `profiles` when sidebar is focused.
     sidebar_cursor: usize,
+    /// Last known max_scroll from render(); used so mouse-wheel can escape auto-follow.
+    last_max_scroll: u16,
 }
 
 #[derive(Clone)]
@@ -177,6 +179,7 @@ impl Tui {
             session_id: new_session_id(),
             focus: Focus::Chat,
             sidebar_cursor: 0,
+            last_max_scroll: 0,
         }
     }
 
@@ -281,10 +284,20 @@ impl Tui {
                 match event::read()? {
                     Event::Mouse(mouse) => match mouse.kind {
                         MouseEventKind::ScrollUp => {
+                            // Escape auto-follow: anchor to actual bottom before stepping up.
+                            if tui.scroll == u16::MAX {
+                                tui.scroll = tui.last_max_scroll;
+                            }
                             tui.scroll = tui.scroll.saturating_sub(3);
                         }
                         MouseEventKind::ScrollDown => {
-                            tui.scroll = tui.scroll.saturating_add(3);
+                            let next = tui.scroll.saturating_add(3);
+                            // Re-enable auto-follow when scrolled past the bottom.
+                            if next >= tui.last_max_scroll {
+                                tui.scroll = u16::MAX;
+                            } else {
+                                tui.scroll = next;
+                            }
                         }
                         _ => {}
                     },
@@ -462,11 +475,33 @@ impl Tui {
                                         }
 
                                         // ── Chat scroll ───────────────────────────
-                                        (KeyCode::Up | KeyCode::PageUp, _) => {
+                                        (KeyCode::Up, _) => {
+                                            if tui.scroll == u16::MAX {
+                                                tui.scroll = tui.last_max_scroll;
+                                            }
                                             tui.scroll = tui.scroll.saturating_sub(1);
                                         }
-                                        (KeyCode::Down | KeyCode::PageDown, _) => {
-                                            tui.scroll = tui.scroll.saturating_add(1);
+                                        (KeyCode::PageUp, _) => {
+                                            if tui.scroll == u16::MAX {
+                                                tui.scroll = tui.last_max_scroll;
+                                            }
+                                            tui.scroll = tui.scroll.saturating_sub(10);
+                                        }
+                                        (KeyCode::Down, _) => {
+                                            let next = tui.scroll.saturating_add(1);
+                                            tui.scroll = if next >= tui.last_max_scroll {
+                                                u16::MAX
+                                            } else {
+                                                next
+                                            };
+                                        }
+                                        (KeyCode::PageDown, _) => {
+                                            let next = tui.scroll.saturating_add(10);
+                                            tui.scroll = if next >= tui.last_max_scroll {
+                                                u16::MAX
+                                            } else {
+                                                next
+                                            };
                                         }
 
                                         // ── Character input ───────────────────────
@@ -881,6 +916,7 @@ impl Tui {
         let total_visual =
             u16::try_from(history_widget.line_count(history_area.width)).unwrap_or(u16::MAX);
         let max_scroll = total_visual.saturating_sub(visible);
+        self.last_max_scroll = max_scroll;
         let scroll = if self.scroll == u16::MAX {
             max_scroll
         } else {
