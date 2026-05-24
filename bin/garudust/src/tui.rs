@@ -494,7 +494,7 @@ impl Tui {
         let item_style = Style::default().fg(Color::Rgb(120, 120, 120));
         let dim_style = Style::default().fg(Color::Rgb(90, 90, 90));
 
-        let mut lines: Vec<Line<'static>> = Vec::new();
+        let mut lines: Vec<Line<'static>> = Vec::with_capacity(64);
 
         // ── Session ───────────────────────────────────────────────────────────
         lines.push(Line::from(Span::styled("SESSION", label_style)));
