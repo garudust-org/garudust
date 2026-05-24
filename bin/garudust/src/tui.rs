@@ -14,7 +14,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Paragraph, Wrap},
+    widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap},
     Terminal,
 };
 use tokio::sync::mpsc;
@@ -795,7 +795,15 @@ impl Tui {
         self.render_sidebar(f, sidebar_area);
 
         // ── Chat pane ─────────────────────────────────────────────────────────
-        let banner = self.build_banner_lines(chat_area.width);
+        // Split off one column on the right for the scrollbar.
+        let chat_split = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Min(1), Constraint::Length(1)])
+            .split(chat_area);
+        let chat_content_area = chat_split[0];
+        let chat_scroll_area = chat_split[1];
+
+        let banner = self.build_banner_lines(chat_content_area.width);
 
         let user_style = Style::default()
             .fg(Color::Rgb(99, 179, 237))
@@ -832,11 +840,12 @@ impl Tui {
             .collect();
 
         let all_lines: Vec<Line<'static>> = banner.into_iter().chain(chat_lines).collect();
-        let visible = chat_area.height;
+        let visible = chat_content_area.height;
 
         let messages = Paragraph::new(Text::from(all_lines)).wrap(Wrap { trim: false });
 
-        let total_visual = u16::try_from(messages.line_count(chat_area.width)).unwrap_or(u16::MAX);
+        let total_visual =
+            u16::try_from(messages.line_count(chat_content_area.width)).unwrap_or(u16::MAX);
         let max_scroll = total_visual.saturating_sub(visible);
         let scroll = if self.scroll == u16::MAX {
             max_scroll
@@ -844,7 +853,21 @@ impl Tui {
             self.scroll.min(max_scroll)
         };
 
-        f.render_widget(messages.scroll((scroll, 0)), chat_area);
+        f.render_widget(messages.scroll((scroll, 0)), chat_content_area);
+
+        // Scrollbar — only shown when content overflows.
+        if total_visual > visible {
+            let mut sb_state = ScrollbarState::new(total_visual as usize).position(scroll as usize);
+            f.render_stateful_widget(
+                Scrollbar::new(ScrollbarOrientation::VerticalRight)
+                    .begin_symbol(None)
+                    .end_symbol(None)
+                    .thumb_style(sep_style)
+                    .track_style(dim),
+                chat_scroll_area,
+                &mut sb_state,
+            );
+        }
 
         // ── Status bar ────────────────────────────────────────────────────────
         let status_text = if let Some(since) = self.thinking_since {

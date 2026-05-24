@@ -515,8 +515,40 @@ async fn main() -> Result<()> {
         } else {
             String::new()
         };
-        // Cloned for the event-loop task (shared_config is Arc, clone is cheap).
+        // Shared so the background skills-poller can read the current profile name.
+        let active_profile_arc = Arc::new(tokio::sync::Mutex::new(initial_active_profile.clone()));
         let active_profile_init = initial_active_profile.clone();
+        let active_profile_for_loop = active_profile_arc.clone();
+
+        // ── Background skills poller ─────────────────────────────────────────────
+        // Polls the skills directory every 2 s; sends SidebarUpdate when the list changes.
+        {
+            let tx_poll = tx_agent.clone();
+            let shared_agent_poll = shared_agent.clone();
+            let shared_config_poll = shared_config.clone();
+            let active_profile_poll = active_profile_arc.clone();
+            tokio::spawn(async move {
+                let mut last_skills: Vec<String> = Vec::new();
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    let skills = sidebar_skill_names(&shared_config_poll).await;
+                    if skills != last_skills {
+                        last_skills = skills.clone();
+                        let current_profile = active_profile_poll.lock().await.clone();
+                        let current_agent = shared_agent_poll.read().await.clone();
+                        let _ = tx_poll
+                            .send(AgentEvent::SidebarUpdate {
+                                toolsets: current_agent.tool_names_by_toolset(),
+                                skill_names: skills,
+                                model: shared_config_poll.model.clone(),
+                                active_profile: current_profile,
+                                profiles: sidebar_profiles(&shared_config_poll),
+                            })
+                            .await;
+                    }
+                }
+            });
+        }
 
         tokio::spawn(async move {
             let mut active_profile = active_profile_init;
@@ -555,6 +587,7 @@ async fn main() -> Result<()> {
                                 new_cfg.model = m.clone();
                             }
                             active_profile = profile_name.clone();
+                            *active_profile_for_loop.lock().await = active_profile.clone();
                             let new_model = new_cfg.model.clone();
                             let (new_agent, new_handles) = build_agent(Arc::new(new_cfg)).await;
                             *shared_handles.lock().await = new_handles;
