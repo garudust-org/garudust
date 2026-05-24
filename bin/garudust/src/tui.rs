@@ -23,14 +23,15 @@ const SIDEBAR_W: u16 = 24;
 
 fn new_session_id() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let nanos = SystemTime::now()
+    let secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let h = nanos
-        .wrapping_mul(6_364_136_223_846_793_005)
-        .wrapping_add(1_442_695_040_888_963_407);
-    format!("{:08x}", h as u32)
+        .map_or(0u64, |d| d.as_secs());
+    let h = secs
+        .wrapping_mul(6_364_136_223_846_793_005_u64)
+        .wrapping_add(1_442_695_040_888_963_407_u64);
+    // Fold the upper and lower 32 bits so all entropy contributes.
+    let folded = u32::try_from((h >> 32) ^ (h & 0xFFFF_FFFF)).unwrap_or(0);
+    format!("{folded:08x}")
 }
 
 #[derive(Debug, Clone)]
@@ -452,7 +453,7 @@ impl Tui {
         }
     }
 
-    fn build_banner_lines(&self, pane_w: u16) -> Vec<Line<'static>> {
+    fn build_banner_lines(pane_w: u16) -> Vec<Line<'static>> {
         const LOGO: &[&str] = &[
             "        ★          ",
             "       /|\\       ",
@@ -497,7 +498,10 @@ impl Tui {
 
         // ── Session ───────────────────────────────────────────────────────────
         lines.push(Line::from(Span::styled("SESSION", label_style)));
-        lines.push(Line::from(Span::styled(self.session_id.clone(), item_style)));
+        lines.push(Line::from(Span::styled(
+            self.session_id.clone(),
+            item_style,
+        )));
         lines.push(Line::from(""));
 
         // ── Profiles ──────────────────────────────────────────────────────────
@@ -518,7 +522,11 @@ impl Tui {
             // Show model label as a sub-line, indented and dimmed
             if !model_label.is_empty() && model_label != "—" {
                 let sub = format!("     {model_label}");
-                let sub_display = if sub.len() > w { sub[..w].to_string() } else { sub };
+                let sub_display = if sub.len() > w {
+                    sub[..w].to_string()
+                } else {
+                    sub
+                };
                 lines.push(Line::from(Span::styled(sub_display, dim_style)));
             }
         }
@@ -532,7 +540,11 @@ impl Tui {
         )));
         for (toolset, names) in &self.toolsets {
             let ts = format!(" {toolset}");
-            let ts_display = if ts.len() > w { ts[..w].to_string() } else { ts };
+            let ts_display = if ts.len() > w {
+                ts[..w].to_string()
+            } else {
+                ts
+            };
             lines.push(Line::from(Span::styled(ts_display, dim_style)));
             for name in names {
                 let s = format!("  · {name}");
@@ -636,7 +648,7 @@ impl Tui {
         f.render_widget(Paragraph::new(Text::from(vbar_lines)), vbar_area);
 
         // ── Chat pane ─────────────────────────────────────────────────────────
-        let banner = self.build_banner_lines(chat_area.width);
+        let banner = Self::build_banner_lines(chat_area.width);
 
         let user_style = Style::default()
             .fg(Color::Rgb(99, 179, 237))
@@ -677,8 +689,7 @@ impl Tui {
 
         let messages = Paragraph::new(Text::from(all_lines)).wrap(Wrap { trim: false });
 
-        let total_visual =
-            u16::try_from(messages.line_count(chat_area.width)).unwrap_or(u16::MAX);
+        let total_visual = u16::try_from(messages.line_count(chat_area.width)).unwrap_or(u16::MAX);
         let max_scroll = total_visual.saturating_sub(visible);
         let scroll = if self.scroll == u16::MAX {
             max_scroll
