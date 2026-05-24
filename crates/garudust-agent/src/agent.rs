@@ -781,10 +781,17 @@ impl Agent {
             if resp.tool_calls.is_empty() || resp.stop_reason == StopReason::EndTurn {
                 // Required-tools enforcement: if any skill declared required_tools that
                 // were not called successfully this session, inject a re-prompt.
+                // Only enforce tools that are actually registered — unregistered names
+                // come from skills written for other platforms or tool-sets and must
+                // not trigger an infinite retry loop.
                 if required_tools_retries < 3 {
+                    let registered: std::collections::HashSet<&str> =
+                        schemas.iter().map(|s| s.name.as_str()).collect();
                     let rt = required_tools.read().await;
-                    let missing: Vec<&String> =
-                        rt.iter().filter(|t| !called_tools.contains(*t)).collect();
+                    let missing: Vec<&String> = rt
+                        .iter()
+                        .filter(|t| !called_tools.contains(*t) && registered.contains(t.as_str()))
+                        .collect();
                     if !missing.is_empty() {
                         let names = missing
                             .iter()
