@@ -8,7 +8,7 @@ use futures::{SinkExt, Stream, StreamExt};
 use garudust_core::{
     error::PlatformError,
     platform::{MessageHandler, PlatformAdapter},
-    types::{ChannelId, InboundMessage, OutboundMessage},
+    types::{ChannelId, DocAttachment, InboundMessage, OutboundMessage},
 };
 use serde::Deserialize;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
@@ -43,6 +43,14 @@ struct EventPayload {
 }
 
 #[derive(Deserialize)]
+struct SlackFile {
+    id: String,
+    name: Option<String>,
+    filetype: Option<String>,
+    url_private_download: Option<String>,
+}
+
+#[derive(Deserialize)]
 struct SlackEvent {
     #[serde(rename = "type")]
     kind: String,
@@ -51,6 +59,7 @@ struct SlackEvent {
     channel: Option<String>,
     subtype: Option<String>,
     bot_id: Option<String>,
+    files: Option<Vec<SlackFile>>,
 }
 
 async fn open_connection(app_token: &str) -> Result<String, PlatformError> {
@@ -132,6 +141,47 @@ async fn fetch_display_name(
         .map(String::from)
 }
 
+async fn download_slack_file(
+    client: &reqwest::Client,
+    bot_token: &str,
+    file: &SlackFile,
+) -> Option<DocAttachment> {
+    let url = file.url_private_download.as_deref()?;
+    let file_name = file
+        .name
+        .clone()
+        .unwrap_or_else(|| format!("{}.bin", file.id));
+    let ext = std::path::Path::new(&file_name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or_else(|| file.filetype.as_deref().unwrap_or("bin"));
+
+    let supported = matches!(
+        ext.to_lowercase().as_str(),
+        "pdf" | "txt" | "csv" | "md" | "json" | "docx" | "doc" | "xlsx" | "xls"
+    );
+    if !supported {
+        return None;
+    }
+
+    let dest = format!("/tmp/garudust_slack_{}.{ext}", file.id);
+    let bytes = client
+        .get(url)
+        .header("Authorization", format!("Bearer {bot_token}"))
+        .send()
+        .await
+        .ok()?
+        .bytes()
+        .await
+        .ok()?;
+
+    tokio::fs::write(&dest, &bytes).await.ok()?;
+    Some(DocAttachment {
+        path: dest,
+        file_name,
+    })
+}
+
 async fn socket_loop(
     wss_url: &str,
     bot_token: Arc<String>,
@@ -170,44 +220,70 @@ async fn socket_loop(
             continue;
         };
 
-        if event.kind != "message" || event.subtype.is_some() || event.bot_id.is_some() {
+        // Allow file_share subtype; skip all other subtypes and bot messages.
+        let is_file_share = event.subtype.as_deref() == Some("file_share");
+        if event.kind != "message"
+            || (event.subtype.is_some() && !is_file_share)
+            || event.bot_id.is_some()
+        {
             continue;
         }
 
-        if let (Some(text), Some(user), Some(channel)) = (event.text, event.user, event.channel) {
-            // Slack channel IDs: 'C' = public/private channel, 'G' = group DM (legacy), 'D' = DM
-            let is_group = channel.starts_with('C') || channel.starts_with('G');
+        let (Some(user), Some(channel)) = (event.user, event.channel) else {
+            continue;
+        };
 
-            let display_name = if let Some(cached) = name_cache.get(&user) {
-                cached.clone()
-            } else {
-                let name = fetch_display_name(&client, &bot_token, &user)
-                    .await
-                    .unwrap_or_else(|| user.clone());
-                name_cache.insert(user.clone(), name.clone());
-                name
-            };
+        let text = event.text.unwrap_or_default();
 
-            let inbound = InboundMessage {
-                channel: ChannelId {
-                    platform: "slack".into(),
-                    chat_id: channel.clone(),
-                    thread_id: None,
-                },
-                user_id: user,
-                user_name: display_name,
-                text,
-                session_key: format!("slack:{channel}"),
-                is_group,
-                bot_mentioned: None,
-                attachments: vec![],
-                doc_attachments: vec![],
-            };
-            let h = handler.clone();
-            tokio::spawn(async move {
-                let _ = h.handle(inbound).await;
-            });
+        // Download document attachments
+        let mut doc_attachments: Vec<DocAttachment> = Vec::new();
+        if let Some(files) = event.files {
+            for file in &files {
+                match download_slack_file(&client, &bot_token, file).await {
+                    Some(att) => doc_attachments.push(att),
+                    None => {
+                        tracing::warn!(file_id = %file.id, "Slack: file download skipped or failed");
+                    }
+                }
+            }
         }
+
+        if text.is_empty() && doc_attachments.is_empty() {
+            continue;
+        }
+
+        // Slack channel IDs: 'C' = public/private channel, 'G' = group DM (legacy), 'D' = DM
+        let is_group = channel.starts_with('C') || channel.starts_with('G');
+
+        let display_name = if let Some(cached) = name_cache.get(&user) {
+            cached.clone()
+        } else {
+            let name = fetch_display_name(&client, &bot_token, &user)
+                .await
+                .unwrap_or_else(|| user.clone());
+            name_cache.insert(user.clone(), name.clone());
+            name
+        };
+
+        let inbound = InboundMessage {
+            channel: ChannelId {
+                platform: "slack".into(),
+                chat_id: channel.clone(),
+                thread_id: None,
+            },
+            user_id: user,
+            user_name: display_name,
+            text,
+            session_key: format!("slack:{channel}"),
+            is_group,
+            bot_mentioned: None,
+            attachments: vec![],
+            doc_attachments,
+        };
+        let h = handler.clone();
+        tokio::spawn(async move {
+            let _ = h.handle(inbound).await;
+        });
     }
 }
 
