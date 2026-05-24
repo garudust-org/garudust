@@ -94,6 +94,12 @@ pub struct Tui {
     sidebar_cursor: usize,
     /// Last known max_scroll from render(); used so mouse-wheel can escape auto-follow.
     last_max_scroll: u16,
+    /// Messages the user has submitted this session, for Up/Down recall.
+    input_history: Vec<String>,
+    /// Current position in input_history while browsing; None = live input.
+    history_cursor: Option<usize>,
+    /// Saved live input while browsing history, restored when cursor returns to end.
+    history_draft: String,
 }
 
 #[derive(Clone)]
@@ -180,6 +186,9 @@ impl Tui {
             focus: Focus::Chat,
             sidebar_cursor: 0,
             last_max_scroll: 0,
+            input_history: Vec::new(),
+            history_cursor: None,
+            history_draft: String::new(),
         }
     }
 
@@ -356,7 +365,15 @@ impl Tui {
                                         (KeyCode::Enter, _) => {
                                             let text = tui.input.trim().to_string();
                                             tui.clear_input();
+                                            tui.history_cursor = None;
+                                            tui.history_draft.clear();
                                             if !text.is_empty() {
+                                                // Save to history (no duplicate of last entry).
+                                                if tui.input_history.last().map(String::as_str)
+                                                    != Some(&text)
+                                                {
+                                                    tui.input_history.push(text.clone());
+                                                }
                                                 if let Some(rest) = text.strip_prefix('/') {
                                                     let (cmd, args) = rest
                                                         .split_once(' ')
@@ -474,26 +491,46 @@ impl Tui {
                                             tui.clear_input();
                                         }
 
-                                        // ── Chat scroll ───────────────────────────
+                                        // ── Input history (shell-style) ───────────
                                         (KeyCode::Up, _) => {
-                                            if tui.scroll == u16::MAX {
-                                                tui.scroll = tui.last_max_scroll;
+                                            if tui.input_history.is_empty() {
+                                                // nothing to recall
+                                            } else if let Some(i) = tui.history_cursor {
+                                                if i > 0 {
+                                                    tui.history_cursor = Some(i - 1);
+                                                    tui.input = tui.input_history[i - 1].clone();
+                                                    tui.cursor = tui.input.len();
+                                                }
+                                            } else {
+                                                // Save current draft, jump to last entry.
+                                                tui.history_draft = tui.input.clone();
+                                                let last = tui.input_history.len() - 1;
+                                                tui.history_cursor = Some(last);
+                                                tui.input = tui.input_history[last].clone();
+                                                tui.cursor = tui.input.len();
                                             }
-                                            tui.scroll = tui.scroll.saturating_sub(1);
                                         }
+                                        (KeyCode::Down, _) => {
+                                            if let Some(i) = tui.history_cursor {
+                                                if i + 1 < tui.input_history.len() {
+                                                    tui.history_cursor = Some(i + 1);
+                                                    tui.input = tui.input_history[i + 1].clone();
+                                                    tui.cursor = tui.input.len();
+                                                } else {
+                                                    // Back to live draft.
+                                                    tui.history_cursor = None;
+                                                    tui.input =
+                                                        std::mem::take(&mut tui.history_draft);
+                                                    tui.cursor = tui.input.len();
+                                                }
+                                            }
+                                        }
+                                        // ── Chat scroll ───────────────────────────
                                         (KeyCode::PageUp, _) => {
                                             if tui.scroll == u16::MAX {
                                                 tui.scroll = tui.last_max_scroll;
                                             }
                                             tui.scroll = tui.scroll.saturating_sub(10);
-                                        }
-                                        (KeyCode::Down, _) => {
-                                            let next = tui.scroll.saturating_add(1);
-                                            tui.scroll = if next >= tui.last_max_scroll {
-                                                u16::MAX
-                                            } else {
-                                                next
-                                            };
                                         }
                                         (KeyCode::PageDown, _) => {
                                             let next = tui.scroll.saturating_add(10);
