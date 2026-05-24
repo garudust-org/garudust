@@ -293,17 +293,14 @@ impl Tui {
                             if tui.focus == Focus::Sidebar {
                                 // ── Sidebar navigation ────────────────────────
                                 match key.code {
-                                    KeyCode::Up => {
-                                        if tui.sidebar_cursor > 0 {
-                                            tui.sidebar_cursor -= 1;
-                                        }
+                                    KeyCode::Up if tui.sidebar_cursor > 0 => {
+                                        tui.sidebar_cursor -= 1;
                                     }
-                                    KeyCode::Down => {
+                                    KeyCode::Down
                                         if !tui.profiles.is_empty()
-                                            && tui.sidebar_cursor < tui.profiles.len() - 1
-                                        {
-                                            tui.sidebar_cursor += 1;
-                                        }
+                                            && tui.sidebar_cursor < tui.profiles.len() - 1 =>
+                                    {
+                                        tui.sidebar_cursor += 1;
                                     }
                                     KeyCode::Char(' ') | KeyCode::Enter => {
                                         if let Some((key, _)) = tui.profiles.get(tui.sidebar_cursor)
@@ -906,14 +903,12 @@ impl Tui {
 
 /// Truncate a string to at most `max_chars` display columns (byte-safe).
 fn truncate(s: &str, max_chars: usize) -> String {
-    let mut count = 0;
     let mut end = s.len();
-    for (i, _) in s.char_indices() {
+    for (count, (i, _)) in s.char_indices().enumerate() {
         if count >= max_chars {
             end = i;
             break;
         }
-        count += 1;
     }
     s[..end].to_string()
 }
