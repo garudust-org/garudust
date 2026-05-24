@@ -176,18 +176,32 @@ struct Cli {
 fn build_config(cli: &Cli) -> Arc<AgentConfig> {
     let mut config = AgentConfig::load();
 
-    // CLI flags override whatever was loaded from config files / env
+    // --model: update both legacy field and named profile (if present).
     if let Some(m) = &cli.model {
         config.model.clone_from(m);
+        if let Some(p) = config.providers.get_mut("default") {
+            p.model = Some(m.clone());
+        }
     }
+
+    // --base-url: update both legacy field and named profile (if present).
     if let Some(u) = &cli.base_url {
         config.base_url = Some(u.clone());
+        if let Some(p) = config.providers.get_mut("default") {
+            p.url = Some(u.clone());
+        }
     }
+
+    // --anthropic-key / --api-key: explicit provider override.
+    // Remove providers.default so build_transport falls back to the legacy
+    // (provider + api_key) path instead of the named profile from config.yaml.
     if let Some(k) = &cli.anthropic_key {
         config.api_key = Some(k.clone());
         config.provider = "anthropic".into();
+        config.providers.remove("default");
     } else if let Some(k) = &cli.api_key {
         config.api_key = Some(k.clone());
+        config.providers.remove("default");
     }
 
     Arc::new(config)
