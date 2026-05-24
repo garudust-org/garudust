@@ -29,9 +29,14 @@ fn new_session_id() -> String {
     let h = secs
         .wrapping_mul(6_364_136_223_846_793_005_u64)
         .wrapping_add(1_442_695_040_888_963_407_u64);
-    // Fold the upper and lower 32 bits so all entropy contributes.
     let folded = u32::try_from((h >> 32) ^ (h & 0xFFFF_FFFF)).unwrap_or(0);
     format!("{folded:08x}")
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Focus {
+    Chat,
+    Sidebar,
 }
 
 #[derive(Debug, Clone)]
@@ -84,6 +89,9 @@ pub struct Tui {
     session_output_tokens: u32,
     session_turns: u32,
     session_id: String,
+    focus: Focus,
+    /// Cursor index into `profiles` when sidebar is focused.
+    sidebar_cursor: usize,
 }
 
 #[derive(Clone)]
@@ -167,6 +175,8 @@ impl Tui {
             session_output_tokens: 0,
             session_turns: 0,
             session_id: new_session_id(),
+            focus: Focus::Chat,
+            sidebar_cursor: 0,
         }
     }
 
@@ -223,6 +233,15 @@ impl Tui {
         self.cursor = 0;
     }
 
+    /// Move sidebar focus to profile nearest to `active_profile`.
+    fn sidebar_focus_active(&mut self) {
+        self.sidebar_cursor = self
+            .profiles
+            .iter()
+            .position(|(k, _)| k == &self.active_profile)
+            .unwrap_or(0);
+    }
+
     // ── Main loop ─────────────────────────────────────────────────────────────
 
     pub async fn run(
@@ -255,126 +274,194 @@ impl Tui {
 
             if event::poll(std::time::Duration::from_millis(50))? {
                 if let Event::Key(key) = event::read()? {
+                    // ── Global keys (always active) ───────────────────────────
                     match (key.code, key.modifiers) {
                         (KeyCode::Char('c' | 'q'), KeyModifiers::CONTROL) => {
                             let _ = tx_event.send(TuiEvent::Quit).await;
                             break;
                         }
-                        (KeyCode::Enter, _) => {
-                            let text = tui.input.trim().to_string();
-                            tui.clear_input();
-                            if !text.is_empty() {
-                                if let Some(rest) = text.strip_prefix('/') {
-                                    let (cmd, args) = rest
-                                        .split_once(' ')
-                                        .map_or((rest, None), |(c, a)| (c, Some(a.trim())));
-                                    match cmd {
-                                        "new" | "clear" => {
-                                            tui.messages.clear();
-                                            tui.session_id = new_session_id();
-                                            tui.session_input_tokens = 0;
-                                            tui.session_output_tokens = 0;
-                                            tui.session_turns = 0;
-                                            tui.messages.push((
-                                                Role::Assistant,
-                                                "New session started.".into(),
-                                            ));
-                                            let _ = tx_event.send(TuiEvent::NewSession).await;
-                                        }
-                                        "model" => match args {
-                                            Some(m) if !m.is_empty() => {
-                                                tui.messages.push((
-                                                    Role::Assistant,
-                                                    format!("Model → {m}"),
-                                                ));
-                                                let _ = tx_event
-                                                    .send(TuiEvent::ChangeModel(m.to_string()))
-                                                    .await;
-                                            }
-                                            _ => tui.messages.push((
-                                                Role::Error,
-                                                "Usage: /model <model-name>".into(),
-                                            )),
-                                        },
-                                        "profile" => match args {
-                                            Some(p) if !p.is_empty() => {
-                                                tui.messages.push((
-                                                    Role::Assistant,
-                                                    format!("Switching to profile '{p}'…"),
-                                                ));
-                                                let _ = tx_event
-                                                    .send(TuiEvent::SwitchProfile(p.to_string()))
-                                                    .await;
-                                            }
-                                            _ => {
-                                                let list = tui
-                                                    .profiles
-                                                    .iter()
-                                                    .map(|(k, _)| k.as_str())
-                                                    .collect::<Vec<_>>()
-                                                    .join(", ");
-                                                tui.messages.push((
-                                                    Role::Error,
-                                                    format!("Usage: /profile <name>  (available: {list})"),
-                                                ));
-                                            }
-                                        },
-                                        "help" => {
-                                            tui.messages.push((
-                                                Role::Assistant,
-                                                "/new|/clear      — start fresh session\n\
-                                                 /model <name>    — override model string\n\
-                                                 /profile <name>  — switch provider profile\n\
-                                                 /help            — show this help"
-                                                    .into(),
-                                            ));
-                                        }
-                                        _ => {
-                                            tui.messages.push((
-                                                Role::Error,
-                                                format!(
-                                                    "Unknown command /{cmd}. Type /help for help."
-                                                ),
-                                            ));
+                        // Tab toggles focus between chat input and sidebar.
+                        (KeyCode::Tab, _) => {
+                            if tui.focus == Focus::Chat {
+                                tui.focus = Focus::Sidebar;
+                                tui.sidebar_focus_active();
+                            } else {
+                                tui.focus = Focus::Chat;
+                            }
+                        }
+                        _ => {
+                            if tui.focus == Focus::Sidebar {
+                                // ── Sidebar navigation ────────────────────────
+                                match key.code {
+                                    KeyCode::Up => {
+                                        if tui.sidebar_cursor > 0 {
+                                            tui.sidebar_cursor -= 1;
                                         }
                                     }
-                                } else {
-                                    tui.messages.push((Role::User, text.clone()));
-                                    tui.status = "Thinking…".into();
-                                    let _ = tx_event.send(TuiEvent::Submit(text)).await;
+                                    KeyCode::Down => {
+                                        if !tui.profiles.is_empty()
+                                            && tui.sidebar_cursor < tui.profiles.len() - 1
+                                        {
+                                            tui.sidebar_cursor += 1;
+                                        }
+                                    }
+                                    KeyCode::Char(' ') | KeyCode::Enter => {
+                                        if let Some((key, _)) = tui.profiles.get(tui.sidebar_cursor)
+                                        {
+                                            let profile = key.clone();
+                                            tui.messages.push((
+                                                Role::Assistant,
+                                                format!("Switching to profile '{profile}'…"),
+                                            ));
+                                            let _ = tx_event
+                                                .send(TuiEvent::SwitchProfile(profile))
+                                                .await;
+                                        }
+                                        tui.focus = Focus::Chat;
+                                    }
+                                    KeyCode::Esc => {
+                                        tui.focus = Focus::Chat;
+                                    }
+                                    _ => {}
+                                }
+                            } else {
+                                // ── Chat / input keys ─────────────────────────
+                                match (key.code, key.modifiers) {
+                                    (KeyCode::Enter, _) => {
+                                        let text = tui.input.trim().to_string();
+                                        tui.clear_input();
+                                        if !text.is_empty() {
+                                            if let Some(rest) = text.strip_prefix('/') {
+                                                let (cmd, args) = rest
+                                                    .split_once(' ')
+                                                    .map_or((rest, None), |(c, a)| {
+                                                        (c, Some(a.trim()))
+                                                    });
+                                                match cmd {
+                                                    "new" | "clear" => {
+                                                        tui.messages.clear();
+                                                        tui.session_id = new_session_id();
+                                                        tui.session_input_tokens = 0;
+                                                        tui.session_output_tokens = 0;
+                                                        tui.session_turns = 0;
+                                                        tui.messages.push((
+                                                            Role::Assistant,
+                                                            "New session started.".into(),
+                                                        ));
+                                                        let _ = tx_event
+                                                            .send(TuiEvent::NewSession)
+                                                            .await;
+                                                    }
+                                                    "model" => match args {
+                                                        Some(m) if !m.is_empty() => {
+                                                            tui.messages.push((
+                                                                Role::Assistant,
+                                                                format!("Model → {m}"),
+                                                            ));
+                                                            let _ = tx_event
+                                                                .send(TuiEvent::ChangeModel(
+                                                                    m.to_string(),
+                                                                ))
+                                                                .await;
+                                                        }
+                                                        _ => tui.messages.push((
+                                                            Role::Error,
+                                                            "Usage: /model <model-name>".into(),
+                                                        )),
+                                                    },
+                                                    "profile" => match args {
+                                                        Some(p) if !p.is_empty() => {
+                                                            tui.messages.push((
+                                                                Role::Assistant,
+                                                                format!(
+                                                                    "Switching to profile '{p}'…"
+                                                                ),
+                                                            ));
+                                                            let _ = tx_event
+                                                                .send(TuiEvent::SwitchProfile(
+                                                                    p.to_string(),
+                                                                ))
+                                                                .await;
+                                                        }
+                                                        _ => {
+                                                            let list = tui
+                                                                .profiles
+                                                                .iter()
+                                                                .map(|(k, _)| k.as_str())
+                                                                .collect::<Vec<_>>()
+                                                                .join(", ");
+                                                            tui.messages.push((
+                                                                Role::Error,
+                                                                format!("Usage: /profile <name>  (available: {list})"),
+                                                            ));
+                                                        }
+                                                    },
+                                                    "help" => {
+                                                        tui.messages.push((
+                                                            Role::Assistant,
+                                                            "/new|/clear      — start fresh session\n\
+                                                             /model <name>    — override model string\n\
+                                                             /profile <name>  — switch provider profile\n\
+                                                             Tab              — focus sidebar to pick profile\n\
+                                                             /help            — show this help"
+                                                                .into(),
+                                                        ));
+                                                    }
+                                                    _ => {
+                                                        tui.messages.push((
+                                                            Role::Error,
+                                                            format!("Unknown command /{cmd}. Type /help for help."),
+                                                        ));
+                                                    }
+                                                }
+                                            } else {
+                                                tui.messages.push((Role::User, text.clone()));
+                                                tui.status = "Thinking…".into();
+                                                let _ = tx_event.send(TuiEvent::Submit(text)).await;
+                                            }
+                                        }
+                                    }
+
+                                    // ── Cursor movement ───────────────────────
+                                    (KeyCode::Left, KeyModifiers::CONTROL) => {
+                                        tui.move_word_left();
+                                    }
+                                    (KeyCode::Right, KeyModifiers::CONTROL) => {
+                                        tui.move_word_right();
+                                    }
+                                    (KeyCode::Left, _) => tui.move_left(),
+                                    (KeyCode::Right, _) => tui.move_right(),
+                                    (KeyCode::Home, _)
+                                    | (KeyCode::Char('a'), KeyModifiers::CONTROL) => {
+                                        tui.move_home();
+                                    }
+                                    (KeyCode::End, _)
+                                    | (KeyCode::Char('e'), KeyModifiers::CONTROL) => {
+                                        tui.move_end();
+                                    }
+
+                                    // ── Deletion ──────────────────────────────
+                                    (KeyCode::Backspace, _) => tui.delete_before_cursor(),
+                                    (KeyCode::Delete, _) => tui.delete_after_cursor(),
+                                    (KeyCode::Char('u'), KeyModifiers::CONTROL) => {
+                                        tui.clear_input();
+                                    }
+
+                                    // ── Chat scroll ───────────────────────────
+                                    (KeyCode::Up | KeyCode::PageUp, _) => {
+                                        tui.scroll = tui.scroll.saturating_sub(1);
+                                    }
+                                    (KeyCode::Down | KeyCode::PageDown, _) => {
+                                        tui.scroll = tui.scroll.saturating_add(1);
+                                    }
+
+                                    // ── Character input ───────────────────────
+                                    (KeyCode::Char(c), _) => tui.insert_char(c),
+
+                                    _ => {}
                                 }
                             }
                         }
-
-                        // ── Cursor movement ───────────────────────────────────
-                        (KeyCode::Left, KeyModifiers::CONTROL) => tui.move_word_left(),
-                        (KeyCode::Right, KeyModifiers::CONTROL) => tui.move_word_right(),
-                        (KeyCode::Left, _) => tui.move_left(),
-                        (KeyCode::Right, _) => tui.move_right(),
-                        (KeyCode::Home, _) | (KeyCode::Char('a'), KeyModifiers::CONTROL) => {
-                            tui.move_home();
-                        }
-                        (KeyCode::End, _) | (KeyCode::Char('e'), KeyModifiers::CONTROL) => {
-                            tui.move_end();
-                        }
-
-                        // ── Deletion ──────────────────────────────────────────
-                        (KeyCode::Backspace, _) => tui.delete_before_cursor(),
-                        (KeyCode::Delete, _) => tui.delete_after_cursor(),
-                        (KeyCode::Char('u'), KeyModifiers::CONTROL) => tui.clear_input(),
-
-                        // ── Scroll ────────────────────────────────────────────
-                        (KeyCode::Up | KeyCode::PageUp, _) => {
-                            tui.scroll = tui.scroll.saturating_sub(1);
-                        }
-                        (KeyCode::Down | KeyCode::PageDown, _) => {
-                            tui.scroll = tui.scroll.saturating_add(1);
-                        }
-
-                        // ── Character input ───────────────────────────────────
-                        (KeyCode::Char(c), _) => tui.insert_char(c),
-
-                        _ => {}
                     }
                 }
             }
@@ -449,11 +536,18 @@ impl Tui {
                 self.model = model;
                 self.active_profile = active_profile;
                 self.profiles = profiles;
+                // Keep sidebar cursor in bounds after update.
+                if !self.profiles.is_empty() {
+                    self.sidebar_cursor = self.sidebar_cursor.min(self.profiles.len() - 1);
+                }
             }
         }
     }
 
-    fn build_banner_lines(pane_w: u16) -> Vec<Line<'static>> {
+    // ── Logo + tools/skills banner (top of chat pane) ─────────────────────────
+
+    fn build_banner_lines(&self, pane_w: u16) -> Vec<Line<'static>> {
+        const LOGO_W: usize = 20;
         const LOGO: &[&str] = &[
             "        ★          ",
             "       /|\\       ",
@@ -469,21 +563,81 @@ impl Tui {
         let accent = Style::default()
             .fg(Color::Rgb(245, 166, 35))
             .add_modifier(Modifier::BOLD);
+        let dim = Style::default().fg(Color::Rgb(75, 75, 75));
+        let label = Style::default()
+            .fg(Color::Rgb(170, 170, 170))
+            .add_modifier(Modifier::BOLD);
+        let muted = Style::default().fg(Color::Rgb(120, 120, 120));
         let sep_style = Style::default().fg(Color::Rgb(45, 45, 45));
 
-        let mut lines: Vec<Line<'static>> = vec![Line::from("")];
-        for logo_str in LOGO {
-            lines.push(Line::from(Span::styled(logo_str.to_string(), accent)));
+        let inner_w = pane_w as usize;
+        let right_w = inner_w.saturating_sub(LOGO_W);
+
+        let mut right: Vec<Vec<Span<'static>>> = Vec::new();
+
+        let tool_total: usize = self.toolsets.values().map(Vec::len).sum();
+        right.push(vec![Span::styled(format!("Tools ({tool_total})"), label)]);
+        for (toolset, names) in &self.toolsets {
+            let prefix = format!("  {toolset}  ");
+            let avail = right_w.saturating_sub(prefix.len());
+            let joined = names.join(", ");
+            let display = if joined.len() > avail && avail > 3 {
+                format!("{}...", &joined[..avail.saturating_sub(3)])
+            } else {
+                joined
+            };
+            right.push(vec![
+                Span::styled(prefix, dim),
+                Span::styled(display, muted),
+            ]);
         }
+
+        right.push(vec![Span::raw("")]);
+
+        let skill_total = self.skill_names.len();
+        right.push(vec![Span::styled(format!("Skills ({skill_total})"), label)]);
+        if self.skill_names.is_empty() {
+            right.push(vec![Span::styled("  —", dim)]);
+        } else {
+            let joined = self.skill_names.join(", ");
+            let avail = right_w.saturating_sub(2);
+            let display = if joined.len() > avail && avail > 3 {
+                format!("{}...", &joined[..avail.saturating_sub(3)])
+            } else {
+                joined
+            };
+            right.push(vec![Span::styled(format!("  {display}"), muted)]);
+        }
+
+        let n_rows = LOGO.len().max(right.len());
+        let mut lines: Vec<Line<'static>> = Vec::with_capacity(n_rows + 3);
+
         lines.push(Line::from(Span::styled(
-            "─".repeat(pane_w as usize),
-            sep_style,
+            format!(" {tool_total} tools · {skill_total} skills · /help for commands"),
+            dim,
         )));
+
+        for i in 0..n_rows {
+            let logo_str = LOGO.get(i).copied().unwrap_or("");
+            let pad = LOGO_W.saturating_sub(logo_str.chars().count());
+            let logo_padded = format!("{logo_str}{:>pad$}", "", pad = pad);
+
+            let mut spans: Vec<Span<'static>> = vec![Span::styled(logo_padded, accent)];
+            if let Some(right_spans) = right.get(i).cloned() {
+                spans.extend(right_spans);
+            }
+            lines.push(Line::from(spans));
+        }
+
+        lines.push(Line::from(Span::styled("─".repeat(inner_w), sep_style)));
         lines
     }
 
+    // ── Left sidebar (SESSION + PROFILE navigation) ───────────────────────────
+
     fn render_sidebar(&self, f: &mut ratatui::Frame, area: Rect) {
         let w = area.width as usize;
+        let sidebar_focused = self.focus == Focus::Sidebar;
 
         let label_style = Style::default()
             .fg(Color::Rgb(170, 170, 170))
@@ -493,10 +647,15 @@ impl Tui {
             .add_modifier(Modifier::BOLD);
         let item_style = Style::default().fg(Color::Rgb(120, 120, 120));
         let dim_style = Style::default().fg(Color::Rgb(90, 90, 90));
+        let cursor_style = Style::default()
+            .fg(Color::Black)
+            .bg(Color::Rgb(180, 180, 180))
+            .add_modifier(Modifier::BOLD);
+        let hint_style = Style::default().fg(Color::Rgb(60, 60, 60));
 
-        let mut lines: Vec<Line<'static>> = Vec::with_capacity(64);
+        let mut lines: Vec<Line<'static>> = Vec::with_capacity(32);
 
-        // ── Session ───────────────────────────────────────────────────────────
+        // ── SESSION ───────────────────────────────────────────────────────────
         lines.push(Line::from(Span::styled("SESSION", label_style)));
         lines.push(Line::from(Span::styled(
             self.session_id.clone(),
@@ -504,70 +663,50 @@ impl Tui {
         )));
         lines.push(Line::from(""));
 
-        // ── Profiles ──────────────────────────────────────────────────────────
-        lines.push(Line::from(Span::styled("PROFILE", label_style)));
-        for (key, model_label) in &self.profiles {
-            let is_active = key == &self.active_profile;
-            // " ▸ key" or "   key"
-            let prefix = if is_active { " ▸ " } else { "   " };
-            let entry = format!("{prefix}{key}");
-            let entry_display = if entry.len() > w {
-                entry[..w].to_string()
+        // ── PROFILE ───────────────────────────────────────────────────────────
+        let profile_label = if sidebar_focused {
+            "PROFILE  ↑↓ Space"
+        } else {
+            "PROFILE  [Tab]"
+        };
+        lines.push(Line::from(Span::styled(
+            truncate(profile_label, w),
+            if sidebar_focused {
+                active_style
             } else {
-                entry
+                label_style
+            },
+        )));
+
+        for (idx, (key, model_label)) in self.profiles.iter().enumerate() {
+            let is_active = key == &self.active_profile;
+            let is_cursor = sidebar_focused && idx == self.sidebar_cursor;
+
+            let marker = if is_active { "▸" } else { " " };
+            let entry = format!(" {marker} {key}");
+            let entry_display = truncate(&entry, w);
+
+            let entry_style = if is_cursor {
+                cursor_style
+            } else if is_active {
+                active_style
+            } else {
+                item_style
             };
-            let entry_style = if is_active { active_style } else { item_style };
             lines.push(Line::from(Span::styled(entry_display, entry_style)));
 
-            // Show model label as a sub-line, indented and dimmed
-            if !model_label.is_empty() && model_label != "—" {
+            // Model sub-label (dimmed, only when not cursor)
+            if !model_label.is_empty() && model_label != "—" && !is_cursor {
                 let sub = format!("     {model_label}");
-                let sub_display = if sub.len() > w {
-                    sub[..w].to_string()
-                } else {
-                    sub
-                };
-                lines.push(Line::from(Span::styled(sub_display, dim_style)));
+                lines.push(Line::from(Span::styled(truncate(&sub, w), dim_style)));
             }
         }
-        lines.push(Line::from(""));
 
-        // ── Tools ─────────────────────────────────────────────────────────────
-        let tool_total: usize = self.toolsets.values().map(Vec::len).sum();
-        lines.push(Line::from(Span::styled(
-            format!("TOOLS ({tool_total})"),
-            label_style,
-        )));
-        for (toolset, names) in &self.toolsets {
-            let ts = format!(" {toolset}");
-            let ts_display = if ts.len() > w {
-                ts[..w].to_string()
-            } else {
-                ts
-            };
-            lines.push(Line::from(Span::styled(ts_display, dim_style)));
-            for name in names {
-                let s = format!("  · {name}");
-                let display = if s.len() > w { s[..w].to_string() } else { s };
-                lines.push(Line::from(Span::styled(display, item_style)));
-            }
-        }
-        lines.push(Line::from(""));
-
-        // ── Skills ────────────────────────────────────────────────────────────
-        let skill_total = self.skill_names.len();
-        lines.push(Line::from(Span::styled(
-            format!("SKILLS ({skill_total})"),
-            label_style,
-        )));
-        if self.skill_names.is_empty() {
-            lines.push(Line::from(Span::styled(" —", dim_style)));
-        } else {
-            for name in &self.skill_names {
-                let s = format!(" {name}");
-                let display = if s.len() > w { s[..w].to_string() } else { s };
-                lines.push(Line::from(Span::styled(display, item_style)));
-            }
+        // Keyboard hint at bottom when focused
+        if sidebar_focused {
+            lines.push(Line::from(""));
+            lines.push(Line::from(Span::styled("Space/Enter=select", hint_style)));
+            lines.push(Line::from(Span::styled("Esc/Tab=back", hint_style)));
         }
 
         f.render_widget(Paragraph::new(Text::from(lines)), area);
@@ -590,25 +729,26 @@ impl Tui {
             ])
             .split(area);
 
-        // Content: chat | vbar | sidebar
+        // Content: sidebar(left) | vbar | chat
         let content_chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
-                Constraint::Min(20),
-                Constraint::Length(1),
                 Constraint::Length(SIDEBAR_W),
+                Constraint::Length(1),
+                Constraint::Min(20),
             ])
             .split(chunks[2]);
 
-        let chat_area = content_chunks[0];
+        let sidebar_area = content_chunks[0];
         let vbar_area = content_chunks[1];
-        let sidebar_area = content_chunks[2];
+        let chat_area = content_chunks[2];
 
         let accent = Style::default()
             .fg(Color::Rgb(245, 166, 35))
             .add_modifier(Modifier::BOLD);
         let dim = Style::default().fg(Color::Rgb(80, 80, 80));
         let sep_style = Style::default().fg(Color::Rgb(45, 45, 45));
+        let vbar_focused_style = Style::default().fg(Color::Rgb(100, 80, 30));
         let text_style = Style::default().fg(Color::Rgb(210, 210, 210));
         let sep = "─".repeat(w);
 
@@ -641,14 +781,22 @@ impl Tui {
         // ── Separator ─────────────────────────────────────────────────────────
         f.render_widget(Paragraph::new(sep.as_str()).style(sep_style), chunks[1]);
 
-        // ── Vertical bar ──────────────────────────────────────────────────────
+        // ── Vertical bar (colour shifts when sidebar focused) ─────────────────
+        let vbar_style = if self.focus == Focus::Sidebar {
+            vbar_focused_style
+        } else {
+            sep_style
+        };
         let vbar_lines: Vec<Line<'static>> = (0..vbar_area.height)
-            .map(|_| Line::from(Span::styled("│", sep_style)))
+            .map(|_| Line::from(Span::styled("│", vbar_style)))
             .collect();
         f.render_widget(Paragraph::new(Text::from(vbar_lines)), vbar_area);
 
+        // ── Sidebar (left) ────────────────────────────────────────────────────
+        self.render_sidebar(f, sidebar_area);
+
         // ── Chat pane ─────────────────────────────────────────────────────────
-        let banner = Self::build_banner_lines(chat_area.width);
+        let banner = self.build_banner_lines(chat_area.width);
 
         let user_style = Style::default()
             .fg(Color::Rgb(99, 179, 237))
@@ -699,9 +847,6 @@ impl Tui {
 
         f.render_widget(messages.scroll((scroll, 0)), chat_area);
 
-        // ── Sidebar ───────────────────────────────────────────────────────────
-        self.render_sidebar(f, sidebar_area);
-
         // ── Status bar ────────────────────────────────────────────────────────
         let status_text = if let Some(since) = self.thinking_since {
             let secs = since.elapsed().as_secs();
@@ -736,18 +881,39 @@ impl Tui {
             ""
         };
 
-        let cursor_style = Style::default()
-            .fg(Color::Black)
-            .bg(Color::White)
-            .add_modifier(Modifier::BOLD);
+        // Dim the cursor when sidebar is focused.
+        let input_cursor_style = if self.focus == Focus::Sidebar {
+            Style::default()
+                .fg(Color::Rgb(80, 80, 80))
+                .bg(Color::Rgb(50, 50, 50))
+        } else {
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::White)
+                .add_modifier(Modifier::BOLD)
+        };
 
         let input_line = Line::from(vec![
             Span::styled(" ❯ ", accent),
             Span::styled(before.to_string(), text_style),
-            Span::styled(at, cursor_style),
+            Span::styled(at, input_cursor_style),
             Span::styled(after.to_string(), text_style),
         ]);
 
         f.render_widget(Paragraph::new(input_line), chunks[5]);
     }
+}
+
+/// Truncate a string to at most `max_chars` display columns (byte-safe).
+fn truncate(s: &str, max_chars: usize) -> String {
+    let mut count = 0;
+    let mut end = s.len();
+    for (i, _) in s.char_indices() {
+        if count >= max_chars {
+            end = i;
+            break;
+        }
+        count += 1;
+    }
+    s[..end].to_string()
 }
