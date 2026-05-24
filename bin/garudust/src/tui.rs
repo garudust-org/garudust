@@ -565,7 +565,7 @@ impl Tui {
             .fg(Color::Rgb(170, 170, 170))
             .add_modifier(Modifier::BOLD);
         let muted = Style::default().fg(Color::Rgb(120, 120, 120));
-        let sep_style = Style::default().fg(Color::Rgb(45, 45, 45));
+        let sep_style = Style::default().fg(Color::Rgb(180, 130, 30));
 
         let inner_w = pane_w as usize;
         let right_w = inner_w.saturating_sub(LOGO_W);
@@ -744,8 +744,10 @@ impl Tui {
             .fg(Color::Rgb(245, 166, 35))
             .add_modifier(Modifier::BOLD);
         let dim = Style::default().fg(Color::Rgb(80, 80, 80));
-        let sep_style = Style::default().fg(Color::Rgb(45, 45, 45));
-        let vbar_focused_style = Style::default().fg(Color::Rgb(100, 80, 30));
+        let sep_style = Style::default().fg(Color::Rgb(180, 130, 30));
+        let vbar_focused_style = Style::default()
+            .fg(Color::Rgb(245, 166, 35))
+            .add_modifier(Modifier::BOLD);
         let text_style = Style::default().fg(Color::Rgb(210, 210, 210));
         let sep = "─".repeat(w);
 
