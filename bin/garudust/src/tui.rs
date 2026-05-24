@@ -11,13 +11,27 @@ use crossterm::{
 };
 use ratatui::{
     backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Paragraph, Wrap},
     Terminal,
 };
 use tokio::sync::mpsc;
+
+const SIDEBAR_W: u16 = 24;
+
+fn new_session_id() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let h = nanos
+        .wrapping_mul(6_364_136_223_846_793_005)
+        .wrapping_add(1_442_695_040_888_963_407);
+    format!("{:08x}", h as u32)
+}
 
 #[derive(Debug, Clone)]
 pub enum AgentEvent {
@@ -30,6 +44,11 @@ pub enum AgentEvent {
         output_tokens: u32,
     },
     Error(String),
+    /// Sent after each agent turn and after model switch to refresh the sidebar.
+    SidebarUpdate {
+        toolsets: BTreeMap<String, Vec<String>>,
+        skill_names: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -55,6 +74,7 @@ pub struct Tui {
     session_input_tokens: u32,
     session_output_tokens: u32,
     session_turns: u32,
+    session_id: String,
 }
 
 #[derive(Clone)]
@@ -141,6 +161,7 @@ impl Tui {
             session_input_tokens: 0,
             session_output_tokens: 0,
             session_turns: 0,
+            session_id: new_session_id(),
         }
     }
 
@@ -243,6 +264,10 @@ impl Tui {
                                     match cmd {
                                         "new" | "clear" => {
                                             tui.messages.clear();
+                                            tui.session_id = new_session_id();
+                                            tui.session_input_tokens = 0;
+                                            tui.session_output_tokens = 0;
+                                            tui.session_turns = 0;
                                             tui.messages.push((
                                                 Role::Assistant,
                                                 "New session started.".into(),
@@ -382,13 +407,18 @@ impl Tui {
                 self.status = "Error — ready for next task".into();
                 self.scroll = u16::MAX;
             }
+            AgentEvent::SidebarUpdate {
+                toolsets,
+                skill_names,
+            } => {
+                self.toolsets = toolsets;
+                self.skill_names = skill_names;
+            }
         }
     }
 
-    // Build the startup banner lines (logo left, tools+skills right).
-    // `pane_w` is the full width of the (borderless) chat area.
+    // Logo-only banner at the top of the chat pane.
     fn build_banner_lines(&self, pane_w: u16) -> Vec<Line<'static>> {
-        const LOGO_W: usize = 20;
         const LOGO: &[&str] = &[
             "        ★          ",
             "       /|\\       ",
@@ -404,86 +434,77 @@ impl Tui {
         let accent = Style::default()
             .fg(Color::Rgb(245, 166, 35))
             .add_modifier(Modifier::BOLD);
-        let dim = Style::default().fg(Color::Rgb(75, 75, 75));
-        let label = Style::default()
+        let sep_style = Style::default().fg(Color::Rgb(45, 45, 45));
+
+        let mut lines: Vec<Line<'static>> = vec![Line::from("")];
+        for logo_str in LOGO {
+            lines.push(Line::from(Span::styled(logo_str.to_string(), accent)));
+        }
+        lines.push(Line::from(Span::styled(
+            "─".repeat(pane_w as usize),
+            sep_style,
+        )));
+        lines
+    }
+
+    fn render_sidebar(&self, f: &mut ratatui::Frame, area: Rect) {
+        let w = area.width as usize;
+
+        let label_style = Style::default()
             .fg(Color::Rgb(170, 170, 170))
             .add_modifier(Modifier::BOLD);
-        let muted = Style::default().fg(Color::Rgb(120, 120, 120));
+        let toolset_style = Style::default().fg(Color::Rgb(90, 90, 90));
+        let item_style = Style::default().fg(Color::Rgb(120, 120, 120));
 
-        let inner_w = pane_w as usize;
-        let right_w = inner_w.saturating_sub(LOGO_W);
-
-        let mut right: Vec<Vec<Span<'static>>> = Vec::new();
-
-        let tool_total: usize = self.toolsets.values().map(Vec::len).sum();
-        right.push(vec![Span::styled(format!("Tools ({tool_total})"), label)]);
-
-        for (toolset, names) in &self.toolsets {
-            let prefix = format!("  {toolset}  ");
-            let avail = right_w.saturating_sub(prefix.len());
-            let joined = names.join(", ");
-            let display = if joined.len() > avail && avail > 3 {
-                format!("{}...", &joined[..avail.saturating_sub(3)])
-            } else {
-                joined
-            };
-            right.push(vec![
-                Span::styled(prefix, dim),
-                Span::styled(display, muted),
-            ]);
-        }
-
-        right.push(vec![Span::raw("")]);
-
-        let skill_total = self.skill_names.len();
-        right.push(vec![Span::styled(format!("Skills ({skill_total})"), label)]);
-
-        if self.skill_names.is_empty() {
-            right.push(vec![Span::styled("  —", dim)]);
-        } else {
-            let joined = self.skill_names.join(", ");
-            let avail = right_w.saturating_sub(2);
-            let display = if joined.len() > avail && avail > 3 {
-                format!("{}...", &joined[..avail.saturating_sub(3)])
-            } else {
-                joined
-            };
-            right.push(vec![Span::styled(format!("  {display}"), muted)]);
-        }
-
-        let n_rows = LOGO.len().max(right.len());
         let mut lines: Vec<Line<'static>> = Vec::new();
 
+        // Session ID
+        lines.push(Line::from(Span::styled("SESSION", label_style)));
+        lines.push(Line::from(Span::styled(self.session_id.clone(), item_style)));
+        lines.push(Line::from(""));
+
+        // Tools
+        let tool_total: usize = self.toolsets.values().map(Vec::len).sum();
         lines.push(Line::from(Span::styled(
-            format!(" {tool_total} tools · {skill_total} skills · /help for commands"),
-            dim,
+            format!("TOOLS ({tool_total})"),
+            label_style,
         )));
-
-        for i in 0..n_rows {
-            let logo_str = LOGO.get(i).copied().unwrap_or("");
-            let pad = LOGO_W.saturating_sub(logo_str.chars().count());
-            let logo_padded = format!("{logo_str}{:>pad$}", "", pad = pad);
-
-            let mut spans: Vec<Span<'static>> = vec![Span::styled(logo_padded, accent)];
-            if let Some(right_spans) = right.get(i).cloned() {
-                spans.extend(right_spans);
+        for (toolset, names) in &self.toolsets {
+            let ts = format!(" {toolset}");
+            let ts_display = if ts.len() > w { ts[..w].to_string() } else { ts };
+            lines.push(Line::from(Span::styled(ts_display, toolset_style)));
+            for name in names {
+                let s = format!("  · {name}");
+                let display = if s.len() > w { s[..w].to_string() } else { s };
+                lines.push(Line::from(Span::styled(display, item_style)));
             }
-            lines.push(Line::from(spans));
+        }
+        lines.push(Line::from(""));
+
+        // Skills
+        let skill_total = self.skill_names.len();
+        lines.push(Line::from(Span::styled(
+            format!("SKILLS ({skill_total})"),
+            label_style,
+        )));
+        if self.skill_names.is_empty() {
+            lines.push(Line::from(Span::styled(" —", toolset_style)));
+        } else {
+            for name in &self.skill_names {
+                let s = format!(" {name}");
+                let display = if s.len() > w { s[..w].to_string() } else { s };
+                lines.push(Line::from(Span::styled(display, item_style)));
+            }
         }
 
-        lines.push(Line::from(Span::styled(
-            "─".repeat(inner_w),
-            Style::default().fg(Color::Rgb(45, 45, 45)),
-        )));
-
-        lines
+        f.render_widget(Paragraph::new(Text::from(lines)), area);
     }
 
     fn render(&mut self, f: &mut ratatui::Frame) {
         let area = f.area();
         let w = area.width as usize;
 
-        // 6 rows: header | sep | chat | status | sep | input
+        // 6 rows: header | sep | content | status | sep | input
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -495,6 +516,20 @@ impl Tui {
                 Constraint::Length(1),
             ])
             .split(area);
+
+        // Content area: chat | vbar | sidebar
+        let content_chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Min(20),
+                Constraint::Length(1),
+                Constraint::Length(SIDEBAR_W),
+            ])
+            .split(chunks[2]);
+
+        let chat_area = content_chunks[0];
+        let vbar_area = content_chunks[1];
+        let sidebar_area = content_chunks[2];
 
         let accent = Style::default()
             .fg(Color::Rgb(245, 166, 35))
@@ -534,9 +569,14 @@ impl Tui {
         // ── Separator ─────────────────────────────────────────────────────────
         f.render_widget(Paragraph::new(sep.as_str()).style(sep_style), chunks[1]);
 
+        // ── Vertical bar (chat | sidebar) ─────────────────────────────────────
+        let vbar_lines: Vec<Line<'static>> = (0..vbar_area.height)
+            .map(|_| Line::from(Span::styled("│", sep_style)))
+            .collect();
+        f.render_widget(Paragraph::new(Text::from(vbar_lines)), vbar_area);
+
         // ── Chat pane ─────────────────────────────────────────────────────────
-        let chat_w = chunks[2].width;
-        let banner = self.build_banner_lines(chat_w);
+        let banner = self.build_banner_lines(chat_area.width);
 
         let user_style = Style::default()
             .fg(Color::Rgb(99, 179, 237))
@@ -573,11 +613,13 @@ impl Tui {
             .collect();
 
         let all_lines: Vec<Line<'static>> = banner.into_iter().chain(chat_lines).collect();
-        let visible = chunks[2].height;
+        let visible = chat_area.height;
 
-        let messages = Paragraph::new(Text::from(all_lines)).wrap(Wrap { trim: false });
+        let messages =
+            Paragraph::new(Text::from(all_lines)).wrap(Wrap { trim: false });
 
-        let total_visual = u16::try_from(messages.line_count(chat_w)).unwrap_or(u16::MAX);
+        let total_visual =
+            u16::try_from(messages.line_count(chat_area.width)).unwrap_or(u16::MAX);
         let max_scroll = total_visual.saturating_sub(visible);
         let scroll = if self.scroll == u16::MAX {
             max_scroll
@@ -585,7 +627,10 @@ impl Tui {
             self.scroll.min(max_scroll)
         };
 
-        f.render_widget(messages.scroll((scroll, 0)), chunks[2]);
+        f.render_widget(messages.scroll((scroll, 0)), chat_area);
+
+        // ── Sidebar ───────────────────────────────────────────────────────────
+        self.render_sidebar(f, sidebar_area);
 
         // ── Status bar ────────────────────────────────────────────────────────
         let status_text = if let Some(since) = self.thinking_since {

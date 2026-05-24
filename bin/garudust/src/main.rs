@@ -274,6 +274,15 @@ async fn attach_mcp_servers(
     handles
 }
 
+/// Scan skills from disk for the sidebar. Cheap directory read.
+async fn sidebar_skill_names(config: &AgentConfig) -> Vec<String> {
+    garudust_tools::toolsets::skills::load_skills_from_dir(&config.home_dir.join("skills"))
+        .await
+        .into_iter()
+        .map(|s| s.name)
+        .collect()
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -492,7 +501,14 @@ async fn main() -> Result<()> {
                         let (new_agent, new_handles) = build_agent(Arc::new(new_cfg)).await;
                         // Drop old handles first — terminates previous MCP child processes.
                         *shared_handles.lock().await = new_handles;
-                        *shared_agent.write().await = new_agent;
+                        *shared_agent.write().await = new_agent.clone();
+                        let skill_names = sidebar_skill_names(&shared_config).await;
+                        let _ = tx_agent2
+                            .send(AgentEvent::SidebarUpdate {
+                                toolsets: new_agent.tool_names_by_toolset(),
+                                skill_names,
+                            })
+                            .await;
                     }
                     TuiEvent::Submit(task) => {
                         let _ = tx_agent2.send(AgentEvent::Thinking).await;
@@ -531,6 +547,14 @@ async fn main() -> Result<()> {
                                         iterations: r.iterations,
                                         input_tokens: r.usage.input_tokens,
                                         output_tokens: r.usage.output_tokens,
+                                    })
+                                    .await;
+                                // Re-scan skills — agent may have installed new ones this turn.
+                                let skill_names = sidebar_skill_names(&shared_config).await;
+                                let _ = tx_agent2
+                                    .send(AgentEvent::SidebarUpdate {
+                                        toolsets: current_agent.tool_names_by_toolset(),
+                                        skill_names,
                                     })
                                     .await;
                             }
