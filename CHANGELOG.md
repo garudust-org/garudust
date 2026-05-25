@@ -11,6 +11,28 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.12.0] — 2026-05-25
+
+### Added
+- **TUI: Profile switcher sidebar** — Tab navigation, Space to select profile, runtime switching without restart
+- **TUI: Amber-gold border & separators** — improved visual contrast on all terminal themes
+- **TUI: Chat scrollbar** — scroll through full conversation history; live skills/tools banner polling every 2 s
+- **TUI: Mouse wheel scroll** — scroll chat history with the mouse wheel
+- **TUI: Input history recall** — Up/Down arrow recalls previously sent messages; PageUp/PageDown scrolls chat view
+- **Platforms: Slack doc attachment ingestion** — files uploaded in Slack are automatically ingested into RAG
+- **CLI: `--anthropic-key` / `--api-key` flag** — override the configured provider key at launch time
+
+### Fixed
+- **Agent: `required_tools` enforcement** — no longer loops indefinitely when a required tool is not registered in the active schema set
+- **Agent: skill-load instruction** — tightened system prompt to require a direct, meaningful match before loading a skill; reduces false-positive triggers on loosely-related prompts
+- **TUI: scroll auto-follow** — fixed mouse wheel being unable to escape the `u16::MAX` auto-follow sentinel
+
+### Docs
+- README restructured: 3-step Quick Start, OS binary table, full LLM provider table, `.env` example
+- Updated `demo-tui.png` screenshot
+
+---
+
 ## [0.11.0] — 2026-05-23
 
 ### Added
@@ -444,6 +466,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Pre-built binaries for `x86_64-musl` and `aarch64-apple-darwin` via release workflow
 - MIT license
 
+[0.12.0]: https://github.com/garudust-org/garudust-agent/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/garudust-org/garudust-agent/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/garudust-org/garudust-agent/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/garudust-org/garudust-agent/compare/v0.8.1...v0.9.0
