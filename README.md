@@ -230,9 +230,15 @@ providers:
 
 security:
   approval_mode: smart       # auto | smart | deny
-  terminal_sandbox: none     # none | docker  ← use docker in production
+  terminal_sandbox: none     # none | docker | ssh  ← use docker or ssh in production
   rate_limit_rpm: ~          # per-IP limit (~ = unlimited)
   rate_limit_rpm_per_user: ~ # per-(platform, user_id) limit
+
+# SSH sandbox — required when terminal_sandbox: ssh
+# ssh_host: "build.example.com"
+# ssh_user: "deploy"          # optional, defaults to current OS user
+# ssh_port: 22                # optional, default 22
+# ssh_key_path: ~/.ssh/deploy_key  # optional, uses ~/.ssh/id_* if unset
 
 # Route a single task to a different model without changing the default:
 routing:
@@ -296,7 +302,7 @@ roles:
 
 Runtime commands: `/whoami` · `/join [code]` · `/invite <role> [max_uses]` · `/role list|add|approve|remove`
 
-> **Production:** set `terminal_sandbox: docker` to sandbox shell execution, and `max_delegation_depth: 0` to prevent sub-agent chains.
+> **Production:** set `terminal_sandbox: docker` (local container) or `terminal_sandbox: ssh` (remote host) to sandbox shell execution, and `max_delegation_depth: 0` to prevent sub-agent chains.
 
 ---
 
@@ -322,6 +328,7 @@ Garudust is Rust and designed to be extended. Pick your area:
 ```bash
 git clone https://github.com/garudust-org/garudust-agent
 cd garudust-agent
+git config core.hooksPath .githooks   # enable pre-push checks (fmt + tests)
 cargo build && cargo test --workspace && cargo clippy --workspace
 ```
 
