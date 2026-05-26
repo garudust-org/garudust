@@ -242,10 +242,13 @@ security:
   rate_limit_rpm_per_user: ~ # per-(platform, user_id) limit
 
 # SSH sandbox — required when terminal_sandbox: ssh
-# ssh_host: "build.example.com"
-# ssh_user: "deploy"          # optional, defaults to current OS user
-# ssh_port: 22                # optional, default 22
+# ssh_host: "192.168.1.50"         # required
+# ssh_user: "pi"                   # optional, defaults to current OS user
+# ssh_port: 22                     # optional, default 22
 # ssh_key_path: ~/.ssh/deploy_key  # optional, uses ~/.ssh/id_* if unset
+# ssh_jump_host: "bastion.example.com"  # optional, ProxyJump for hosts behind NAT
+# ssh_remote_cwd: "/home/pi/scripts"    # optional, cd here before every command
+# ssh_options: ["IdentitiesOnly=yes"]   # optional, extra -o flags (escape hatch)
 
 # Route a single task to a different model without changing the default:
 routing:

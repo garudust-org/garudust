@@ -9,6 +9,16 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Terminal: SSH remote sandbox** — new `terminal_sandbox: ssh` mode routes every terminal tool command through the system `ssh` binary to a configured remote host. Requires `security.ssh_host`; optional fields: `ssh_user`, `ssh_port`, `ssh_key_path`, `ssh_jump_host` (ProxyJump for hosts behind NAT), `ssh_remote_cwd` (prepend `cd <dir> &&` to every command), `ssh_options` (extra `-o` escape hatch). All hardline blocks and the approval gate still apply before the command reaches the remote host. Configurable via `config.yaml` or env vars (`GARUDUST_TERMINAL_SANDBOX=ssh`, `GARUDUST_SSH_HOST`, `GARUDUST_SSH_USER`, `GARUDUST_SSH_PORT`, `GARUDUST_SSH_KEY_PATH`).
+- **Dev: pre-push git hook** — `.githooks/pre-push` runs `cargo fmt --all -- --check` then `cargo test --workspace` before every push. Activate with `git config core.hooksPath .githooks`.
+
+### Fixed
+- **Terminal: SSH keepalive** — added `ServerAliveInterval=10 ServerAliveCountMax=3` to SSH args so a network drop mid-command is detected in ~30 s rather than silently hanging until the full command timeout fires.
+
+### Security
+- **Terminal: SSH hardening** — SSH sandbox uses `BatchMode=yes` (no interactive prompts), `StrictHostKeyChecking=accept-new` (MITM protection), `ConnectTimeout` capped at 30 s, `--` separator before the command (prevents flag injection), and `env_clear()` before spawning `ssh` (secrets never reach the remote host). Caller-supplied `ssh_options` are appended *after* hardened defaults so `BatchMode` and `StrictHostKeyChecking` cannot be overridden.
+
 ---
 
 ## [0.12.0] — 2026-05-25
