@@ -237,18 +237,18 @@ providers:
 
 security:
   approval_mode: smart       # auto | smart | deny
-  terminal_sandbox: none     # none | docker | ssh  ← use docker or ssh in production
+  terminal_sandbox: none     # none | docker | ssh
   rate_limit_rpm: ~          # per-IP limit (~ = unlimited)
   rate_limit_rpm_per_user: ~ # per-(platform, user_id) limit
 
-# SSH sandbox — required when terminal_sandbox: ssh
-# ssh_host: "192.168.1.50"         # required
-# ssh_user: "pi"                   # optional, defaults to current OS user
-# ssh_port: 22                     # optional, default 22
-# ssh_key_path: ~/.ssh/deploy_key  # optional, uses ~/.ssh/id_* if unset
-# ssh_jump_host: "bastion.example.com"  # optional, ProxyJump for hosts behind NAT
-# ssh_remote_cwd: "/home/pi/scripts"    # optional, cd here before every command
-# ssh_options: ["IdentitiesOnly=yes"]   # optional, extra -o flags (escape hatch)
+  # ── SSH sandbox (terminal_sandbox: ssh) ──────────────────────────────
+  # ssh_host: "192.168.1.50"              # required
+  # ssh_user: "pi"                        # optional — defaults to current OS user
+  # ssh_port: 22                          # optional — default 22
+  # ssh_key_path: ~/.ssh/garudust_pi      # optional — uses ~/.ssh/id_* if unset
+  # ssh_jump_host: "bastion.example.com"  # optional — ProxyJump for hosts behind NAT
+  # ssh_remote_cwd: "/home/pi/scripts"    # optional — cd here before every command
+  # ssh_options: ["IdentitiesOnly=yes"]   # optional — extra -o flags (escape hatch)
 
 # Route a single task to a different model without changing the default:
 routing:
@@ -313,6 +313,77 @@ roles:
 Runtime commands: `/whoami` · `/join [code]` · `/invite <role> [max_uses]` · `/role list|add|approve|remove`
 
 > **Production:** set `terminal_sandbox: docker` (local container) or `terminal_sandbox: ssh` (remote host) to sandbox shell execution, and `max_delegation_depth: 0` to prevent sub-agent chains.
+
+---
+
+## Terminal Sandbox
+
+The `terminal` tool supports three execution backends:
+
+| Mode | `terminal_sandbox` | Runs on | Requires |
+|---|---|---|---|
+| Direct host | `none` | Local machine | Nothing |
+| Docker container | `docker` | Isolated container | Docker daemon |
+| Remote SSH host | `ssh` | Any host with sshd | SSH key auth |
+
+All modes share the same hardline blocks (fork bomb, `rm -rf /`, `mkfs`, etc.) and the same approval gate — the sandbox only controls *where* the command runs.
+
+### SSH Sandbox
+
+Commands are forwarded via the system `ssh` binary to a remote host. Useful for managing a remote server, Raspberry Pi, or build machine without exposing any port to the internet — the agent SSHes *out*, the remote host just needs port 22 open.
+
+**Config fields** (all under `security:` in `config.yaml`):
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `ssh_host` | string | — | **Required.** Remote hostname or IP |
+| `ssh_user` | string | current OS user | Login username |
+| `ssh_port` | integer | `22` | SSH port |
+| `ssh_key_path` | path | `~/.ssh/id_*` | Private key file |
+| `ssh_jump_host` | string | — | ProxyJump bastion (`user@host:port`) for hosts behind NAT |
+| `ssh_remote_cwd` | string | — | `cd <dir> &&` prepended to every command |
+| `ssh_options` | list | `[]` | Extra `-o key=value` flags (appended after hardened defaults) |
+
+**Environment variable overrides** — no config.yaml required:
+
+```bash
+GARUDUST_TERMINAL_SANDBOX=ssh
+GARUDUST_SSH_HOST=192.168.1.50
+GARUDUST_SSH_USER=pi
+GARUDUST_SSH_PORT=22
+GARUDUST_SSH_KEY_PATH=/home/user/.ssh/garudust_pi
+```
+
+**Minimal working example** — Raspberry Pi behind a home router:
+
+```yaml
+security:
+  terminal_sandbox: ssh
+  ssh_host: "192.168.1.50"
+  ssh_user: "pi"
+  ssh_key_path: ~/.ssh/garudust_pi
+```
+
+**With a bastion** — Pi is reachable only through a public jump server:
+
+```yaml
+security:
+  terminal_sandbox: ssh
+  ssh_host: "pi.internal"
+  ssh_user: "pi"
+  ssh_key_path: ~/.ssh/garudust_pi
+  ssh_jump_host: "bastion.example.com"
+```
+
+**Security properties applied automatically:**
+
+- `BatchMode=yes` — no interactive prompts; fails immediately if key auth is rejected
+- `StrictHostKeyChecking=accept-new` — auto-trusts first contact, rejects changed host keys (MITM protection)
+- `ConnectTimeout` capped at 30 s — no indefinite TCP hangs
+- `ServerAliveInterval=10 ServerAliveCountMax=3` — detects dead connections in ~30 s rather than hanging until the command timeout fires
+- `--` before the command — prevents a command starting with `-` from being misread as an SSH flag
+- `env_clear()` before spawning `ssh` — API keys and secrets never reach the remote host
+- `ssh_options` are appended *after* hardened defaults — `BatchMode` and `StrictHostKeyChecking` cannot be overridden by caller config
 
 ---
 
