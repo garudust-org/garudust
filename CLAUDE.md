@@ -22,4 +22,6 @@ You are a senior software engineer specializing in AI agent systems and AI secur
 
 ## Workflow Rules
 
-- Before every `git commit` and `git push`, run `cargo test --workspace` and verify CI passes locally. Do not commit or push if tests fail.
+- Before every `git commit` and `git push`, run **both** of the following and verify they pass. Do not commit or push if either fails:
+  1. `cargo fmt --all -- --check`  — formatting must be clean (CI runs this first)
+  2. `cargo test --workspace`       — all tests must pass

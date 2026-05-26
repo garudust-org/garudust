@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Pre-push hook — mirrors the CI checks so failures surface locally before
+# they reach GitHub Actions.
+#
+# Install once per clone:
+#   git config core.hooksPath .githooks
+#
+# To bypass in an emergency:
+#   git push --no-verify
+
+set -euo pipefail
+
+echo "→ cargo fmt --all -- --check"
+if ! cargo fmt --all -- --check; then
+    echo ""
+    echo "✗ Formatting check failed. Run 'cargo fmt --all' then re-stage and push."
+    exit 1
+fi
+
+echo "→ cargo test --workspace"
+if ! cargo test --workspace; then
+    echo ""
+    echo "✗ Tests failed. Fix failing tests before pushing."
+    exit 1
+fi
+
+echo "✓ All pre-push checks passed."
