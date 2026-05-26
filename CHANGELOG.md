@@ -9,6 +9,10 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+---
+
+## [0.13.0] — 2026-05-27
+
 ### Added
 - **Terminal: SSH remote sandbox** — new `terminal_sandbox: ssh` mode routes every terminal tool command through the system `ssh` binary to a configured remote host. Requires `security.ssh_host`; optional fields: `ssh_user`, `ssh_port`, `ssh_key_path`, `ssh_jump_host` (ProxyJump for hosts behind NAT), `ssh_remote_cwd` (prepend `cd <dir> &&` to every command), `ssh_options` (extra `-o` escape hatch). All hardline blocks and the approval gate still apply before the command reaches the remote host. Configurable via `config.yaml` or env vars (`GARUDUST_TERMINAL_SANDBOX=ssh`, `GARUDUST_SSH_HOST`, `GARUDUST_SSH_USER`, `GARUDUST_SSH_PORT`, `GARUDUST_SSH_KEY_PATH`).
 - **Dev: pre-push git hook** — `.githooks/pre-push` runs `cargo fmt --all -- --check` then `cargo test --workspace` before every push. Activate with `git config core.hooksPath .githooks`.

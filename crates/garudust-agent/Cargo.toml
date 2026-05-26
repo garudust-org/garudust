@@ -12,10 +12,10 @@ keywords     = ["ai", "agent", "llm", "anthropic", "mcp"]
 categories   = ["development-tools", "asynchronous"]
 
 [dependencies]
-garudust-core      = { path = "../garudust-core",      version = "0.12.0" }
-garudust-transport = { path = "../garudust-transport", version = "0.12.0" }
-garudust-tools     = { path = "../garudust-tools",     version = "0.12.0" }
-garudust-memory    = { path = "../garudust-memory",    version = "0.12.0" }
+garudust-core      = { path = "../garudust-core",      version = "0.13.0" }
+garudust-transport = { path = "../garudust-transport", version = "0.13.0" }
+garudust-tools     = { path = "../garudust-tools",     version = "0.13.0" }
+garudust-memory    = { path = "../garudust-memory",    version = "0.13.0" }
 async-trait        = { workspace = true }
 serde_json         = { workspace = true }
 tokio              = { workspace = true }
