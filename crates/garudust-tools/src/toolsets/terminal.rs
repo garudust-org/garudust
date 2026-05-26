@@ -317,13 +317,33 @@ fn ssh_run_args(
         "StrictHostKeyChecking=accept-new".into(),
         "-o".into(),
         format!("ConnectTimeout={connect_timeout}"),
+        // Detect a dead connection (network drop, host crash) quickly.
+        // SSH sends a keepalive every 10 s; after 3 missed replies (~30 s)
+        // it exits with an error rather than hanging until tokio's timeout fires.
+        "-o".into(),
+        "ServerAliveInterval=10".into(),
+        "-o".into(),
+        "ServerAliveCountMax=3".into(),
         "-p".into(),
         security.ssh_port.to_string(),
     ];
 
+    // ProxyJump (bastion) — required when the target is behind NAT.
+    if let Some(jump) = &security.ssh_jump_host {
+        args.push("-J".into());
+        args.push(jump.clone());
+    }
+
     if let Some(key_path) = &security.ssh_key_path {
         args.push("-i".into());
         args.push(key_path.display().to_string());
+    }
+
+    // Caller-supplied extra options — appended after hardened defaults so they
+    // cannot override BatchMode or StrictHostKeyChecking.
+    for opt in &security.ssh_options {
+        args.push("-o".into());
+        args.push(opt.clone());
     }
 
     let target = match &security.ssh_user {
@@ -334,7 +354,13 @@ fn ssh_run_args(
     // `--` prevents an adversarially-constructed command from being interpreted
     // as an ssh flag (e.g. a command starting with `-e`).
     args.push("--".into());
-    args.push(shell_cmd.into());
+
+    // Wrap with `cd <dir> && ` when a remote working directory is configured.
+    let effective_cmd = match &security.ssh_remote_cwd {
+        Some(cwd) => format!("cd {cwd} && {shell_cmd}"),
+        None => shell_cmd.to_string(),
+    };
+    args.push(effective_cmd);
 
     Ok(args)
 }
@@ -1076,6 +1102,172 @@ mod tests {
         assert!(
             msg.contains("ssh_host"),
             "error should mention ssh_host, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn ssh_args_contains_server_alive_options() {
+        let ctx = make_ssh_ctx(Some("host"), None, 22, None);
+        let args = ssh_run_args("ls", &ctx, 30).unwrap();
+        assert!(
+            args.contains(&"ServerAliveInterval=10".into()),
+            "missing ServerAliveInterval=10"
+        );
+        assert!(
+            args.contains(&"ServerAliveCountMax=3".into()),
+            "missing ServerAliveCountMax=3"
+        );
+    }
+
+    #[test]
+    fn ssh_args_jump_host() {
+        let config = AgentConfig {
+            security: SecurityConfig {
+                terminal_sandbox: TerminalSandbox::Ssh,
+                ssh_host: Some("pi.internal".into()),
+                ssh_jump_host: Some("bastion.example.com".into()),
+                ..Default::default()
+            },
+            ..AgentConfig::default()
+        };
+        let ctx = ToolContext {
+            session_id: "test".into(),
+            conv_key: String::new(),
+            user_id: String::new(),
+            agent_id: "test".into(),
+            iteration: 0,
+            budget: Arc::new(IterationBudget::new(10)),
+            memory: Arc::new(NoopMemory),
+            config: Arc::new(config),
+            approver: Arc::new(AutoApprove),
+            sub_agent: None,
+            skill_permissions: std::sync::Arc::new(tokio::sync::RwLock::new(
+                garudust_core::tool::SkillPermissions::default(),
+            )),
+            required_tools: std::sync::Arc::new(tokio::sync::RwLock::new(Vec::new())),
+        };
+        let args = ssh_run_args("ls", &ctx, 30).unwrap();
+        let j_idx = args.iter().position(|a| a == "-J").expect("-J not found");
+        assert_eq!(args[j_idx + 1], "bastion.example.com");
+    }
+
+    #[test]
+    fn ssh_args_remote_cwd_prefixes_command() {
+        let config = AgentConfig {
+            security: SecurityConfig {
+                terminal_sandbox: TerminalSandbox::Ssh,
+                ssh_host: Some("host".into()),
+                ssh_remote_cwd: Some("/home/pi/scripts".into()),
+                ..Default::default()
+            },
+            ..AgentConfig::default()
+        };
+        let ctx = ToolContext {
+            session_id: "test".into(),
+            conv_key: String::new(),
+            user_id: String::new(),
+            agent_id: "test".into(),
+            iteration: 0,
+            budget: Arc::new(IterationBudget::new(10)),
+            memory: Arc::new(NoopMemory),
+            config: Arc::new(config),
+            approver: Arc::new(AutoApprove),
+            sub_agent: None,
+            skill_permissions: std::sync::Arc::new(tokio::sync::RwLock::new(
+                garudust_core::tool::SkillPermissions::default(),
+            )),
+            required_tools: std::sync::Arc::new(tokio::sync::RwLock::new(Vec::new())),
+        };
+        let args = ssh_run_args("./relay.py on 18", &ctx, 30).unwrap();
+        let cmd = args.last().expect("no last arg");
+        assert_eq!(
+            cmd, "cd /home/pi/scripts && ./relay.py on 18",
+            "remote_cwd should be prepended to command"
+        );
+    }
+
+    #[test]
+    fn ssh_args_no_cwd_prefix_when_unset() {
+        let ctx = make_ssh_ctx(Some("host"), None, 22, None);
+        let args = ssh_run_args("./relay.py on 18", &ctx, 30).unwrap();
+        let cmd = args.last().expect("no last arg");
+        assert_eq!(cmd, "./relay.py on 18");
+    }
+
+    #[test]
+    fn ssh_args_extra_options_appended() {
+        let config = AgentConfig {
+            security: SecurityConfig {
+                terminal_sandbox: TerminalSandbox::Ssh,
+                ssh_host: Some("host".into()),
+                ssh_options: vec!["IdentitiesOnly=yes".into(), "LogLevel=ERROR".into()],
+                ..Default::default()
+            },
+            ..AgentConfig::default()
+        };
+        let ctx = ToolContext {
+            session_id: "test".into(),
+            conv_key: String::new(),
+            user_id: String::new(),
+            agent_id: "test".into(),
+            iteration: 0,
+            budget: Arc::new(IterationBudget::new(10)),
+            memory: Arc::new(NoopMemory),
+            config: Arc::new(config),
+            approver: Arc::new(AutoApprove),
+            sub_agent: None,
+            skill_permissions: std::sync::Arc::new(tokio::sync::RwLock::new(
+                garudust_core::tool::SkillPermissions::default(),
+            )),
+            required_tools: std::sync::Arc::new(tokio::sync::RwLock::new(Vec::new())),
+        };
+        let args = ssh_run_args("ls", &ctx, 30).unwrap();
+        assert!(
+            args.contains(&"IdentitiesOnly=yes".into()),
+            "missing IdentitiesOnly=yes"
+        );
+        assert!(
+            args.contains(&"LogLevel=ERROR".into()),
+            "missing LogLevel=ERROR"
+        );
+    }
+
+    #[test]
+    fn ssh_args_extra_options_cannot_override_batchmode() {
+        // ssh_options are appended AFTER hardened defaults — if OpenSSH sees
+        // duplicate -o keys it uses the FIRST one, so BatchMode=yes wins.
+        let config = AgentConfig {
+            security: SecurityConfig {
+                terminal_sandbox: TerminalSandbox::Ssh,
+                ssh_host: Some("host".into()),
+                ssh_options: vec!["BatchMode=no".into()],
+                ..Default::default()
+            },
+            ..AgentConfig::default()
+        };
+        let ctx = ToolContext {
+            session_id: "test".into(),
+            conv_key: String::new(),
+            user_id: String::new(),
+            agent_id: "test".into(),
+            iteration: 0,
+            budget: Arc::new(IterationBudget::new(10)),
+            memory: Arc::new(NoopMemory),
+            config: Arc::new(config),
+            approver: Arc::new(AutoApprove),
+            sub_agent: None,
+            skill_permissions: std::sync::Arc::new(tokio::sync::RwLock::new(
+                garudust_core::tool::SkillPermissions::default(),
+            )),
+            required_tools: std::sync::Arc::new(tokio::sync::RwLock::new(Vec::new())),
+        };
+        let args = ssh_run_args("ls", &ctx, 30).unwrap();
+        // BatchMode=yes must appear before BatchMode=no
+        let yes_pos = args.iter().position(|a| a == "BatchMode=yes").unwrap();
+        let no_pos = args.iter().position(|a| a == "BatchMode=no").unwrap();
+        assert!(
+            yes_pos < no_pos,
+            "BatchMode=yes must come before BatchMode=no so OpenSSH honours the first"
         );
     }
 }

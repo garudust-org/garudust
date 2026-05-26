@@ -614,6 +614,26 @@ pub struct SecurityConfig {
     /// Uses the system default (~/.ssh/id_*) when unset.
     #[serde(default)]
     pub ssh_key_path: Option<PathBuf>,
+
+    /// Intermediate jump host (bastion) for SSH sandbox mode.
+    /// Maps to `ssh -J <jump_host>` — use when the target is behind NAT
+    /// and only reachable via a public-facing bastion server.
+    /// Example: `"bastion.example.com"` or `"user@bastion.example.com:2222"`.
+    #[serde(default)]
+    pub ssh_jump_host: Option<String>,
+
+    /// Working directory on the remote host for SSH sandbox commands.
+    /// When set, every command is prefixed with `cd <dir> && `.
+    /// Useful when your scripts live in a fixed location on the remote.
+    /// Example: `"/home/pi/scripts"`.
+    #[serde(default)]
+    pub ssh_remote_cwd: Option<String>,
+
+    /// Extra `-o key=value` options passed to `ssh` after the hardened defaults.
+    /// Each entry must be a valid OpenSSH option string (without the `-o` prefix).
+    /// Example: `["IdentitiesOnly=yes", "LogLevel=ERROR"]`
+    #[serde(default)]
+    pub ssh_options: Vec<String>,
 }
 
 fn default_approval_mode() -> String {
@@ -644,6 +664,9 @@ impl Default for SecurityConfig {
             ssh_user: None,
             ssh_port: default_ssh_port(),
             ssh_key_path: None,
+            ssh_jump_host: None,
+            ssh_remote_cwd: None,
+            ssh_options: Vec::new(),
         }
     }
 }
@@ -1047,6 +1070,9 @@ impl Default for AgentConfig {
                 ssh_user: None,
                 ssh_port: default_ssh_port(),
                 ssh_key_path: None,
+                ssh_jump_host: None,
+                ssh_remote_cwd: None,
+                ssh_options: Vec::new(),
             },
             memory_expiry: MemoryExpiryConfig::default(),
             nudge_interval: default_nudge_interval(),
