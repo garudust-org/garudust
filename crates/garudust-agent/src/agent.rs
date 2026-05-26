@@ -178,8 +178,7 @@ async fn stream_turn(
     })
 }
 
-/// Max conversation exchange pairs kept per session (user + assistant = 1 pair).
-const MAX_HISTORY_PAIRS: usize = 20;
+// MAX_HISTORY_PAIRS removed — now driven by AgentConfig::max_history_pairs (default 20).
 
 pub struct Agent {
     id: String,
@@ -387,7 +386,7 @@ impl Agent {
             .entry(key.clone())
             .or_insert_with(|| load_conv_from_disk(&home_dir, &key));
         entry.push_back((user_msg.to_string(), assistant_msg.to_string()));
-        while entry.len() > MAX_HISTORY_PAIRS {
+        while entry.len() > self.config.max_history_pairs {
             entry.pop_front();
         }
         save_conv_to_disk(&home_dir, &key, &entry);
@@ -671,6 +670,10 @@ impl Agent {
         // Tool names that completed successfully — used for required_tools check.
         // Only successful calls count; errored calls do not satisfy the requirement.
         let mut called_tools: HashSet<String> = HashSet::new();
+        // Ordered list of every tool name dispatched this task (success or error).
+        // Passed to reflect_and_save_skill so the reflection model knows which
+        // tools were involved without having to parse transport-specific history.
+        let mut all_called_tools: Vec<String> = Vec::new();
         // Allow up to 3 re-prompts so the model can retry after tool errors.
         let mut required_tools_retries: u8 = 0;
 
@@ -840,7 +843,7 @@ impl Agent {
                         .entry(key.to_string())
                         .or_default();
                     entry.push_back((task.to_string(), raw_output.clone()));
-                    if entry.len() > MAX_HISTORY_PAIRS {
+                    while entry.len() > self.config.max_history_pairs {
                         entry.pop_front();
                     }
                     save_conv_to_disk(&self.config.home_dir, key, &entry);
@@ -877,6 +880,7 @@ impl Agent {
                 if threshold > 0 && iters >= threshold {
                     let task_owned = task.to_string();
                     let history_snap = history.clone();
+                    let tools_snap = all_called_tools.clone();
                     let transport = self.transport.clone();
                     let tools = self.tools.clone();
                     let config = self.config.clone();
@@ -886,6 +890,7 @@ impl Agent {
                         reflect_and_save_skill(
                             &task_owned,
                             history_snap,
+                            tools_snap,
                             transport,
                             tools,
                             config,
@@ -1036,7 +1041,7 @@ impl Agent {
             all_pairs.sort_unstable_by_key(|(i, _)| *i);
             let tool_msgs: Vec<Message> = all_pairs.into_iter().map(|(_, msg)| msg).collect();
 
-            // Track only successful tool calls for required_tools enforcement.
+            // Track tool calls for required_tools enforcement and skill reflection.
             for msg in &tool_msgs {
                 for part in &msg.content {
                     if let ContentPart::ToolResult {
@@ -1045,8 +1050,11 @@ impl Agent {
                         ..
                     } = part
                     {
-                        if !is_error {
-                            if let Some(name) = id_to_name.get(tool_use_id) {
+                        if let Some(name) = id_to_name.get(tool_use_id) {
+                            // All calls (success + error) recorded for reflection transcript.
+                            all_called_tools.push(name.clone());
+                            // Only successful calls satisfy required_tools.
+                            if !is_error {
                                 called_tools.insert(name.clone());
                             }
                         }
@@ -1138,23 +1146,67 @@ fn extract_text(msg: &Message) -> String {
 }
 
 /// Builds a compact, token-efficient transcript from a conversation history.
-/// Only includes User and Assistant text turns; skips System and Tool result
-/// messages which are verbose and not useful for skill extraction.
-fn build_reflection_transcript(history: &[Message]) -> String {
+///
+/// Includes:
+/// - A deduplicated tools-used header so the reflection model knows which tools
+///   were involved without parsing transport-specific history formats.
+/// - User and Assistant text turns.
+/// - A one-line `[tool-result: ok/error]` marker for each Tool turn so the model
+///   can see the tool-call/result rhythm even when result bodies are omitted.
+fn build_reflection_transcript(history: &[Message], tools_called: &[String]) -> String {
     const MAX_CHARS: usize = 12_000;
 
     let mut out = String::new();
+
+    // Prepend a deduplicated tools summary — most useful signal for the
+    // reflection model to decide whether the workflow is reusable.
+    if !tools_called.is_empty() {
+        let mut seen = std::collections::HashSet::new();
+        let unique: Vec<&str> = tools_called
+            .iter()
+            .filter(|t| seen.insert(t.as_str()))
+            .map(String::as_str)
+            .collect();
+        out.push_str(&format!("[Tools used: {}]\n\n", unique.join(", ")));
+    }
+
     for msg in history {
-        let label = match msg.role {
-            Role::User => "User",
-            Role::Assistant => "Assistant",
+        let line = match msg.role {
+            Role::User => {
+                let text = extract_text(msg);
+                if text.trim().is_empty() {
+                    continue;
+                }
+                format!("[User]: {text}\n")
+            }
+            Role::Assistant => {
+                let text = extract_text(msg);
+                if text.trim().is_empty() {
+                    continue;
+                }
+                format!("[Assistant]: {text}\n")
+            }
+            Role::Tool => {
+                // Include a lightweight status marker so the model sees the
+                // tool-call/result rhythm without the (often large) result body.
+                let statuses: Vec<&str> = msg
+                    .content
+                    .iter()
+                    .filter_map(|p| {
+                        if let ContentPart::ToolResult { is_error, .. } = p {
+                            Some(if *is_error { "error" } else { "ok" })
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                if statuses.is_empty() {
+                    continue;
+                }
+                format!("[tool-result: {}]\n", statuses.join(", "))
+            }
             _ => continue,
         };
-        let text = extract_text(msg);
-        if text.trim().is_empty() {
-            continue;
-        }
-        let line = format!("[{label}]: {text}\n");
         if out.len() + line.len() > MAX_CHARS {
             out.push_str("... (transcript truncated)\n");
             break;
@@ -1167,9 +1219,15 @@ fn build_reflection_transcript(history: &[Message]) -> String {
 /// Background skill-reflection pass. Reviews the conversation history after a
 /// complex task and calls `write_skill` if the workflow is worth preserving.
 /// Runs in a detached tokio task — never blocks the user's response.
+///
+/// `tools_called` is the ordered sequence of tool names dispatched during the
+/// task. It is prepended to the transcript so the reflection model immediately
+/// knows which tools were involved, independent of transport-specific history
+/// serialisation.
 async fn reflect_and_save_skill(
     task: &str,
     history: Vec<Message>,
+    tools_called: Vec<String>,
     transport: Arc<dyn ProviderTransport>,
     tools: Arc<ToolRegistry>,
     config: Arc<AgentConfig>,
@@ -1180,7 +1238,7 @@ async fn reflect_and_save_skill(
         return;
     };
 
-    let transcript = build_reflection_transcript(&history);
+    let transcript = build_reflection_transcript(&history, &tools_called);
 
     // List existing skills with description and source so the model can avoid duplicates.
     let skills_dir = config.home_dir.join("skills");
@@ -1245,8 +1303,15 @@ async fn reflect_and_save_skill(
         return;
     }
 
+    // Use the dedicated reflection model when configured; fall back to the main
+    // model. A cheap/fast model (e.g. llama-3.1-8b-instant) is ideal here
+    // because the task is pattern-matching, not generation quality.
+    let reflection_model = config
+        .reflection_model
+        .clone()
+        .unwrap_or_else(|| config.model.clone());
     let inf_config = InferenceConfig {
-        model: config.model.clone(),
+        model: reflection_model,
         max_tokens: Some(2048),
         context_limit: config
             .context_window

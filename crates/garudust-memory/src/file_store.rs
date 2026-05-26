@@ -10,6 +10,10 @@ use garudust_core::{
 pub struct FileMemoryStore {
     memory_path: PathBuf,
     profile_path: PathBuf,
+    /// Serialises concurrent writes so two platform adapters cannot interleave
+    /// partial content into the same file. Combined with atomic rename so a
+    /// crash mid-write cannot leave a truncated file on disk.
+    write_lock: tokio::sync::Mutex<()>,
 }
 
 impl FileMemoryStore {
@@ -18,6 +22,7 @@ impl FileMemoryStore {
         Self {
             memory_path: memories.join("MEMORY.md"),
             profile_path: memories.join("USER.md"),
+            write_lock: tokio::sync::Mutex::new(()),
         }
     }
 
@@ -29,15 +34,29 @@ impl FileMemoryStore {
         }
     }
 
+    /// Write `content` to `path` atomically:
+    /// 1. Acquire the write lock (serialises concurrent callers).
+    /// 2. Write to `<path>.tmp` in the same directory.
+    /// 3. Rename `.tmp` → `path` (atomic on POSIX; best-effort on Windows).
+    ///
+    /// A crash after step 2 but before step 3 leaves a stale `.tmp` file that
+    /// is harmless and will be overwritten on the next write.
     async fn write_file(&self, path: &PathBuf, content: &str) -> Result<(), AgentError> {
+        let _guard = self.write_lock.lock().await;
         if let Some(parent) = path.parent() {
             tokio::fs::create_dir_all(parent)
                 .await
                 .map_err(|e| AgentError::Other(anyhow::anyhow!("{e}")))?;
         }
-        tokio::fs::write(path, content)
+        // Build the tmp path by appending ".tmp" to the full path string so
+        // `MEMORY.md` becomes `MEMORY.md.tmp` — clearly a temp file, same dir.
+        let tmp_path = PathBuf::from(format!("{}.tmp", path.display()));
+        tokio::fs::write(&tmp_path, content)
             .await
-            .map_err(|e| AgentError::Other(anyhow::anyhow!("{e}")))
+            .map_err(|e| AgentError::Other(anyhow::anyhow!("write tmp: {e}")))?;
+        tokio::fs::rename(&tmp_path, path)
+            .await
+            .map_err(|e| AgentError::Other(anyhow::anyhow!("rename tmp: {e}")))
     }
 
     /// Expire old entries from MEMORY.md according to `config`.
