@@ -552,6 +552,9 @@ pub enum TerminalSandbox {
     None,
     /// Wrap every command in `docker run --rm` with hardened flags.
     Docker,
+    /// Execute commands on a remote host via OpenSSH (`ssh` binary).
+    /// Requires `security.ssh_host` to be set.
+    Ssh,
 }
 
 /// Security-related settings grouped together (mirrors CompressionConfig pattern).
@@ -593,6 +596,24 @@ pub struct SecurityConfig {
     /// Example: `["--network=none", "--memory=512m", "--cpus=0.5"]`
     #[serde(default)]
     pub terminal_sandbox_opts: Vec<String>,
+
+    /// Remote host for SSH sandbox mode. Required when `terminal_sandbox = ssh`.
+    /// Example: `"build.example.com"` or `"192.168.1.50"`.
+    #[serde(default)]
+    pub ssh_host: Option<String>,
+
+    /// SSH login user. Defaults to the current OS user when unset.
+    #[serde(default)]
+    pub ssh_user: Option<String>,
+
+    /// SSH port. Default: 22.
+    #[serde(default = "default_ssh_port")]
+    pub ssh_port: u16,
+
+    /// Path to the SSH private key file.
+    /// Uses the system default (~/.ssh/id_*) when unset.
+    #[serde(default)]
+    pub ssh_key_path: Option<PathBuf>,
 }
 
 fn default_approval_mode() -> String {
@@ -601,6 +622,10 @@ fn default_approval_mode() -> String {
 
 fn default_sandbox_image() -> String {
     "ubuntu:24.04".to_string()
+}
+
+fn default_ssh_port() -> u16 {
+    22
 }
 
 impl Default for SecurityConfig {
@@ -615,6 +640,10 @@ impl Default for SecurityConfig {
             terminal_sandbox: TerminalSandbox::None,
             terminal_sandbox_image: default_sandbox_image(),
             terminal_sandbox_opts: Vec::new(),
+            ssh_host: None,
+            ssh_user: None,
+            ssh_port: default_ssh_port(),
+            ssh_key_path: None,
         }
     }
 }
@@ -1014,6 +1043,10 @@ impl Default for AgentConfig {
                 terminal_sandbox: TerminalSandbox::None,
                 terminal_sandbox_image: default_sandbox_image(),
                 terminal_sandbox_opts: Vec::new(),
+                ssh_host: None,
+                ssh_user: None,
+                ssh_port: default_ssh_port(),
+                ssh_key_path: None,
             },
             memory_expiry: MemoryExpiryConfig::default(),
             nudge_interval: default_nudge_interval(),
@@ -1236,11 +1269,26 @@ impl AgentConfig {
         if let Some(sandbox) = env_or_dotenv("GARUDUST_TERMINAL_SANDBOX", dotenv) {
             config.security.terminal_sandbox = match sandbox.to_lowercase().as_str() {
                 "docker" => TerminalSandbox::Docker,
+                "ssh" => TerminalSandbox::Ssh,
                 _ => TerminalSandbox::None,
             };
         }
         if let Some(image) = env_or_dotenv("GARUDUST_SANDBOX_IMAGE", dotenv) {
             config.security.terminal_sandbox_image = image;
+        }
+        if let Some(host) = env_or_dotenv("GARUDUST_SSH_HOST", dotenv) {
+            config.security.ssh_host = Some(host);
+        }
+        if let Some(user) = env_or_dotenv("GARUDUST_SSH_USER", dotenv) {
+            config.security.ssh_user = Some(user);
+        }
+        if let Some(port_str) = env_or_dotenv("GARUDUST_SSH_PORT", dotenv) {
+            if let Ok(n) = port_str.parse::<u16>() {
+                config.security.ssh_port = n;
+            }
+        }
+        if let Some(key) = env_or_dotenv("GARUDUST_SSH_KEY_PATH", dotenv) {
+            config.security.ssh_key_path = Some(PathBuf::from(key));
         }
 
         // Non-secret env vars that previously reached clap via `dotenvy::from_path`.

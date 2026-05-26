@@ -286,6 +286,78 @@ fn build_docker_command(shell_cmd: &str, ctx: &ToolContext) -> Command {
     cmd
 }
 
+// ── SSH command builder ───────────────────────────────────────────────────────
+
+/// Return the `ssh` argument list for `shell_cmd`.
+/// Separated from `build_ssh_command` so tests can inspect args without spawning a process.
+fn ssh_run_args(
+    shell_cmd: &str,
+    ctx: &ToolContext,
+    timeout_secs: u64,
+) -> Result<Vec<String>, ToolError> {
+    let security = &ctx.config.security;
+
+    let host = security.ssh_host.as_deref().ok_or_else(|| {
+        ToolError::Execution(
+            "SSH sandbox: `security.ssh_host` is not configured. \
+             Set it in config.yaml or via GARUDUST_SSH_HOST."
+                .into(),
+        )
+    })?;
+
+    // ConnectTimeout is the TCP-level connection timeout.
+    // The full command timeout is still enforced by tokio::time::timeout above.
+    // Cap at 30 s — a host that takes longer to answer is unreachable.
+    let connect_timeout = timeout_secs.min(30);
+
+    let mut args: Vec<String> = vec![
+        "-o".into(),
+        "BatchMode=yes".into(),
+        "-o".into(),
+        "StrictHostKeyChecking=accept-new".into(),
+        "-o".into(),
+        format!("ConnectTimeout={connect_timeout}"),
+        "-p".into(),
+        security.ssh_port.to_string(),
+    ];
+
+    if let Some(key_path) = &security.ssh_key_path {
+        args.push("-i".into());
+        args.push(key_path.display().to_string());
+    }
+
+    let target = match &security.ssh_user {
+        Some(user) => format!("{user}@{host}"),
+        None => host.to_string(),
+    };
+    args.push(target);
+    // `--` prevents an adversarially-constructed command from being interpreted
+    // as an ssh flag (e.g. a command starting with `-e`).
+    args.push("--".into());
+    args.push(shell_cmd.into());
+
+    Ok(args)
+}
+
+/// Build an `ssh` command that executes `shell_cmd` on the configured remote host.
+fn build_ssh_command(
+    shell_cmd: &str,
+    ctx: &ToolContext,
+    timeout_secs: u64,
+) -> Result<Command, ToolError> {
+    let args = ssh_run_args(shell_cmd, ctx, timeout_secs)?;
+    let mut cmd = Command::new("ssh");
+    cmd.args(&args);
+    // Env-clear — secrets must never be forwarded to the remote host.
+    cmd.env_clear();
+    for key in ENV_ALLOWLIST {
+        if let Ok(val) = std::env::var(key) {
+            cmd.env(key, val);
+        }
+    }
+    Ok(cmd)
+}
+
 // ── Tool impl ─────────────────────────────────────────────────────────────────
 
 #[async_trait]
@@ -370,6 +442,7 @@ impl Tool for Terminal {
         // Layer 2: sandbox or local execution
         let mut cmd = match ctx.config.security.terminal_sandbox {
             TerminalSandbox::Docker => build_docker_command(command, ctx),
+            TerminalSandbox::Ssh => build_ssh_command(command, ctx, timeout_secs)?,
             TerminalSandbox::None => {
                 let mut c = Command::new("sh");
                 c.arg("-c").arg(command);
@@ -388,15 +461,21 @@ impl Tool for Terminal {
                 .await
                 .map_err(|_| ToolError::Timeout(timeout_secs))?
                 .map_err(|e| {
-                    // ENOENT on the docker binary means Docker is not installed.
-                    if ctx.config.security.terminal_sandbox == TerminalSandbox::Docker
-                        && e.kind() == std::io::ErrorKind::NotFound
-                    {
-                        ToolError::Execution(
-                            "Docker is not installed or not in PATH. \
-                             Set `terminal_sandbox: none` in config or install Docker."
-                                .into(),
-                        )
+                    let sandbox = &ctx.config.security.terminal_sandbox;
+                    if e.kind() == std::io::ErrorKind::NotFound {
+                        match sandbox {
+                            TerminalSandbox::Docker => ToolError::Execution(
+                                "Docker is not installed or not in PATH. \
+                                 Set `terminal_sandbox: none` in config or install Docker."
+                                    .into(),
+                            ),
+                            TerminalSandbox::Ssh => ToolError::Execution(
+                                "ssh binary not found in PATH. \
+                                 Install OpenSSH client or set `terminal_sandbox: none` in config."
+                                    .into(),
+                            ),
+                            TerminalSandbox::None => ToolError::Execution(e.to_string()),
+                        }
                     } else {
                         ToolError::Execution(e.to_string())
                     }
@@ -866,5 +945,161 @@ mod tests {
         let result = truncate_output(s);
         assert!(result.contains("bytes omitted"));
         assert!(result.len() < MAX_OUTPUT_BYTES + 200);
+    }
+
+    // ── ssh_run_args ─────────────────────────────────────────────────────────
+
+    fn make_ssh_ctx(host: Option<&str>, user: Option<&str>, port: u16, key: Option<&str>) -> ToolContext {
+        let config = AgentConfig {
+            security: SecurityConfig {
+                terminal_sandbox: TerminalSandbox::Ssh,
+                ssh_host: host.map(str::to_string),
+                ssh_user: user.map(str::to_string),
+                ssh_port: port,
+                ssh_key_path: key.map(std::path::PathBuf::from),
+                ..Default::default()
+            },
+            ..AgentConfig::default()
+        };
+        ToolContext {
+            session_id: "test".into(),
+            conv_key: String::new(),
+            user_id: String::new(),
+            agent_id: "test".into(),
+            iteration: 0,
+            budget: Arc::new(IterationBudget::new(10)),
+            memory: Arc::new(NoopMemory),
+            config: Arc::new(config),
+            approver: Arc::new(AutoApprove),
+            sub_agent: None,
+            skill_permissions: std::sync::Arc::new(tokio::sync::RwLock::new(
+                garudust_core::tool::SkillPermissions::default(),
+            )),
+            required_tools: std::sync::Arc::new(tokio::sync::RwLock::new(Vec::new())),
+        }
+    }
+
+    #[test]
+    fn ssh_args_contains_hardened_options() {
+        let ctx = make_ssh_ctx(Some("build.example.com"), None, 22, None);
+        let args = ssh_run_args("echo hello", &ctx, 30).unwrap();
+
+        assert!(args.contains(&"BatchMode=yes".into()), "missing BatchMode=yes");
+        assert!(
+            args.contains(&"StrictHostKeyChecking=accept-new".into()),
+            "missing StrictHostKeyChecking=accept-new"
+        );
+        assert!(
+            args.iter().any(|a| a.starts_with("ConnectTimeout=")),
+            "missing ConnectTimeout"
+        );
+    }
+
+    #[test]
+    fn ssh_args_default_port() {
+        let ctx = make_ssh_ctx(Some("host.example.com"), None, 22, None);
+        let args = ssh_run_args("ls", &ctx, 30).unwrap();
+        let port_idx = args.iter().position(|a| a == "-p").expect("-p not found");
+        assert_eq!(args[port_idx + 1], "22");
+    }
+
+    #[test]
+    fn ssh_args_custom_port() {
+        let ctx = make_ssh_ctx(Some("host.example.com"), None, 2222, None);
+        let args = ssh_run_args("ls", &ctx, 30).unwrap();
+        let port_idx = args.iter().position(|a| a == "-p").expect("-p not found");
+        assert_eq!(args[port_idx + 1], "2222");
+    }
+
+    #[test]
+    fn ssh_args_user_at_host() {
+        let ctx = make_ssh_ctx(Some("build.example.com"), Some("deploy"), 22, None);
+        let args = ssh_run_args("echo hi", &ctx, 30).unwrap();
+        assert!(
+            args.contains(&"deploy@build.example.com".into()),
+            "expected user@host in args, got: {args:?}"
+        );
+    }
+
+    #[test]
+    fn ssh_args_host_only_when_no_user() {
+        let ctx = make_ssh_ctx(Some("build.example.com"), None, 22, None);
+        let args = ssh_run_args("ls", &ctx, 30).unwrap();
+        assert!(
+            args.contains(&"build.example.com".into()),
+            "expected bare host in args, got: {args:?}"
+        );
+    }
+
+    #[test]
+    fn ssh_args_includes_key_path() {
+        let ctx = make_ssh_ctx(Some("host"), None, 22, Some("/home/user/.ssh/deploy_key"));
+        let args = ssh_run_args("ls", &ctx, 30).unwrap();
+        let key_idx = args.iter().position(|a| a == "-i").expect("-i not found");
+        assert_eq!(args[key_idx + 1], "/home/user/.ssh/deploy_key");
+    }
+
+    #[test]
+    fn ssh_args_no_key_flag_when_unset() {
+        let ctx = make_ssh_ctx(Some("host"), None, 22, None);
+        let args = ssh_run_args("ls", &ctx, 30).unwrap();
+        assert!(!args.contains(&"-i".into()), "-i should not appear when key_path is None");
+    }
+
+    #[test]
+    fn ssh_args_ends_with_separator_and_command() {
+        let ctx = make_ssh_ctx(Some("host"), Some("user"), 22, None);
+        let args = ssh_run_args("cat /etc/hostname", &ctx, 30).unwrap();
+        let n = args.len();
+        assert!(n >= 2);
+        assert_eq!(args[n - 2], "--");
+        assert_eq!(args[n - 1], "cat /etc/hostname");
+    }
+
+    #[test]
+    fn ssh_args_connect_timeout_capped_at_30() {
+        let ctx = make_ssh_ctx(Some("host"), None, 22, None);
+        // Pass a very large timeout — ConnectTimeout must still be ≤ 30
+        let args = ssh_run_args("ls", &ctx, 9999).unwrap();
+        let ct = args
+            .iter()
+            .find_map(|a| a.strip_prefix("ConnectTimeout="))
+            .expect("ConnectTimeout not found");
+        assert!(
+            ct.parse::<u64>().unwrap() <= 30,
+            "ConnectTimeout should be capped at 30, got {ct}"
+        );
+    }
+
+    #[test]
+    fn ssh_args_requires_host() {
+        let ctx = make_ssh_ctx(None, None, 22, None);
+        let result = ssh_run_args("ls", &ctx, 30);
+        assert!(
+            result.is_err(),
+            "expected Err when ssh_host is None, got Ok"
+        );
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("ssh_host"),
+            "error should mention ssh_host, got: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn ssh_sandbox_missing_host_returns_config_error() {
+        // ssh_host is None → execute should return Err before spawning anything
+        let ctx = make_ssh_ctx(None, None, 22, None);
+        let params = serde_json::json!({
+            "command": "echo ssh_test",
+            "description": "test"
+        });
+        let result = Terminal.execute(params, &ctx).await;
+        assert!(result.is_err(), "expected Err when ssh_host not configured");
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("ssh_host") || msg.contains("SSH"),
+            "unexpected error message: {msg}"
+        );
     }
 }
