@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::fmt::Write as _;
 use std::sync::Arc;
 
 use chrono::Utc;
@@ -1167,7 +1168,7 @@ fn build_reflection_transcript(history: &[Message], tools_called: &[String]) -> 
             .filter(|t| seen.insert(t.as_str()))
             .map(String::as_str)
             .collect();
-        out.push_str(&format!("[Tools used: {}]\n\n", unique.join(", ")));
+        let _ = write!(out, "[Tools used: {}]\n\n", unique.join(", "));
     }
 
     for msg in history {
@@ -1205,7 +1206,7 @@ fn build_reflection_transcript(history: &[Message], tools_called: &[String]) -> 
                 }
                 format!("[tool-result: {}]\n", statuses.join(", "))
             }
-            _ => continue,
+            Role::System => continue,
         };
         if out.len() + line.len() > MAX_CHARS {
             out.push_str("... (transcript truncated)\n");
