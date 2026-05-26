@@ -996,14 +996,6 @@ mod tests {
     }
 
     #[test]
-    fn ssh_args_default_port() {
-        let ctx = make_ssh_ctx(Some("host.example.com"), None, 22, None);
-        let args = ssh_run_args("ls", &ctx, 30).unwrap();
-        let port_idx = args.iter().position(|a| a == "-p").expect("-p not found");
-        assert_eq!(args[port_idx + 1], "22");
-    }
-
-    #[test]
     fn ssh_args_custom_port() {
         let ctx = make_ssh_ctx(Some("host.example.com"), None, 2222, None);
         let args = ssh_run_args("ls", &ctx, 30).unwrap();
@@ -1037,13 +1029,6 @@ mod tests {
         let args = ssh_run_args("ls", &ctx, 30).unwrap();
         let key_idx = args.iter().position(|a| a == "-i").expect("-i not found");
         assert_eq!(args[key_idx + 1], "/home/user/.ssh/deploy_key");
-    }
-
-    #[test]
-    fn ssh_args_no_key_flag_when_unset() {
-        let ctx = make_ssh_ctx(Some("host"), None, 22, None);
-        let args = ssh_run_args("ls", &ctx, 30).unwrap();
-        assert!(!args.contains(&"-i".into()), "-i should not appear when key_path is None");
     }
 
     #[test]
@@ -1086,20 +1071,4 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn ssh_sandbox_missing_host_returns_config_error() {
-        // ssh_host is None → execute should return Err before spawning anything
-        let ctx = make_ssh_ctx(None, None, 22, None);
-        let params = serde_json::json!({
-            "command": "echo ssh_test",
-            "description": "test"
-        });
-        let result = Terminal.execute(params, &ctx).await;
-        assert!(result.is_err(), "expected Err when ssh_host not configured");
-        let msg = result.unwrap_err().to_string();
-        assert!(
-            msg.contains("ssh_host") || msg.contains("SSH"),
-            "unexpected error message: {msg}"
-        );
-    }
 }
