@@ -86,14 +86,21 @@ docker compose up -d
 
 ---
 
-## Why Garudust?
+## Features
 
-- **~10 MB, < 20 ms cold start** — statically linked, zero runtime deps
-- **Self-improving** — learns your preferences, auto-generates reusable skills, corrects itself without being told twice
-- **Parallel tool execution** — independent tools run concurrently; conflict-prone calls serialized automatically
-- **24 LLM providers** — Anthropic, OpenAI, Gemini, Groq, Ollama, Bedrock, and more — swap with one line in config
-- **7 platform adapters** — Telegram, Discord, Slack, Matrix, LINE, WhatsApp, Webhook in one process
-- **Secure by design** — Docker sandbox, RBAC, per-user rate limits, automatic secret redaction
+🪶 **Tiny footprint** — ~10 MB statically linked binary, < 20 ms cold start, zero runtime dependencies. Runs on a Raspberry Pi without Docker.
+
+🧠 **Self-improving** — remembers your preferences and facts across every session. Automatically writes reusable skills after complex multi-step workflows. Cross-session goals stay injected until you mark them done — you never repeat yourself.
+
+🔀 **24 LLM providers, one config line** — Anthropic, OpenAI, Gemini, Groq, Mistral, DeepSeek, Ollama, AWS Bedrock, vLLM, and 15 more. Route tasks to cheaper models with `--hint`, rotate fallback keys automatically on auth failure.
+
+📡 **7 platforms in one process** — Telegram, Discord, Slack, Matrix, LINE, WhatsApp, Webhook. Per-platform RBAC, mention gate, per-user session isolation — each adapter activates the moment its token is in `.env`.
+
+⚡ **Parallel tool execution** — independent tool calls run concurrently; conflict-prone calls serialized by key. 15+ built-in tools: web search, file I/O, browser automation (CDP), terminal, RAG, sub-agent delegation. Connect any MCP server or drop a custom script tool in any language.
+
+🔒 **Secure by design** — three sandbox modes for the terminal tool: direct host, Docker container, or SSH remote host. Hardline blocks on the most destructive commands regardless of sandbox. Approval modes (`auto` / `smart` / `deny`) gate destructive operations. Secrets are redacted from all tool output before the model sees them.
+
+🌐 **Headless API** — `garudust-server` exposes `/chat`, `/stream`, and a WebSocket endpoint — embed in any app or script. Cron-scheduled autonomous tasks run without a user present.
 
 ---
 
