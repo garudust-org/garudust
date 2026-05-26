@@ -949,7 +949,12 @@ mod tests {
 
     // ── ssh_run_args ─────────────────────────────────────────────────────────
 
-    fn make_ssh_ctx(host: Option<&str>, user: Option<&str>, port: u16, key: Option<&str>) -> ToolContext {
+    fn make_ssh_ctx(
+        host: Option<&str>,
+        user: Option<&str>,
+        port: u16,
+        key: Option<&str>,
+    ) -> ToolContext {
         let config = AgentConfig {
             security: SecurityConfig {
                 terminal_sandbox: TerminalSandbox::Ssh,
@@ -984,7 +989,10 @@ mod tests {
         let ctx = make_ssh_ctx(Some("build.example.com"), None, 22, None);
         let args = ssh_run_args("echo hello", &ctx, 30).unwrap();
 
-        assert!(args.contains(&"BatchMode=yes".into()), "missing BatchMode=yes");
+        assert!(
+            args.contains(&"BatchMode=yes".into()),
+            "missing BatchMode=yes"
+        );
         assert!(
             args.contains(&"StrictHostKeyChecking=accept-new".into()),
             "missing StrictHostKeyChecking=accept-new"
@@ -1070,5 +1078,4 @@ mod tests {
             "error should mention ssh_host, got: {msg}"
         );
     }
-
 }
