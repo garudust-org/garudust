@@ -238,6 +238,12 @@ security:
 routing:
   fast: groq-fast/llama-3.1-8b-instant
   # then: garudust --hint fast "quick question"
+
+# Use a cheap model for background skill-reflection (defaults to main model):
+reflection_model: groq/llama-3.1-8b-instant
+
+# Conversation window per session — pairs of (user, assistant) turns (default 20):
+max_history_pairs: 20
 ```
 
 For the full config reference (cron, MCP, RBAC, compression, etc.) see [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -296,7 +302,7 @@ Runtime commands: `/whoami` · `/join [code]` · `/invite <role> [max_uses]` · 
 
 ## Memory & Skills
 
-The agent saves everything it learns to `~/.garudust/memory/` and loads it at the start of every session — you never need to repeat yourself. Repeating workflows are automatically written as reusable skills in `~/.garudust/skills/` after `auto_skill_threshold` iterations.
+The agent saves everything it learns to `~/.garudust/memory/` and loads it at the start of every session — you never need to repeat yourself. Repeating workflows are automatically written as reusable skills in `~/.garudust/skills/` after `auto_skill_threshold` iterations. Set `reflection_model` in `config.yaml` to use a cheaper model for this background pass and keep costs down.
 
 ---
 
