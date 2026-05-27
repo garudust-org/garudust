@@ -93,7 +93,7 @@ docker compose up -d
 - **รัน tool พร้อมกัน** — tool ที่ไม่ขัดแย้งกันรันคู่ขนานอัตโนมัติ
 - **24 LLM provider** — Anthropic, OpenAI, Gemini, Groq, Ollama, Bedrock และอีกมาก — เปลี่ยนด้วยบรรทัดเดียว
 - **7 แพลตฟอร์มในกระบวนการเดียว** — Telegram, Discord, Slack, Matrix, LINE, WhatsApp, Webhook
-- **ปลอดภัยตั้งแต่ต้น** — Docker sandbox, RBAC, per-user rate limit, redact secret อัตโนมัติ
+- **ปลอดภัยตั้งแต่ต้น** — sandbox 3 รูปแบบ (host, Docker, SSH remote), RBAC, per-user rate limit, redact secret อัตโนมัติ
 
 ---
 
@@ -230,9 +230,18 @@ providers:
 
 security:
   approval_mode: smart       # auto | smart | deny
-  terminal_sandbox: none     # none | docker  ← ใช้ docker ใน production
+  terminal_sandbox: none     # none | docker | ssh
   rate_limit_rpm: ~          # จำกัดต่อ IP (~ = ไม่จำกัด)
   rate_limit_rpm_per_user: ~ # จำกัดต่อ (platform, user_id)
+
+  # ── SSH sandbox (terminal_sandbox: ssh) ──────────────────────────────
+  # ssh_host: "192.168.1.50"              # จำเป็น
+  # ssh_user: "pi"                        # optional — ค่าเริ่มต้นคือ user ปัจจุบัน
+  # ssh_port: 22                          # optional — ค่าเริ่มต้น 22
+  # ssh_key_path: ~/.ssh/garudust_pi      # optional — ใช้ ~/.ssh/id_* ถ้าไม่ระบุ
+  # ssh_jump_host: "bastion.example.com"  # optional — ProxyJump สำหรับ host ที่อยู่หลัง NAT
+  # ssh_remote_cwd: "/home/pi/scripts"    # optional — ต้องเป็น absolute path ไม่มี metacharacter
+  # ssh_options: ["IdentitiesOnly=yes"]   # optional — extra -o flags
 
 # เปลี่ยน model เฉพาะ task โดยไม่กระทบ default:
 routing:
@@ -290,7 +299,81 @@ roles:
 
 คำสั่ง runtime: `/whoami` · `/join [code]` · `/invite <role> [max_uses]` · `/role list|add|approve|remove`
 
-> **Production:** ตั้ง `terminal_sandbox: docker` เพื่อ sandbox shell execution และ `max_delegation_depth: 0` เพื่อป้องกัน sub-agent chain
+> **Production:** ตั้ง `terminal_sandbox: docker` (local container) หรือ `terminal_sandbox: ssh` (remote host) เพื่อ sandbox shell execution และ `max_delegation_depth: 0` เพื่อป้องกัน sub-agent chain
+
+> **หมายเหตุ:** การตั้ง `platform.session_per_user: false` ทำให้ผู้ใช้ทุกคนแชร์ context การสนทนาเดียวกัน server จะ log `WARN` ตอน startup เพื่อเตือน เหมาะสำหรับ deployment แบบผู้ใช้คนเดียวเท่านั้น
+
+---
+
+## Terminal Sandbox
+
+`terminal` tool รองรับ 3 backend:
+
+| โหมด | `terminal_sandbox` | รันที่ไหน | ต้องการ |
+|---|---|---|---|
+| โฮสต์โดยตรง | `none` | เครื่องของคุณ | ไม่ต้องการ |
+| Docker container | `docker` | container ที่แยกออกมา | Docker daemon |
+| Remote SSH host | `ssh` | host ที่มี sshd | SSH key auth |
+
+ทุกโหมดใช้ hardline blocks เดียวกัน (fork bomb, `rm -rf /`, `mkfs` ฯลฯ) และ approval gate เดียวกัน — sandbox ควบคุมเฉพาะ *ที่ที่* command รัน
+
+### SSH Sandbox
+
+command ถูกส่งผ่าน `ssh` binary ของระบบไปยัง remote host เหมาะสำหรับจัดการ remote server, Raspberry Pi หรือเครื่อง build โดยไม่ต้องเปิด port ให้อินเทอร์เน็ต — agent SSH ออกไป remote host ต้องมีแค่ port 22 เปิดอยู่
+
+**Config fields** (ทั้งหมดอยู่ภายใต้ `security:` ใน `config.yaml`):
+
+| Field | ประเภท | ค่าเริ่มต้น | คำอธิบาย |
+|---|---|---|---|
+| `ssh_host` | string | — | **จำเป็น.** hostname หรือ IP ของ remote |
+| `ssh_user` | string | user ปัจจุบัน | ชื่อผู้ใช้สำหรับ login |
+| `ssh_port` | integer | `22` | SSH port |
+| `ssh_key_path` | path | `~/.ssh/id_*` | ไฟล์ private key |
+| `ssh_jump_host` | string | — | ProxyJump bastion (`user@host:port`) สำหรับ host ที่อยู่หลัง NAT |
+| `ssh_remote_cwd` | string | — | นำหน้าทุก command ด้วย `cd <dir> &&`; ต้องเป็น absolute path ที่ไม่มี shell metacharacter (เช่น `/home/pi/scripts`) |
+| `ssh_options` | list | `[]` | `-o key=value` flags เพิ่มเติม (ต่อท้าย hardened defaults) |
+
+**Environment variable overrides** — ไม่ต้องใช้ config.yaml:
+
+```bash
+GARUDUST_TERMINAL_SANDBOX=ssh
+GARUDUST_SSH_HOST=192.168.1.50
+GARUDUST_SSH_USER=pi
+GARUDUST_SSH_PORT=22
+GARUDUST_SSH_KEY_PATH=/home/user/.ssh/garudust_pi
+```
+
+**ตัวอย่างขั้นต่ำ** — Raspberry Pi ที่อยู่หลัง home router:
+
+```yaml
+security:
+  terminal_sandbox: ssh
+  ssh_host: "192.168.1.50"
+  ssh_user: "pi"
+  ssh_key_path: ~/.ssh/garudust_pi
+```
+
+**ผ่าน bastion** — Pi เข้าถึงได้ผ่าน jump server สาธารณะเท่านั้น:
+
+```yaml
+security:
+  terminal_sandbox: ssh
+  ssh_host: "pi.internal"
+  ssh_user: "pi"
+  ssh_key_path: ~/.ssh/garudust_pi
+  ssh_jump_host: "bastion.example.com"
+```
+
+**คุณสมบัติความปลอดภัยที่ใช้งานอัตโนมัติ:**
+
+- `BatchMode=yes` — ไม่มี interactive prompt; ล้มเหลวทันทีถ้า key auth ถูกปฏิเสธ
+- `StrictHostKeyChecking=accept-new` — เชื่อถือ host ครั้งแรกอัตโนมัติ, ปฏิเสธ host key ที่เปลี่ยนแปลง (ป้องกัน MITM)
+- `ConnectTimeout` จำกัดไว้ที่ 30 วินาที — ไม่มีการค้างแบบไม่มีกำหนด
+- `ServerAliveInterval=10 ServerAliveCountMax=3` — ตรวจพบการเชื่อมต่อที่ตายแล้วใน ~30 วินาที
+- `--` ก่อน command — ป้องกัน command ที่ขึ้นต้นด้วย `-` ถูกตีความเป็น SSH flag
+- `env_clear()` ก่อน spawn `ssh` — API key และ secret ไม่ถูกส่งไปยัง remote host
+- `ssh_remote_cwd` ได้รับการตรวจสอบว่าเป็น absolute path ที่ปลอดภัย — ค่าที่มี shell metacharacter จะถูกปฏิเสธก่อนส่ง command
+- `ssh_options` ถูกต่อท้าย *หลัง* hardened defaults — ไม่สามารถ override `BatchMode` หรือ `StrictHostKeyChecking` ได้
 
 ---
 
@@ -316,6 +399,7 @@ Garudust เขียนด้วย Rust และออกแบบมาเ�
 ```bash
 git clone https://github.com/garudust-org/garudust-agent
 cd garudust-agent
+git config core.hooksPath .githooks   # เปิดใช้ pre-push checks (fmt + tests)
 cargo build && cargo test --workspace && cargo clippy --workspace
 ```
 

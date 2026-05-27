@@ -93,7 +93,7 @@ docker compose up -d
 - **并行工具执行** — 独立工具并发运行，仅在必要时串行化
 - **24 个 LLM 提供商** — Anthropic、OpenAI、Gemini、Groq、Ollama、Bedrock 等 — 一行配置即可切换
 - **7 大平台适配器** — Telegram、Discord、Slack、Matrix、LINE、WhatsApp、Webhook，同进程运行
-- **安全优先设计** — Docker 沙箱、RBAC、per-user 速率限制、自动脱敏
+- **安全优先设计** — 三种沙箱模式（主机直连、Docker、SSH 远程），RBAC、per-user 速率限制、自动脱敏
 
 ---
 
@@ -230,9 +230,18 @@ providers:
 
 security:
   approval_mode: smart       # auto | smart | deny
-  terminal_sandbox: none     # none | docker  ← 生产环境请使用 docker
+  terminal_sandbox: none     # none | docker | ssh
   rate_limit_rpm: ~          # 每 IP 限制（~ = 不限）
   rate_limit_rpm_per_user: ~ # 每（平台, 用户 ID）限制
+
+  # ── SSH 沙箱（terminal_sandbox: ssh）────────────────────────────────
+  # ssh_host: "192.168.1.50"              # 必填
+  # ssh_user: "pi"                        # 可选 — 默认为当前系统用户
+  # ssh_port: 22                          # 可选 — 默认 22
+  # ssh_key_path: ~/.ssh/garudust_pi      # 可选 — 未设置时使用 ~/.ssh/id_*
+  # ssh_jump_host: "bastion.example.com"  # 可选 — NAT 后主机的 ProxyJump 跳板机
+  # ssh_remote_cwd: "/home/pi/scripts"    # 可选 — 必须为不含元字符的绝对路径
+  # ssh_options: ["IdentitiesOnly=yes"]   # 可选 — 额外的 -o 选项
 
 # 仅针对单次任务切换模型，不影响默认配置：
 routing:
@@ -290,7 +299,81 @@ roles:
 
 运行时命令：`/whoami` · `/join [code]` · `/invite <role> [max_uses]` · `/role list|add|approve|remove`
 
-> **生产环境：** 设置 `terminal_sandbox: docker` 以沙箱化 shell 执行，设置 `max_delegation_depth: 0` 以防止子智能体链式委派。
+> **生产环境：** 设置 `terminal_sandbox: docker`（本地容器）或 `terminal_sandbox: ssh`（远程主机）以沙箱化 shell 执行，设置 `max_delegation_depth: 0` 以防止子智能体链式委派。
+
+> **注意：** 将 `platform.session_per_user` 设为 `false` 会使所有用户共享同一会话上下文。服务端在启动时会记录 `WARN` 日志作为提醒。仅适用于单用户部署。
+
+---
+
+## Terminal 沙箱
+
+`terminal` 工具支持三种执行后端：
+
+| 模式 | `terminal_sandbox` | 运行位置 | 要求 |
+|---|---|---|---|
+| 直接主机 | `none` | 本地机器 | 无 |
+| Docker 容器 | `docker` | 隔离容器 | Docker 守护进程 |
+| SSH 远程主机 | `ssh` | 任意有 sshd 的主机 | SSH 密钥认证 |
+
+所有模式共享相同的强制拦截规则（fork bomb、`rm -rf /`、`mkfs` 等）和审批门控 — 沙箱仅控制命令*在哪里*执行。
+
+### SSH 沙箱
+
+命令通过系统 `ssh` 二进制转发到远程主机。适用于管理远程服务器、Raspberry Pi 或构建机器，无需向公网暴露任何端口 — agent 主动发起 SSH 连接，远程主机只需开放端口 22。
+
+**配置字段**（均位于 `config.yaml` 的 `security:` 下）：
+
+| 字段 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `ssh_host` | string | — | **必填。** 远程主机名或 IP |
+| `ssh_user` | string | 当前系统用户 | 登录用户名 |
+| `ssh_port` | integer | `22` | SSH 端口 |
+| `ssh_key_path` | path | `~/.ssh/id_*` | 私钥文件路径 |
+| `ssh_jump_host` | string | — | ProxyJump 跳板机（`user@host:port`），用于 NAT 后的主机 |
+| `ssh_remote_cwd` | string | — | 每条命令前追加 `cd <dir> &&`；必须为不含 shell 元字符的绝对路径（如 `/home/pi/scripts`） |
+| `ssh_options` | list | `[]` | 附加 `-o key=value` 选项（追加在强化默认值之后） |
+
+**环境变量覆盖** — 无需 config.yaml：
+
+```bash
+GARUDUST_TERMINAL_SANDBOX=ssh
+GARUDUST_SSH_HOST=192.168.1.50
+GARUDUST_SSH_USER=pi
+GARUDUST_SSH_PORT=22
+GARUDUST_SSH_KEY_PATH=/home/user/.ssh/garudust_pi
+```
+
+**最简示例** — 位于家庭路由器后的 Raspberry Pi：
+
+```yaml
+security:
+  terminal_sandbox: ssh
+  ssh_host: "192.168.1.50"
+  ssh_user: "pi"
+  ssh_key_path: ~/.ssh/garudust_pi
+```
+
+**通过跳板机** — Pi 仅可通过公网跳板机访问：
+
+```yaml
+security:
+  terminal_sandbox: ssh
+  ssh_host: "pi.internal"
+  ssh_user: "pi"
+  ssh_key_path: ~/.ssh/garudust_pi
+  ssh_jump_host: "bastion.example.com"
+```
+
+**自动应用的安全属性：**
+
+- `BatchMode=yes` — 无交互提示；密钥认证失败时立即报错
+- `StrictHostKeyChecking=accept-new` — 首次连接自动信任，拒绝已变更的主机密钥（防 MITM）
+- `ConnectTimeout` 上限 30 秒 — 防止无限 TCP 挂起
+- `ServerAliveInterval=10 ServerAliveCountMax=3` — 约 30 秒内检测到断开的连接
+- `--` 放于命令前 — 防止以 `-` 开头的命令被解析为 SSH 选项
+- `env_clear()` 在 spawn `ssh` 前执行 — API 密钥和 Secret 不会被传递到远程主机
+- `ssh_remote_cwd` 在使用前经过安全绝对路径验证 — 包含 shell 元字符的值在执行时即被拒绝
+- `ssh_options` 追加在强化默认值*之后* — 无法覆盖 `BatchMode` 或 `StrictHostKeyChecking`
 
 ---
 
@@ -316,6 +399,7 @@ Garudust 基于 Rust 构建，设计上易于扩展。选择你感兴趣的方�
 ```bash
 git clone https://github.com/garudust-org/garudust-agent
 cd garudust-agent
+git config core.hooksPath .githooks   # 启用 pre-push 检查（fmt + tests）
 cargo build && cargo test --workspace && cargo clippy --workspace
 ```
 

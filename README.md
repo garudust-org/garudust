@@ -314,6 +314,8 @@ Runtime commands: `/whoami` · `/join [code]` · `/invite <role> [max_uses]` · 
 
 > **Production:** set `terminal_sandbox: docker` (local container) or `terminal_sandbox: ssh` (remote host) to sandbox shell execution, and `max_delegation_depth: 0` to prevent sub-agent chains.
 
+> **Note:** setting `platform.session_per_user: false` causes all users to share one conversation context. The server logs a `WARN` at startup as a reminder. Only safe for single-user deployments.
+
 ---
 
 ## Terminal Sandbox
@@ -341,7 +343,7 @@ Commands are forwarded via the system `ssh` binary to a remote host. Useful for 
 | `ssh_port` | integer | `22` | SSH port |
 | `ssh_key_path` | path | `~/.ssh/id_*` | Private key file |
 | `ssh_jump_host` | string | — | ProxyJump bastion (`user@host:port`) for hosts behind NAT |
-| `ssh_remote_cwd` | string | — | `cd <dir> &&` prepended to every command |
+| `ssh_remote_cwd` | string | — | `cd <dir> &&` prepended to every command; must be an absolute path with no shell metacharacters (e.g. `/home/pi/scripts`) |
 | `ssh_options` | list | `[]` | Extra `-o key=value` flags (appended after hardened defaults) |
 
 **Environment variable overrides** — no config.yaml required:
@@ -383,6 +385,7 @@ security:
 - `ServerAliveInterval=10 ServerAliveCountMax=3` — detects dead connections in ~30 s rather than hanging until the command timeout fires
 - `--` before the command — prevents a command starting with `-` from being misread as an SSH flag
 - `env_clear()` before spawning `ssh` — API keys and secrets never reach the remote host
+- `ssh_remote_cwd` is validated as a safe absolute path before use — values containing shell metacharacters (`;` `&` `|` `` ` `` `$` `>` `<` quotes, whitespace, etc.) are rejected at command time, not silently forwarded to the remote shell
 - `ssh_options` are appended *after* hardened defaults — `BatchMode` and `StrictHostKeyChecking` cannot be overridden by caller config
 
 ---
