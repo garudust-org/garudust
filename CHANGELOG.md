@@ -9,6 +9,10 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+---
+
+## [0.13.1] — 2026-05-27
+
 ### Security
 - **Terminal: `ssh_remote_cwd` shell injection** (HIGH) — `ssh_remote_cwd` is now validated by `validate_remote_cwd()` before being interpolated into the `cd <dir> &&` prefix. Values that are not absolute paths or contain shell metacharacters (`;`, `&`, `|`, `` ` ``, `$`, `>`, `<`, quotes, whitespace, brackets, `*`, `?`, `#`, `^`) are rejected with `ToolError::Execution`. Previously a value like `"/tmp; rm -rf /"` would have been executed on the remote host.
 - **WhatsApp: timing attack on `hub.verify_token`** (MEDIUM) — replaced plain `==` string comparison in `handle_verify` with `verify_token_ct()`, a constant-time comparison built on HMAC-SHA256 + `verify_slice`. Prevents an attacker from inferring the expected token length/prefix via response latency.
