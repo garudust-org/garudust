@@ -123,10 +123,10 @@ fn verify_sig(app_secret: &str, body: &[u8], header: &str) -> bool {
 /// HMAC-SHA256(expected, expected) using `verify_slice`, which is constant-time.
 /// The two HMAC values are equal iff `provided == expected`.
 fn verify_token_ct(expected: &str, provided: &str) -> bool {
+    use hmac::Mac as _;
     if expected.is_empty() {
         return false;
     }
-    use hmac::Mac as _;
     // Baseline: HMAC keyed with expected, message = expected.
     let Ok(mut baseline) = Hmac::<Sha256>::new_from_slice(expected.as_bytes()) else {
         return false;

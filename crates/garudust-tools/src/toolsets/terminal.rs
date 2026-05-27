@@ -300,17 +300,18 @@ fn build_docker_command(shell_cmd: &str, ctx: &ToolContext) -> Command {
 /// config field would let a misconfigured (or injected) `ssh_remote_cwd` value
 /// such as `"/tmp; rm -rf / #"` run arbitrary commands on the remote host.
 fn validate_remote_cwd(cwd: &str) -> Result<(), ToolError> {
+    // Characters that are either shell operators or quoting mechanisms.
+    // We intentionally allow: letters, digits, `/`, `.`, `-`, `_`, `~`, `@`, `+`, `=`, `%`, `,`.
+    // Declared before any early-return statements to satisfy clippy::items_after_statements.
+    const UNSAFE: &[char] = &[
+        ';', '&', '|', '`', '$', '>', '<', '!', '\'', '"', '\\', '\n', '\r', ' ', '\t', '(', ')',
+        '{', '}', '[', ']', '*', '?', '#', '^',
+    ];
     if !cwd.starts_with('/') {
         return Err(ToolError::Execution(
             "SSH sandbox: ssh_remote_cwd must be an absolute path (must start with '/')".into(),
         ));
     }
-    // Characters that are either shell operators or quoting mechanisms.
-    // We intentionally allow: letters, digits, `/`, `.`, `-`, `_`, `~`, `@`, `+`, `=`, `%`, `,`.
-    const UNSAFE: &[char] = &[
-        ';', '&', '|', '`', '$', '>', '<', '!', '\'', '"', '\\', '\n', '\r', ' ', '\t', '(', ')',
-        '{', '}', '[', ']', '*', '?', '#', '^',
-    ];
     if let Some(bad) = cwd.chars().find(|c| UNSAFE.contains(c)) {
         return Err(ToolError::Execution(format!(
             "SSH sandbox: ssh_remote_cwd contains disallowed character {bad:?} — \
