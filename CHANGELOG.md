@@ -9,6 +9,14 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+- **Terminal: `ssh_remote_cwd` shell injection** (HIGH) — `ssh_remote_cwd` is now validated by `validate_remote_cwd()` before being interpolated into the `cd <dir> &&` prefix. Values that are not absolute paths or contain shell metacharacters (`;`, `&`, `|`, `` ` ``, `$`, `>`, `<`, quotes, whitespace, brackets, `*`, `?`, `#`, `^`) are rejected with `ToolError::Execution`. Previously a value like `"/tmp; rm -rf /"` would have been executed on the remote host.
+- **WhatsApp: timing attack on `hub.verify_token`** (MEDIUM) — replaced plain `==` string comparison in `handle_verify` with `verify_token_ct()`, a constant-time comparison built on HMAC-SHA256 + `verify_slice`. Prevents an attacker from inferring the expected token length/prefix via response latency.
+- **Terminal: fallback API keys not redacted** (MEDIUM) — `collect_secrets()` now includes all keys from `config.fallback_api_keys` (`LLM_FALLBACK_API_KEYS`). Previously these keys could appear unredacted in terminal command output.
+- **Agent: `scrub_tag_block` whitespace bypass** (MEDIUM) — `scrub_tag_block` now also strips sloppy-whitespace tag variants such as `< recalled_memory>` and `</ recalled_memory>` that some local/quantised models emit. Previously those variants bypassed scrubbing and could leak injected memory content into model responses.
+- **Config: invite code charset/length bypass** (MEDIUM) — `redeem_invite()` now validates codes before hashmap lookup: empty codes, codes longer than 64 characters, and codes containing characters outside `[a-zA-Z0-9_-]` are rejected immediately. Prevents DoS via huge inputs and injection via special characters.
+- **Gateway: silent `session_per_user = false`** (MEDIUM) — `GatewayHandler::new()` now emits a `tracing::warn!` when `platform.session_per_user` is `false`, alerting operators that all users share one conversation session.
+
 ---
 
 ## [0.13.0] — 2026-05-27
