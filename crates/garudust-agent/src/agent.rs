@@ -114,8 +114,7 @@ fn scrub_tag_block(text: &str, open: &str, close: &str) -> String {
     };
 
     let mut out = text.to_string();
-    loop {
-        let Some(start) = find_open(&out) else { break };
+    while let Some(start) = find_open(&out) {
         if let Some((rel, clen)) = find_close(&out[start..]) {
             let end = start + rel + clen;
             out = format!("{}{}", out[..start].trim_end(), out[end..].trim_start());
