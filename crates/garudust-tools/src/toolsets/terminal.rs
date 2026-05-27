@@ -218,6 +218,10 @@ fn collect_secrets(ctx: &ToolContext) -> Vec<String> {
     if let Some(k) = &ctx.config.security.gateway_api_key {
         secrets.push(k.clone());
     }
+    // Fallback keys are equally sensitive — redact them too.
+    for k in &ctx.config.fallback_api_keys {
+        secrets.push(k.clone());
+    }
     // Also collect from known secret env var names in case they slipped through
     for var in &[
         "ANTHROPIC_API_KEY",
@@ -288,6 +292,34 @@ fn build_docker_command(shell_cmd: &str, ctx: &ToolContext) -> Command {
 
 // ── SSH command builder ───────────────────────────────────────────────────────
 
+/// Validate that `cwd` is a safe absolute path for use in `cd <cwd> && <cmd>`.
+///
+/// Rejects any value that could break out of the `cd` prefix via shell
+/// metacharacters (`;`, `&`, `|`, backtick, `$`, `>`, `<`, quotes, backslash,
+/// whitespace-with-intent, newlines, …).  Allowing these in an admin-controlled
+/// config field would let a misconfigured (or injected) `ssh_remote_cwd` value
+/// such as `"/tmp; rm -rf / #"` run arbitrary commands on the remote host.
+fn validate_remote_cwd(cwd: &str) -> Result<(), ToolError> {
+    if !cwd.starts_with('/') {
+        return Err(ToolError::Execution(
+            "SSH sandbox: ssh_remote_cwd must be an absolute path (must start with '/')".into(),
+        ));
+    }
+    // Characters that are either shell operators or quoting mechanisms.
+    // We intentionally allow: letters, digits, `/`, `.`, `-`, `_`, `~`, `@`, `+`, `=`, `%`, `,`.
+    const UNSAFE: &[char] = &[
+        ';', '&', '|', '`', '$', '>', '<', '!', '\'', '"', '\\', '\n', '\r', ' ', '\t', '(', ')',
+        '{', '}', '[', ']', '*', '?', '#', '^',
+    ];
+    if let Some(bad) = cwd.chars().find(|c| UNSAFE.contains(c)) {
+        return Err(ToolError::Execution(format!(
+            "SSH sandbox: ssh_remote_cwd contains disallowed character {bad:?} — \
+             use a plain absolute path with no shell metacharacters"
+        )));
+    }
+    Ok(())
+}
+
 /// Return the `ssh` argument list for `shell_cmd`.
 /// Separated from `build_ssh_command` so tests can inspect args without spawning a process.
 fn ssh_run_args(
@@ -356,8 +388,12 @@ fn ssh_run_args(
     args.push("--".into());
 
     // Wrap with `cd <dir> && ` when a remote working directory is configured.
+    // Validate first — an unsanitized cwd would allow shell injection on the remote.
     let effective_cmd = match &security.ssh_remote_cwd {
-        Some(cwd) => format!("cd {cwd} && {shell_cmd}"),
+        Some(cwd) => {
+            validate_remote_cwd(cwd)?;
+            format!("cd {cwd} && {shell_cmd}")
+        }
         None => shell_cmd.to_string(),
     };
     args.push(effective_cmd);
@@ -1184,6 +1220,129 @@ mod tests {
             cmd, "cd /home/pi/scripts && ./relay.py on 18",
             "remote_cwd should be prepended to command"
         );
+    }
+
+    #[test]
+    fn ssh_args_remote_cwd_rejects_semicolon_injection() {
+        // A value like "/tmp; rm -rf /" must be rejected, not passed to ssh.
+        let config = AgentConfig {
+            security: SecurityConfig {
+                terminal_sandbox: TerminalSandbox::Ssh,
+                ssh_host: Some("host".into()),
+                ssh_remote_cwd: Some("/tmp; rm -rf /".into()),
+                ..Default::default()
+            },
+            ..AgentConfig::default()
+        };
+        let ctx = ToolContext {
+            session_id: "test".into(),
+            conv_key: String::new(),
+            user_id: String::new(),
+            agent_id: "test".into(),
+            iteration: 0,
+            budget: Arc::new(IterationBudget::new(10)),
+            memory: Arc::new(NoopMemory),
+            config: Arc::new(config),
+            approver: Arc::new(AutoApprove),
+            sub_agent: None,
+            skill_permissions: std::sync::Arc::new(tokio::sync::RwLock::new(
+                garudust_core::tool::SkillPermissions::default(),
+            )),
+            required_tools: std::sync::Arc::new(tokio::sync::RwLock::new(Vec::new())),
+        };
+        let result = ssh_run_args("ls", &ctx, 30);
+        assert!(result.is_err(), "shell-metachar cwd should be rejected");
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("ssh_remote_cwd"),
+            "error should mention ssh_remote_cwd, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn ssh_args_remote_cwd_rejects_relative_path() {
+        let config = AgentConfig {
+            security: SecurityConfig {
+                terminal_sandbox: TerminalSandbox::Ssh,
+                ssh_host: Some("host".into()),
+                ssh_remote_cwd: Some("scripts".into()), // not absolute
+                ..Default::default()
+            },
+            ..AgentConfig::default()
+        };
+        let ctx = ToolContext {
+            session_id: "test".into(),
+            conv_key: String::new(),
+            user_id: String::new(),
+            agent_id: "test".into(),
+            iteration: 0,
+            budget: Arc::new(IterationBudget::new(10)),
+            memory: Arc::new(NoopMemory),
+            config: Arc::new(config),
+            approver: Arc::new(AutoApprove),
+            sub_agent: None,
+            skill_permissions: std::sync::Arc::new(tokio::sync::RwLock::new(
+                garudust_core::tool::SkillPermissions::default(),
+            )),
+            required_tools: std::sync::Arc::new(tokio::sync::RwLock::new(Vec::new())),
+        };
+        let result = ssh_run_args("ls", &ctx, 30);
+        assert!(result.is_err(), "relative cwd should be rejected");
+    }
+
+    #[test]
+    fn ssh_args_remote_cwd_rejects_backtick_injection() {
+        let config = AgentConfig {
+            security: SecurityConfig {
+                terminal_sandbox: TerminalSandbox::Ssh,
+                ssh_host: Some("host".into()),
+                ssh_remote_cwd: Some("/home/`id`".into()),
+                ..Default::default()
+            },
+            ..AgentConfig::default()
+        };
+        let ctx = ToolContext {
+            session_id: "test".into(),
+            conv_key: String::new(),
+            user_id: String::new(),
+            agent_id: "test".into(),
+            iteration: 0,
+            budget: Arc::new(IterationBudget::new(10)),
+            memory: Arc::new(NoopMemory),
+            config: Arc::new(config),
+            approver: Arc::new(AutoApprove),
+            sub_agent: None,
+            skill_permissions: std::sync::Arc::new(tokio::sync::RwLock::new(
+                garudust_core::tool::SkillPermissions::default(),
+            )),
+            required_tools: std::sync::Arc::new(tokio::sync::RwLock::new(Vec::new())),
+        };
+        let result = ssh_run_args("ls", &ctx, 30);
+        assert!(result.is_err(), "backtick cwd should be rejected");
+    }
+
+    #[test]
+    fn validate_remote_cwd_accepts_safe_paths() {
+        assert!(validate_remote_cwd("/home/pi/scripts").is_ok());
+        assert!(validate_remote_cwd("/opt/app").is_ok());
+        assert!(validate_remote_cwd("/var/log/nginx").is_ok());
+        assert!(validate_remote_cwd("/home/user-name/my_project").is_ok());
+    }
+
+    #[test]
+    fn validate_remote_cwd_rejects_metacharacters() {
+        assert!(validate_remote_cwd("/tmp; rm -rf /").is_err());
+        assert!(validate_remote_cwd("/tmp && evil").is_err());
+        assert!(validate_remote_cwd("/tmp|pipe").is_err());
+        assert!(validate_remote_cwd("/home/`id`").is_err());
+        assert!(validate_remote_cwd("/home/${HOME}").is_err());
+        assert!(validate_remote_cwd("/tmp\nnewline").is_err());
+    }
+
+    #[test]
+    fn validate_remote_cwd_rejects_relative_paths() {
+        assert!(validate_remote_cwd("../etc").is_err());
+        assert!(validate_remote_cwd("relative/path").is_err());
     }
 
     #[test]

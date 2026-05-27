@@ -115,6 +115,35 @@ fn verify_sig(app_secret: &str, body: &[u8], header: &str) -> bool {
     mac.verify_slice(&expected_bytes).is_ok()
 }
 
+/// Constant-time comparison for the webhook verify token.
+///
+/// A plain `==` on strings short-circuits on the first byte difference,
+/// leaking the length and prefix of the expected token via timing.  We prevent
+/// this by computing HMAC-SHA256(expected, provided) and comparing it against
+/// HMAC-SHA256(expected, expected) using `verify_slice`, which is constant-time.
+/// The two HMAC values are equal iff `provided == expected`.
+fn verify_token_ct(expected: &str, provided: &str) -> bool {
+    if expected.is_empty() {
+        return false;
+    }
+    use hmac::Mac as _;
+    // Baseline: HMAC keyed with expected, message = expected.
+    let Ok(mut baseline) = Hmac::<Sha256>::new_from_slice(expected.as_bytes()) else {
+        return false;
+    };
+    baseline.update(expected.as_bytes());
+    let baseline_bytes = baseline.finalize().into_bytes();
+
+    // Candidate: HMAC keyed with expected, message = provided.
+    // Matches baseline iff provided == expected.
+    let Ok(mut candidate) = Hmac::<Sha256>::new_from_slice(expected.as_bytes()) else {
+        return false;
+    };
+    candidate.update(provided.as_bytes());
+    // verify_slice provides the constant-time comparison.
+    candidate.verify_slice(&baseline_bytes).is_ok()
+}
+
 // ── Text chunking ─────────────────────────────────────────────────────────────
 
 fn chunk_text(text: &str) -> Vec<String> {
@@ -142,7 +171,9 @@ async fn handle_verify(
     State(state): State<Arc<WhatsAppState>>,
     Query(params): Query<VerifyParams>,
 ) -> Result<String, StatusCode> {
-    if params.mode == "subscribe" && params.verify_token == state.inner.verify_token {
+    if params.mode == "subscribe"
+        && verify_token_ct(&state.inner.verify_token, &params.verify_token)
+    {
         tracing::info!("WhatsApp: webhook verified");
         Ok(params.challenge)
     } else {
@@ -435,5 +466,32 @@ mod tests {
         let chunks = chunk_text(&text);
         assert_eq!(chunks.len(), 2);
         assert_eq!(chunks.join(""), text);
+    }
+
+    #[test]
+    fn verify_token_ct_accepts_matching_token() {
+        assert!(verify_token_ct("my-secret-token", "my-secret-token"));
+    }
+
+    #[test]
+    fn verify_token_ct_rejects_wrong_token() {
+        assert!(!verify_token_ct("my-secret-token", "wrong-token"));
+    }
+
+    #[test]
+    fn verify_token_ct_rejects_prefix_match() {
+        // A provided value that is a prefix of expected must be rejected.
+        assert!(!verify_token_ct("my-secret-token", "my-secret"));
+    }
+
+    #[test]
+    fn verify_token_ct_rejects_empty_expected() {
+        // An unconfigured (empty) verify token must always reject.
+        assert!(!verify_token_ct("", "anything"));
+    }
+
+    #[test]
+    fn verify_token_ct_rejects_empty_provided() {
+        assert!(!verify_token_ct("my-token", ""));
     }
 }

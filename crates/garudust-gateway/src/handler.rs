@@ -52,6 +52,18 @@ impl GatewayHandler {
         metrics: Arc<Metrics>,
     ) -> Self {
         let live_roles = Arc::new(RwLock::new(config.roles.clone()));
+
+        // Warn operators when session isolation is disabled — all users share a
+        // single conversation context, which is a significant security risk on
+        // multi-user deployments (one user can read another user's conversation).
+        if !config.platform.session_per_user {
+            tracing::warn!(
+                "platform.session_per_user is disabled — all users share ONE conversation \
+                 session. Only use this for single-user setups. Set session_per_user: true \
+                 (the default) to isolate each user's context."
+            );
+        }
+
         Self {
             agent,
             platform,

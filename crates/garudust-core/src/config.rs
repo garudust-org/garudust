@@ -863,8 +863,21 @@ impl RolesConfig {
     ///
     /// On success: assigns the role, increments the use count, removes the
     /// code when max_uses is reached, and returns the granted role name.
-    /// Returns `None` when the code does not exist, is expired, or exhausted.
+    /// Returns `None` when the code does not exist, is expired, exhausted,
+    /// or fails basic format validation.
     pub fn redeem_invite(&mut self, code: &str, platform: &str, user_id: &str) -> Option<String> {
+        // Reject obviously invalid codes before touching the hashmap.
+        // This prevents DoS via huge codes and narrows the character set to
+        // what we actually use when generating codes (alphanumeric + `-` + `_`).
+        if code.is_empty() || code.len() > 64 {
+            return None;
+        }
+        if !code
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        {
+            return None;
+        }
         let invite = self.invites.get_mut(code)?;
         if !invite.is_valid() {
             return None;
@@ -1492,6 +1505,64 @@ mod tests {
     fn roles_remove_user_wrong_platform_returns_false() {
         let mut r = roles_with_admin();
         assert!(!r.remove_user("discord", "111"));
+    }
+
+    // ── redeem_invite ─────────────────────────────────────────────────────────
+
+    fn roles_with_invite(code: &str, role: &str) -> RolesConfig {
+        let mut r = RolesConfig::default();
+        r.invites.insert(
+            code.to_string(),
+            super::InviteCode {
+                role: role.to_string(),
+                max_uses: 1,
+                uses: 0,
+                expires_at: None,
+            },
+        );
+        r
+    }
+
+    #[test]
+    fn redeem_invite_valid_code_grants_role() {
+        let mut r = roles_with_invite("ABC123", "member");
+        let result = r.redeem_invite("ABC123", "telegram", "42");
+        assert_eq!(result, Some("member".into()));
+        assert_eq!(r.lookup_role("telegram", "42", None), Some("member".into()));
+    }
+
+    #[test]
+    fn redeem_invite_rejects_empty_code() {
+        let mut r = roles_with_invite("ABC123", "member");
+        assert!(r.redeem_invite("", "telegram", "42").is_none());
+    }
+
+    #[test]
+    fn redeem_invite_rejects_too_long_code() {
+        let long_code = "A".repeat(65);
+        let mut r = roles_with_invite(&long_code, "member");
+        // Even if the code is in the map, it should be rejected on length
+        assert!(r.redeem_invite(&long_code, "telegram", "42").is_none());
+    }
+
+    #[test]
+    fn redeem_invite_rejects_special_characters() {
+        let mut r = RolesConfig::default();
+        // Codes with shell/injection characters must be rejected
+        for bad_code in &["../etc", "code;evil", "code\ninjection", "code<script>"] {
+            assert!(
+                r.redeem_invite(bad_code, "telegram", "42").is_none(),
+                "should reject code: {bad_code:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn redeem_invite_code_exhausted_after_max_uses() {
+        let mut r = roles_with_invite("ONCE", "member");
+        assert!(r.redeem_invite("ONCE", "telegram", "1").is_some());
+        // Code should be removed after max_uses=1
+        assert!(r.redeem_invite("ONCE", "telegram", "2").is_none());
     }
 
     // ── resolve_key_for_provider ──────────────────────────────────────────────

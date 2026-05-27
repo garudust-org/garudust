@@ -83,13 +83,41 @@ fn save_conv_to_disk(
     }
 }
 
-/// Strip any `<recalled_memory>…</recalled_memory>` blocks that a model may echo
-/// back verbatim in its response (observed with some local/quantised models).
+/// Strip any `<tag>…</tag>` blocks that a model may echo back verbatim.
+///
+/// Also handles the whitespace-padded variants that some models emit:
+/// `< recalled_memory >` or `</ recalled_memory>`.  Matching only the exact
+/// string would miss these, leaving injected memory content in the output.
 fn scrub_tag_block(text: &str, open: &str, close: &str) -> String {
+    // Build one-space-relaxed variants: "<foo>" → "< foo>", "</foo>" → "</ foo>".
+    let open_sloppy: Option<String> = open.strip_prefix('<').map(|s| format!("< {s}"));
+    let close_sloppy: Option<String> = close.strip_prefix("</").map(|s| format!("</ {s}"));
+
+    let find_open = |s: &str| -> Option<usize> {
+        let a = s.find(open);
+        let b = open_sloppy.as_deref().and_then(|p| s.find(p));
+        match (a, b) {
+            (Some(x), Some(y)) => Some(x.min(y)),
+            (x, y) => x.or(y),
+        }
+    };
+
+    let find_close = |s: &str| -> Option<(usize, usize)> {
+        let a = s.find(close).map(|p| (p, close.len()));
+        let b = close_sloppy
+            .as_deref()
+            .and_then(|p| s.find(p).map(|pos| (pos, p.len())));
+        match (a, b) {
+            (Some(x), Some(y)) => Some(if x.0 <= y.0 { x } else { y }),
+            (x, y) => x.or(y),
+        }
+    };
+
     let mut out = text.to_string();
-    while let Some(start) = out.find(open) {
-        if let Some(rel) = out[start..].find(close) {
-            let end = start + rel + close.len();
+    loop {
+        let Some(start) = find_open(&out) else { break };
+        if let Some((rel, clen)) = find_close(&out[start..]) {
+            let end = start + rel + clen;
             out = format!("{}{}", out[..start].trim_end(), out[end..].trim_start());
         } else {
             out.truncate(start);
@@ -1435,6 +1463,35 @@ mod tests {
         // Each removal trims adjacent whitespace, so inter-word spaces collapse.
         let s = "a <recalled_memory>m</recalled_memory> b <untrusted_memory>u</untrusted_memory> c";
         assert_eq!(scrub_recalled_memory(s), "abc");
+    }
+
+    #[test]
+    fn scrub_handles_space_after_open_bracket() {
+        // Some models emit `< recalled_memory>` — must still be scrubbed.
+        let s = "before < recalled_memory>secret</recalled_memory> after";
+        assert_eq!(
+            scrub_tag_block(s, "<recalled_memory>", "</recalled_memory>"),
+            "beforeafter"
+        );
+    }
+
+    #[test]
+    fn scrub_handles_space_in_close_tag() {
+        // Some models emit `</ recalled_memory>` — must still be scrubbed.
+        let s = "before <recalled_memory>secret</ recalled_memory> after";
+        assert_eq!(
+            scrub_tag_block(s, "<recalled_memory>", "</recalled_memory>"),
+            "beforeafter"
+        );
+    }
+
+    #[test]
+    fn scrub_handles_space_in_both_tags() {
+        let s = "x < recalled_memory>data</ recalled_memory> y";
+        assert_eq!(
+            scrub_tag_block(s, "<recalled_memory>", "</recalled_memory>"),
+            "xy"
+        );
     }
 
     // ── session persistence ───────────────────────────────────────────────────
