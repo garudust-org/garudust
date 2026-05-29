@@ -70,6 +70,25 @@ garudust "สรุป git log"            # one-shot task
 garudust --hint fast "ตรวจสอบนี้"  # ใช้ model ที่ถูกกว่า
 garudust-server --port 3000        # headless REST + WebSocket server
 docker compose up -d
+
+# คำสั่งย่อยสำหรับจัดการ
+garudust setup                     # ตัวช่วยตั้งค่าครั้งแรกแบบโต้ตอบ
+garudust doctor                    # ตรวจสอบ environment และ config
+garudust config show               # ดู config ปัจจุบัน
+garudust config set <key> <value> # ตั้งค่า config
+garudust model [<name>]            # ดูหรือเปลี่ยน model ที่ใช้งาน
+# Script tool
+garudust tool list                 # แสดง tool ที่ติดตั้งแล้ว + ที่มีใน hub
+garudust tool install <name>       # ติดตั้ง tool จาก hub
+garudust tool uninstall <name>     # ลบ tool ที่ติดตั้งไว้
+garudust tool update [<name>]      # อัปเดต tool (ละชื่อ = อัปเดตทั้งหมด)
+
+# Skill
+garudust skill list                # แสดง skill ที่ติดตั้งแล้ว + ที่มีใน hub
+garudust skill install <source>    # ติดตั้งจาก hub / GitHub / URL / well-known
+garudust skill uninstall <name>    # ลบ skill ที่ติดตั้งไว้
+garudust skill update [<name>]     # อัปเดต skill (ละชื่อ = อัปเดตทั้งหมด)
+garudust skill validate [<path>]   # ตรวจสอบ frontmatter ของ SKILL.md
 ```
 
 <div align="center">

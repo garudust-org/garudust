@@ -70,6 +70,25 @@ garudust "整理 git log 为 changelog" # 单次任务
 garudust --hint fast "这段代码对吗"  # 使用更廉价的模型
 garudust-server --port 3000          # 无头 REST + WebSocket 服务器
 docker compose up -d
+
+# 管理子命令
+garudust setup                       # 交互式首次配置向导
+garudust doctor                      # 检查环境和配置
+garudust config show                 # 查看当前配置
+garudust config set <key> <value>   # 设置配置项
+garudust model [<name>]              # 查看或切换当前模型
+# 脚本工具
+garudust tool list                   # 列出已安装 + hub 中可用的工具
+garudust tool install <name>         # 从 hub 安装工具
+garudust tool uninstall <name>       # 移除已安装的工具
+garudust tool update [<name>]        # 更新工具（省略名称 = 全部更新）
+
+# 技能
+garudust skill list                  # 列出已安装 + hub 中可用的技能
+garudust skill install <source>      # 从 hub / GitHub / URL / well-known 安装
+garudust skill uninstall <name>      # 移除已安装的技能
+garudust skill update [<name>]       # 更新技能（省略名称 = 全部更新）
+garudust skill validate [<path>]     # 校验 SKILL.md frontmatter
 ```
 
 <div align="center">

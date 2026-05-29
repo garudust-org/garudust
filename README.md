@@ -70,6 +70,25 @@ garudust "summarise git log"       # one-shot task
 garudust --hint fast "check this"  # route to a cheaper model
 garudust-server --port 3000        # headless REST + WebSocket server
 docker compose up -d
+
+# Management subcommands
+garudust setup                     # interactive first-time setup wizard
+garudust doctor                    # check environment and configuration
+garudust config show               # view current configuration
+garudust config set <key> <value> # set a configuration value
+garudust model [<name>]            # get or switch the active model
+# Script tools
+garudust tool list                 # list installed + available hub tools
+garudust tool install <name>       # install a tool from the hub
+garudust tool uninstall <name>     # remove an installed tool
+garudust tool update [<name>]      # update one tool (omit to update all)
+
+# Skills
+garudust skill list                # list installed + available hub skills
+garudust skill install <source>    # install from hub / GitHub / URL / well-known
+garudust skill uninstall <name>    # remove an installed skill
+garudust skill update [<name>]     # update one skill (omit to update all)
+garudust skill validate [<path>]   # validate SKILL.md frontmatter
 ```
 
 <div align="center">
