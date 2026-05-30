@@ -8,6 +8,7 @@ use tokio::sync::Mutex;
 
 use garudust_core::{
     error::ToolError,
+    net_guard,
     tool::{Tool, ToolContext},
     types::ToolResult,
 };
@@ -139,6 +140,11 @@ impl Tool for BrowserTool {
                 let url = params["url"]
                     .as_str()
                     .ok_or_else(|| ToolError::InvalidArgs("url required for navigate".into()))?;
+                // SSRF guard: reject non-http(s) schemes (file:, chrome:, data:),
+                // private/reserved IPs, and cloud metadata endpoints *before* we
+                // spawn Chrome — otherwise a prompt-injected URL could drive the
+                // headless browser into the internal network or local filesystem.
+                net_guard::is_safe_url(url)?;
                 self.ensure_session().await?;
                 let page = self.get_page().await?;
                 page.goto(url)
@@ -261,5 +267,116 @@ impl Tool for BrowserTool {
 
             other => Err(ToolError::InvalidArgs(format!("unknown action: {other}"))),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use async_trait::async_trait;
+    use garudust_core::{
+        budget::IterationBudget,
+        config::AgentConfig,
+        memory::{MemoryContent, MemoryStore},
+        tool::{ApprovalDecision, CommandApprover, SkillPermissions, ToolContext},
+        AgentError,
+    };
+    use serde_json::json;
+    use tokio::sync::RwLock;
+
+    use super::*;
+
+    struct AutoApprove;
+    #[async_trait]
+    impl CommandApprover for AutoApprove {
+        async fn approve(&self, _: &str, _: &str, _: &str) -> ApprovalDecision {
+            ApprovalDecision::Approved
+        }
+    }
+
+    struct NopMemory;
+    #[async_trait]
+    impl MemoryStore for NopMemory {
+        async fn read_memory(&self) -> Result<MemoryContent, AgentError> {
+            Ok(MemoryContent::default())
+        }
+        async fn write_memory(&self, _: &MemoryContent) -> Result<(), AgentError> {
+            Ok(())
+        }
+        async fn read_user_profile(&self) -> Result<String, AgentError> {
+            Ok(String::new())
+        }
+        async fn write_user_profile(&self, _: &str) -> Result<(), AgentError> {
+            Ok(())
+        }
+    }
+
+    fn make_ctx() -> ToolContext {
+        ToolContext {
+            session_id: "test".into(),
+            conv_key: String::new(),
+            user_id: String::new(),
+            agent_id: "test".into(),
+            iteration: 0,
+            budget: Arc::new(IterationBudget::new(10)),
+            memory: Arc::new(NopMemory),
+            config: Arc::new(AgentConfig::default()),
+            approver: Arc::new(AutoApprove),
+            sub_agent: None,
+            skill_permissions: Arc::new(RwLock::new(SkillPermissions::default())),
+            required_tools: Arc::new(RwLock::new(Vec::new())),
+        }
+    }
+
+    /// navigate must reject SSRF-able URLs *before* launching Chrome, so these
+    /// assertions hold even in CI where no browser is installed.
+    async fn assert_navigate_blocked(url: &str) {
+        let tool = BrowserTool::default();
+        let err = tool
+            .execute(json!({ "action": "navigate", "url": url }), &make_ctx())
+            .await
+            .expect_err("navigate should reject unsafe URL before any browser launch");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("blocked") || msg.contains("only http/https") || msg.contains("no host"),
+            "unexpected error for {url}: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn navigate_rejects_loopback() {
+        assert_navigate_blocked("http://127.0.0.1/admin").await;
+        assert_navigate_blocked("http://localhost:8080/").await;
+    }
+
+    #[tokio::test]
+    async fn navigate_rejects_private_ranges() {
+        assert_navigate_blocked("http://10.0.0.1/").await;
+        assert_navigate_blocked("http://192.168.1.1/").await;
+        assert_navigate_blocked("http://172.16.0.1/").await;
+    }
+
+    #[tokio::test]
+    async fn navigate_rejects_cloud_metadata() {
+        assert_navigate_blocked("http://169.254.169.254/latest/meta-data/").await;
+        assert_navigate_blocked("http://metadata.google.internal/computeMetadata/v1/").await;
+    }
+
+    #[tokio::test]
+    async fn navigate_rejects_file_and_other_schemes() {
+        assert_navigate_blocked("file:///etc/passwd").await;
+        assert_navigate_blocked("chrome://settings").await;
+        assert_navigate_blocked("data:text/html,<h1>x</h1>").await;
+    }
+
+    #[tokio::test]
+    async fn navigate_requires_url() {
+        let tool = BrowserTool::default();
+        let err = tool
+            .execute(json!({ "action": "navigate" }), &make_ctx())
+            .await
+            .expect_err("navigate without url should error");
+        assert!(err.to_string().contains("url required"));
     }
 }
