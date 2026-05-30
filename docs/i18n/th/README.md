@@ -30,6 +30,15 @@ AI agent runtime แบบ self-improving เขียนด้วย Rust — b
 
 **01 — ติดตั้ง**
 
+```bash
+curl -fsSL https://raw.githubusercontent.com/garudust-org/garudust-agent/main/scripts/install.sh | sh
+```
+
+macOS & Linux ทุก arch (ARM, Raspberry Pi, WSL) — Windows: `irm .../scripts/install.ps1 | iex` ปรับแต่งด้วย `GARUDUST_VERSION` / `GARUDUST_BIN_DIR`
+
+<details>
+<summary>ดาวน์โหลดเองหรือ build จาก source</summary>
+
 ดาวน์โหลด binary สำเร็จรูปจาก [GitHub Releases](https://github.com/garudust-org/garudust-agent/releases/latest):
 
 | OS | สถาปัตยกรรม | ไฟล์ |
@@ -40,15 +49,9 @@ AI agent runtime แบบ self-improving เขียนด้วย Rust — b
 | Linux | ARM64 (Raspberry Pi 4/5, Jetson) | `garudust-*-aarch64-unknown-linux-musl.tar.gz` |
 | Windows | x86_64 | `garudust-*-x86_64-pc-windows-msvc.zip` |
 
-```bash
-ARCH=$(uname -m)
-[ "$ARCH" = "aarch64" ] && TARGET="aarch64-unknown-linux-musl" || TARGET="x86_64-unknown-linux-musl"
-VER=$(curl -s https://api.github.com/repos/garudust-org/garudust-agent/releases/latest | grep tag_name | cut -d'"' -f4)
-curl -LO "https://github.com/garudust-org/garudust-agent/releases/latest/download/garudust-${VER}-${TARGET}.tar.gz"
-tar -xzf garudust-*.tar.gz && sudo mv garudust garudust-server /usr/local/bin/
-```
-
 หรือ build จาก source (Rust 1.87+): `git clone https://github.com/garudust-org/garudust-agent && cargo build --release`
+
+</details>
 
 ---
 

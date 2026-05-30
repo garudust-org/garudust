@@ -30,6 +30,15 @@
 
 **01 — 安装**
 
+```bash
+curl -fsSL https://raw.githubusercontent.com/garudust-org/garudust-agent/main/scripts/install.sh | sh
+```
+
+macOS 和 Linux，所有架构（ARM、Raspberry Pi、WSL）。Windows：`irm .../scripts/install.ps1 | iex`。用 `GARUDUST_VERSION` / `GARUDUST_BIN_DIR` 自定义。
+
+<details>
+<summary>手动下载或从源码构建</summary>
+
 从 [GitHub Releases](https://github.com/garudust-org/garudust-agent/releases/latest) 下载预构建 binary：
 
 | 操作系统 | 架构 | 文件 |
@@ -40,15 +49,9 @@
 | Linux | ARM64（Raspberry Pi 4/5、Jetson） | `garudust-*-aarch64-unknown-linux-musl.tar.gz` |
 | Windows | x86_64 | `garudust-*-x86_64-pc-windows-msvc.zip` |
 
-```bash
-ARCH=$(uname -m)
-[ "$ARCH" = "aarch64" ] && TARGET="aarch64-unknown-linux-musl" || TARGET="x86_64-unknown-linux-musl"
-VER=$(curl -s https://api.github.com/repos/garudust-org/garudust-agent/releases/latest | grep tag_name | cut -d'"' -f4)
-curl -LO "https://github.com/garudust-org/garudust-agent/releases/latest/download/garudust-${VER}-${TARGET}.tar.gz"
-tar -xzf garudust-*.tar.gz && sudo mv garudust garudust-server /usr/local/bin/
-```
-
 或从源码构建（需 Rust 1.87+）：`git clone https://github.com/garudust-org/garudust-agent && cargo build --release`
+
+</details>
 
 ---
 
