@@ -30,19 +30,11 @@
 
 **01 — 安装**
 
-**macOS 和 Linux**（所有架构，包括 ARM / Raspberry Pi / WSL）：
-
 ```bash
 curl -fsSL https://raw.githubusercontent.com/garudust-org/garudust-agent/main/scripts/install.sh | sh
 ```
 
-**Windows**（PowerShell）：
-
-```powershell
-irm https://raw.githubusercontent.com/garudust-org/garudust-agent/main/scripts/install.ps1 | iex
-```
-
-安装脚本会自动检测操作系统/架构、校验 release 校验和，并安装 `garudust` + `garudust-server`。用 `GARUDUST_VERSION=v0.13.1` 锁定版本，或用 `GARUDUST_BIN_DIR=~/.local/bin` 更改安装目录。
+macOS 和 Linux，所有架构（ARM、Raspberry Pi、WSL）。Windows：`irm .../scripts/install.ps1 | iex`。用 `GARUDUST_VERSION` / `GARUDUST_BIN_DIR` 自定义。
 
 <details>
 <summary>手动下载或从源码构建</summary>

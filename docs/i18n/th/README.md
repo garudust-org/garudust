@@ -30,19 +30,11 @@ AI agent runtime แบบ self-improving เขียนด้วย Rust — b
 
 **01 — ติดตั้ง**
 
-**macOS & Linux** (ทุกสถาปัตยกรรม รวม ARM / Raspberry Pi / WSL):
-
 ```bash
 curl -fsSL https://raw.githubusercontent.com/garudust-org/garudust-agent/main/scripts/install.sh | sh
 ```
 
-**Windows** (PowerShell):
-
-```powershell
-irm https://raw.githubusercontent.com/garudust-org/garudust-agent/main/scripts/install.ps1 | iex
-```
-
-ตัวติดตั้งจะตรวจ OS/arch อัตโนมัติ ตรวจ checksum ของ release แล้วติดตั้ง `garudust` + `garudust-server` ปักหมุดเวอร์ชันด้วย `GARUDUST_VERSION=v0.13.1` หรือเปลี่ยนปลายทางด้วย `GARUDUST_BIN_DIR=~/.local/bin`
+macOS & Linux ทุก arch (ARM, Raspberry Pi, WSL) — Windows: `irm .../scripts/install.ps1 | iex` ปรับแต่งด้วย `GARUDUST_VERSION` / `GARUDUST_BIN_DIR`
 
 <details>
 <summary>ดาวน์โหลดเองหรือ build จาก source</summary>

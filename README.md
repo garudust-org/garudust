@@ -30,19 +30,11 @@ A self-improving AI agent runtime written in Rust — ~10 MB binary, no runtime 
 
 **01 — Install**
 
-**macOS & Linux** (all archs, incl. ARM / Raspberry Pi / WSL):
-
 ```bash
 curl -fsSL https://raw.githubusercontent.com/garudust-org/garudust-agent/main/scripts/install.sh | sh
 ```
 
-**Windows** (PowerShell):
-
-```powershell
-irm https://raw.githubusercontent.com/garudust-org/garudust-agent/main/scripts/install.ps1 | iex
-```
-
-The installer detects your OS/arch, verifies the release checksum, and installs `garudust` + `garudust-server`. Pin a version with `GARUDUST_VERSION=v0.13.1` or change the target dir with `GARUDUST_BIN_DIR=~/.local/bin`.
+macOS & Linux, any arch (ARM, Raspberry Pi, WSL). Windows: `irm .../scripts/install.ps1 | iex`. Override with `GARUDUST_VERSION` / `GARUDUST_BIN_DIR`.
 
 <details>
 <summary>Manual download or build from source</summary>
