@@ -9,6 +9,16 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+- **Browser tool SSRF guard** — the `browser` tool's `navigate` action now runs
+  `net_guard::is_safe_url` before launching Chrome, rejecting non-http(s) schemes
+  (`file:`, `chrome:`, `data:`), private/reserved IPs, and cloud metadata
+  endpoints. Previously `navigate` called `page.goto` directly, so a
+  prompt-injected URL could drive the headless browser into the internal network
+  or local filesystem — the one external-fetch tool that bypassed the guard the
+  `web` and `webhook` paths already enforce.
+
 ---
 
 ## [0.13.1] — 2026-05-27
