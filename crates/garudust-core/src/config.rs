@@ -906,12 +906,27 @@ impl Default for PlatformConfig {
     }
 }
 
+/// Configuration for one external MCP server.
+///
+/// Two transports are supported, chosen by which field is set:
+/// - **stdio** (default): set `command` (+ optional `args`); the server is
+///   spawned as a child process and spoken to over stdin/stdout.
+/// - **streamable HTTP**: set `url` to a remote endpoint (e.g.
+///   `https://mcp.example.com/mcp`); `command`/`args` are ignored.
+///
+/// `url` takes precedence when both are present.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct McpServerConfig {
     pub name: String,
+    /// Executable to spawn for a stdio transport. Empty when using `url`.
+    #[serde(default)]
     pub command: String,
     #[serde(default)]
     pub args: Vec<String>,
+    /// Streamable-HTTP endpoint URL. When set, an HTTP transport is used and
+    /// `command`/`args` are ignored.
+    #[serde(default)]
+    pub url: Option<String>,
 }
 
 /// Per-platform webhook server settings. A `WebhookPlatformConfig` with
@@ -1998,5 +2013,33 @@ providers:
         assert_eq!(backup.key.as_deref(), Some("${GROQ_API_KEY_2}"));
         let local = &cfg.providers["local"];
         assert_eq!(local.url.as_deref(), Some("http://192.168.1.10:8000/v1"));
+    }
+
+    #[test]
+    fn mcp_servers_support_stdio_and_http_transports() {
+        let yaml = r#"
+mcp_servers:
+  - name: filesystem
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/docs"]
+  - name: remote-tools
+    url: "https://mcp.example.com/mcp"
+"#;
+        let cfg: AgentConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(cfg.mcp_servers.len(), 2);
+
+        // stdio: command + args set, url absent.
+        let stdio = &cfg.mcp_servers[0];
+        assert_eq!(stdio.name, "filesystem");
+        assert_eq!(stdio.command, "npx");
+        assert_eq!(stdio.args.len(), 3);
+        assert!(stdio.url.is_none());
+
+        // http: url set, command defaults to empty (no child process spawned).
+        let http = &cfg.mcp_servers[1];
+        assert_eq!(http.name, "remote-tools");
+        assert_eq!(http.url.as_deref(), Some("https://mcp.example.com/mcp"));
+        assert!(http.command.is_empty());
+        assert!(http.args.is_empty());
     }
 }
