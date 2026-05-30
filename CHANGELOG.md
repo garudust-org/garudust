@@ -11,6 +11,13 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **One-line installers** — `scripts/install.sh` (macOS & Linux, all archs incl.
+  ARM / Raspberry Pi / WSL) and `scripts/install.ps1` (Windows). Both detect the
+  OS/arch, resolve the latest release, verify the SHA-256 checksum, and install
+  `garudust` + `garudust-server`; `GARUDUST_VERSION` and `GARUDUST_BIN_DIR`
+  override the version and destination. Replaces the previous manual snippet,
+  which extracted into a versioned subdirectory and so failed to move the
+  binaries onto `PATH`.
 - **MCP streamable-HTTP transport** — MCP servers can now be reached over a
   remote streamable-HTTP endpoint, not just local stdio subprocesses. Set
   `url:` on an `mcp_servers` entry to use HTTP (`command`/`args` are ignored when
