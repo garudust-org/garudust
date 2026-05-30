@@ -16,6 +16,13 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   `url:` on an `mcp_servers` entry to use HTTP (`command`/`args` are ignored when
   `url` is present); omit `url` for the existing stdio behaviour. Lets Garudust
   consume tools from hosted MCP servers across the network.
+- **MCP resources & prompts** — Garudust now surfaces an MCP server's
+  *resources* and *prompts* primitives, not just its tools. When a connected
+  server advertises the capability, four synthetic tools are registered per
+  server: `<server>_list_resources` / `<server>_read_resource` and
+  `<server>_list_prompts` / `<server>_get_prompt`. Tools that always error are
+  never registered — registration is gated on the server's advertised
+  capabilities.
 
 ### Security
 
