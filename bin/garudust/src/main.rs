@@ -17,8 +17,10 @@ use garudust_core::config::McpServerConfig;
 use garudust_core::pricing::estimate_cost_usd;
 use garudust_memory::{DocStore, FileMemoryStore, SessionDb};
 use garudust_tools::{
-    load_script_tools, register_standard_tools, security::docker_available,
-    toolsets::mcp::connect_mcp_server, ToolRegistry,
+    load_script_tools, register_standard_tools,
+    security::docker_available,
+    toolsets::mcp::{connect_mcp_http_server, connect_mcp_server},
+    ToolRegistry,
 };
 use garudust_transport::build_transport;
 use tokio::sync::mpsc;
@@ -258,7 +260,11 @@ async fn attach_mcp_servers(
 ) -> McpHandles {
     let mut handles: McpHandles = Vec::new();
     for srv in servers {
-        match connect_mcp_server(&srv.command, &srv.args).await {
+        let conn = match &srv.url {
+            Some(url) => connect_mcp_http_server(url, &srv.name).await,
+            None => connect_mcp_server(&srv.command, &srv.args).await,
+        };
+        match conn {
             Ok((tools, handle)) => {
                 tracing::info!(server = %srv.name, tools = tools.len(), "MCP server connected");
                 for t in tools {

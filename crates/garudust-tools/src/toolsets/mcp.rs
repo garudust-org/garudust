@@ -91,7 +91,6 @@ impl Tool for McpProxyTool {
     }
 }
 
-/// Connect to an MCP server via stdio and return discovered tools plus an opaque
 fn is_valid_mcp_tool_name(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= 128
@@ -100,23 +99,18 @@ fn is_valid_mcp_tool_name(name: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
-/// keep-alive handle. The caller must hold the handle for the lifetime of the tools.
-pub async fn connect_mcp_server(
-    command: &str,
-    args: &[String],
-) -> anyhow::Result<(Vec<Arc<McpProxyTool>>, Box<dyn std::any::Any + Send>)> {
-    use rmcp::{transport::TokioChildProcess, ServiceExt};
+/// An opaque keep-alive handle. The caller must hold it for the lifetime of the
+/// returned tools — dropping it tears down the MCP connection (and, for stdio,
+/// kills the child process).
+type McpConnection = (Vec<Arc<McpProxyTool>>, Box<dyn std::any::Any + Send>);
 
-    let mut cmd = tokio::process::Command::new(command);
-    cmd.args(args)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::inherit());
-
-    let transport = TokioChildProcess::new(cmd)?;
-    let service: rmcp::service::RunningService<RoleClient, ()> = ().serve(transport).await?;
+/// Discover an already-initialized MCP service's tools, wrapping each as an
+/// `McpProxyTool`. Shared by every transport.
+async fn collect_tools(
+    service: rmcp::service::RunningService<RoleClient, ()>,
+    server_name: String,
+) -> anyhow::Result<McpConnection> {
     let peer = service.peer().clone();
-    let server_name = command.to_string();
 
     let mcp_tools: Vec<Arc<McpProxyTool>> = service
         .list_all_tools()
@@ -143,4 +137,34 @@ pub async fn connect_mcp_server(
         .collect();
 
     Ok((mcp_tools, Box::new(service)))
+}
+
+/// Connect to an MCP server over **stdio** by spawning `command` as a child
+/// process, and return its discovered tools plus a keep-alive handle.
+pub async fn connect_mcp_server(command: &str, args: &[String]) -> anyhow::Result<McpConnection> {
+    use rmcp::{transport::TokioChildProcess, ServiceExt};
+
+    let mut cmd = tokio::process::Command::new(command);
+    cmd.args(args)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::inherit());
+
+    let transport = TokioChildProcess::new(cmd)?;
+    let service: rmcp::service::RunningService<RoleClient, ()> = ().serve(transport).await?;
+    collect_tools(service, command.to_string()).await
+}
+
+/// Connect to a remote MCP server over **streamable HTTP** at `url`, and return
+/// its discovered tools plus a keep-alive handle. `server_name` labels the
+/// resulting tools' toolset (typically the configured server name).
+pub async fn connect_mcp_http_server(
+    url: &str,
+    server_name: &str,
+) -> anyhow::Result<McpConnection> {
+    use rmcp::{transport::StreamableHttpClientTransport, ServiceExt};
+
+    let transport = StreamableHttpClientTransport::from_uri(url);
+    let service: rmcp::service::RunningService<RoleClient, ()> = ().serve(transport).await?;
+    collect_tools(service, server_name.to_string()).await
 }

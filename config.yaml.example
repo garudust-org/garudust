@@ -275,9 +275,12 @@ security:
 #     webhook_path: /webhook/whatsapp
 
 # ── MCP servers ───────────────────────────────────────────────────────────────
-# Expose external tool servers via Model Context Protocol.
+# Expose external tool servers via Model Context Protocol. Two transports:
+#   • stdio  — set `command` (+ optional `args`); the server runs as a child process.
+#   • http   — set `url` to a remote streamable-HTTP endpoint. `url` wins if both set.
 
 # mcp_servers:
+#   # stdio transport (local subprocess)
 #   - name: filesystem
 #     command: npx
 #     args: ["-y", "@modelcontextprotocol/server-filesystem", "/home/user/docs"]
@@ -285,6 +288,10 @@ security:
 #   - name: github
 #     command: npx
 #     args: ["-y", "@modelcontextprotocol/server-github"]
+#
+#   # streamable-HTTP transport (remote server)
+#   - name: remote-tools
+#     url: "https://mcp.example.com/mcp"
 
 # ── Cron ──────────────────────────────────────────────────────────────────────
 

@@ -9,6 +9,14 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **MCP streamable-HTTP transport** — MCP servers can now be reached over a
+  remote streamable-HTTP endpoint, not just local stdio subprocesses. Set
+  `url:` on an `mcp_servers` entry to use HTTP (`command`/`args` are ignored when
+  `url` is present); omit `url` for the existing stdio behaviour. Lets Garudust
+  consume tools from hosted MCP servers across the network.
+
 ### Security
 
 - **Browser tool SSRF guard** — the `browser` tool's `navigate` action now runs
