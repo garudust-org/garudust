@@ -46,16 +46,33 @@ const SENSITIVE_ABSOLUTE_PREFIXES: &[&str] = &[
 
 /// Returns `true` if writing to `path` should be unconditionally blocked.
 ///
-/// Checks the path string representation (not resolved canonical path) so it
-/// works for files that don't exist yet. Call after the allowed-roots check;
-/// this is an additional deny list for sensitive locations within allowed roots.
+/// Checks both the path string representation (works for files that don't exist
+/// yet) and the canonicalized path (resolves symlinks to catch indirect access
+/// like `/tmp/mylink → /etc/passwd`). Call after the allowed-roots check; this
+/// is an additional deny list for sensitive locations within allowed roots.
 pub fn is_sensitive_write_path(path: &Path) -> bool {
     let path_str = path.to_string_lossy().to_lowercase();
 
-    // Absolute prefixes
+    // Absolute prefixes — check both raw and canonical path to catch symlinks.
     for prefix in SENSITIVE_ABSOLUTE_PREFIXES {
         if path_str.starts_with(prefix) {
             return true;
+        }
+    }
+    // Canonical path check: resolves symlinks so `/tmp/link → /etc/passwd` is blocked.
+    if let Ok(canonical) = std::fs::canonicalize(path) {
+        let canonical_str = canonical.to_string_lossy().to_lowercase();
+        for prefix in SENSITIVE_ABSOLUTE_PREFIXES {
+            if canonical_str.starts_with(prefix) {
+                return true;
+            }
+        }
+        // Also check home-relative prefixes on canonical path.
+        for prefix in SENSITIVE_HOME_PREFIXES {
+            let slash_prefix = format!("/{prefix}");
+            if canonical_str.contains(&slash_prefix) {
+                return true;
+            }
         }
     }
 

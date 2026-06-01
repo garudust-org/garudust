@@ -44,8 +44,11 @@ impl ContextCompressor {
                 m.content
                     .iter()
                     .map(|p| match p {
-                        ContentPart::Text(t) => t.len() / 3,
-                        ContentPart::ToolResult { content, .. } => content.len() / 3,
+                        // Conservative estimate: /2 instead of /3 to account for
+                        // non-Latin scripts (Thai, CJK, Arabic) where 1 char ≈ 1 token.
+                        // Using /3 under-counts these scripts and can cause context overrun.
+                        ContentPart::Text(t) => t.len() / 2,
+                        ContentPart::ToolResult { content, .. } => content.len() / 2,
                         _ => 50,
                     })
                     .sum::<usize>()
@@ -275,29 +278,29 @@ mod tests {
 
     #[test]
     fn should_compress_small_history() {
-        // 300 chars ÷ 3 ≈ 100 tokens; threshold = 1000 × 0.80 = 800 → no compress
-        let msgs = vec![msg(&"x".repeat(300))];
+        // 200 chars ÷ 2 = 100 tokens; threshold = 1000 × 0.80 = 800 → no compress
+        let msgs = vec![msg(&"x".repeat(200))];
         assert!(!compressor(1_000).should_compress(&msgs));
     }
 
     #[test]
     fn should_compress_large_history() {
-        // 3000 chars ÷ 3 = 1000 tokens; threshold = 1000 × 0.80 = 800 → compress
-        let msgs = vec![msg(&"x".repeat(3_000))];
+        // 2000 chars ÷ 2 = 1000 tokens; threshold = 1000 × 0.80 = 800 → compress
+        let msgs = vec![msg(&"x".repeat(2_000))];
         assert!(compressor(1_000).should_compress(&msgs));
     }
 
     #[test]
     fn should_compress_exactly_at_threshold_does_not_trigger() {
-        // 2400 chars ÷ 3 = 800 tokens == threshold (not strictly >) → no compress
-        let msgs = vec![msg(&"x".repeat(2_400))];
+        // 1600 chars ÷ 2 = 800 tokens == threshold (not strictly >) → no compress
+        let msgs = vec![msg(&"x".repeat(1_600))];
         assert!(!compressor(1_000).should_compress(&msgs));
     }
 
     #[test]
     fn should_compress_one_over_threshold_triggers() {
-        // 2403 chars ÷ 3 = 801 tokens > 800 → compress
-        let msgs = vec![msg(&"x".repeat(2_403))];
+        // 1602 chars ÷ 2 = 801 tokens > 800 → compress
+        let msgs = vec![msg(&"x".repeat(1_602))];
         assert!(compressor(1_000).should_compress(&msgs));
     }
 

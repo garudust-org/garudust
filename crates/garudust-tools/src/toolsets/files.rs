@@ -170,6 +170,21 @@ impl Tool for WriteFile {
                 .await
                 .map_err(|e| ToolError::Execution(e.to_string()))?;
         }
+
+        // Re-validate after create_dir_all: a symlink could have been planted
+        // between the initial check and directory creation (TOCTOU window).
+        // This second check uses the now-existing parent to canonicalize fully.
+        if !is_path_allowed(Path::new(path), &ctx.config.security.allowed_write_paths) {
+            return Err(ToolError::Execution(format!(
+                "path '{path}' is outside allowed write directories (post-mkdir re-check)"
+            )));
+        }
+        if is_sensitive_write_path(Path::new(path)) {
+            return Err(ToolError::Execution(format!(
+                "path '{path}' is a protected credential or system file (post-mkdir re-check)"
+            )));
+        }
+
         tokio::fs::write(path, content)
             .await
             .map_err(|e| ToolError::Execution(e.to_string()))?;

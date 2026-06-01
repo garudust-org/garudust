@@ -607,10 +607,17 @@ impl Agent {
             .map_or_else(
                 || task.to_string(),
                 |recalled| {
-                    // Strip < and > so an agent-written memory entry (e.g. from a
-                    // malicious web page instructing the agent to save crafted content)
-                    // cannot inject a closing tag and break out of the block.
-                    let safe = recalled.replace(['<', '>'], "");
+                    // Strip angle brackets and their HTML-entity equivalents so an
+                    // agent-written memory entry cannot inject a closing XML tag and
+                    // break out of the <recalled_memory> block. Some LLMs interpret
+                    // &lt;/recalled_memory&gt; as the closing tag, so entities must
+                    // also be removed.
+                    let safe = recalled
+                        .replace(['<', '>'], "")
+                        .replace("&lt;", "")
+                        .replace("&gt;", "")
+                        .replace("&#60;", "")
+                        .replace("&#62;", "");
                     // System note (following Hermes pattern) tells the model this block
                     // is background context, not new user input — prevents Qwen/local
                     // models from echoing the block back in their response.
@@ -645,7 +652,12 @@ impl Agent {
         // loses track of it regardless of how many turns have elapsed.
         let user_msg = if let Some(key) = session_key {
             if let Some(goal) = self.goal_store.get(key).await {
-                let safe = goal.replace(['<', '>'], "");
+                let safe = goal
+                    .replace(['<', '>'], "")
+                    .replace("&lt;", "")
+                    .replace("&gt;", "")
+                    .replace("&#60;", "")
+                    .replace("&#62;", "");
                 format!(
                     "<active_goal>\n\
                      [System note: You are working toward this persistent goal. \
@@ -698,6 +710,11 @@ impl Agent {
         // Tool names that completed successfully — used for required_tools check.
         // Only successful calls count; errored calls do not satisfy the requirement.
         let mut called_tools: HashSet<String> = HashSet::new();
+        // Tool names that were dispatched regardless of outcome.
+        // A required tool that was attempted but errored should NOT trigger a
+        // re-prompt — the model already tried and the tool is broken, not forgotten.
+        // Re-prompting only makes sense for tools that were never called at all.
+        let mut attempted_tools: HashSet<String> = HashSet::new();
         // Ordered list of every tool name dispatched this task (success or error).
         // Passed to reflect_and_save_skill so the reflection model knows which
         // tools were involved without having to parse transport-specific history.
@@ -824,9 +841,17 @@ impl Agent {
                     let registered: std::collections::HashSet<&str> =
                         schemas.iter().map(|s| s.name.as_str()).collect();
                     let rt = required_tools.read().await;
+                    // Only re-prompt for tools that were never attempted at all.
+                    // A tool that was attempted but returned an error should not
+                    // trigger a re-prompt — the error is likely not a model mistake
+                    // but a broken tool, and re-prompting would just waste tokens.
                     let missing: Vec<&String> = rt
                         .iter()
-                        .filter(|t| !called_tools.contains(*t) && registered.contains(t.as_str()))
+                        .filter(|t| {
+                            !called_tools.contains(*t)
+                                && !attempted_tools.contains(t.as_str())
+                                && registered.contains(t.as_str())
+                        })
                         .collect();
                     if !missing.is_empty() {
                         let names = missing
@@ -1081,6 +1106,9 @@ impl Agent {
                         if let Some(name) = id_to_name.get(tool_use_id) {
                             // All calls (success + error) recorded for reflection transcript.
                             all_called_tools.push(name.clone());
+                            // All calls (success + error) count as attempted.
+                            // This prevents re-prompting for tools that were called but errored.
+                            attempted_tools.insert(name.clone());
                             // Only successful calls satisfy required_tools.
                             if !is_error {
                                 called_tools.insert(name.clone());

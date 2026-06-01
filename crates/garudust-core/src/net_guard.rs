@@ -1,4 +1,4 @@
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, ToSocketAddrs};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs};
 
 use crate::error::ToolError;
 
@@ -15,11 +15,30 @@ static BLOCKED_HOSTS: &[&str] = &[
 ///
 /// Blocks: private IPs, loopback, link-local, unspecified, cloud metadata.
 ///
-/// # DNS TOCTOU note
+/// # DNS TOCTOU
 /// This checks the IP at call time. `reqwest` re-resolves when connecting, so a
-/// DNS-rebinding attack can change the record between check and connect. Full
-/// mitigation requires a custom connector — accepted limitation for now.
+/// DNS-rebinding attack can change the record between check and connect. To close
+/// this gap, use [`resolve_safe_url`] instead: it returns the validated socket
+/// addresses which callers should pin via `reqwest::ClientBuilder::resolve_to_addrs`
+/// so reqwest uses the already-validated IP without re-resolving.
 pub fn is_safe_url(url: &str) -> Result<(), ToolError> {
+    resolve_safe_url(url).map(|_| ())
+}
+
+/// Validate a URL **and** return its resolved socket addresses.
+///
+/// Callers that make HTTP requests SHOULD use the returned addresses with
+/// `reqwest::ClientBuilder::resolve_to_addrs(&host, &addrs)` so the HTTP client
+/// connects to the already-validated IP instead of re-resolving (TOCTOU fix).
+///
+/// ```ignore
+/// let (host, addrs) = resolve_safe_url(url)?;
+/// let client = reqwest::Client::builder()
+///     .resolve_to_addrs(&host, &addrs)
+///     .build()?;
+/// client.get(url).send().await?;
+/// ```
+pub fn resolve_safe_url(url: &str) -> Result<(String, Vec<SocketAddr>), ToolError> {
     // Parse scheme + host manually using basic string splitting (no extra dep in core).
     let without_scheme = url
         .strip_prefix("https://")
@@ -56,15 +75,22 @@ pub fn is_safe_url(url: &str) -> Result<(), ToolError> {
     }
 
     // Resolve host to IPs and check each one
-    let addrs = format!("{host}:80")
+    let addrs: Vec<SocketAddr> = format!("{host}:80")
         .to_socket_addrs()
-        .map_err(|e| ToolError::Execution(format!("could not resolve host '{host}': {e}")))?;
+        .map_err(|e| ToolError::Execution(format!("could not resolve host '{host}': {e}")))?
+        .collect();
 
-    for addr in addrs {
+    if addrs.is_empty() {
+        return Err(ToolError::Execution(format!(
+            "could not resolve host '{host}': no addresses returned"
+        )));
+    }
+
+    for addr in &addrs {
         check_ip(addr.ip(), host)?;
     }
 
-    Ok(())
+    Ok((host.to_string(), addrs))
 }
 
 /// Returns `true` if the IP is private, loopback, link-local, or unspecified

@@ -52,12 +52,15 @@ async fn require_auth(
     next: middleware::Next,
 ) -> Response {
     if let Some(expected) = &state.config.security.gateway_api_key {
+        // Always extract to a fixed-length placeholder when no header is present
+        // so every path takes the same time through api_keys_match() — a missing
+        // header would otherwise be faster than a wrong header (timing oracle).
         let provided = req
             .headers()
             .get(axum::http::header::AUTHORIZATION)
             .and_then(|v| v.to_str().ok())
             .and_then(|s| s.strip_prefix("Bearer "))
-            .unwrap_or("");
+            .unwrap_or("__missing_auth_header_placeholder__");
         if !api_keys_match(expected, provided) {
             return (StatusCode::UNAUTHORIZED, "Unauthorized\n").into_response();
         }

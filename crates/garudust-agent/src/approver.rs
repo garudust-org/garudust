@@ -83,6 +83,20 @@ impl RolesApprover {
     ///
     /// `roles` is the live in-memory `RolesConfig` (read from the RwLock before calling).
     /// `approval_mode` is the global fallback from `security.approval_mode`.
+    ///
+    /// # Fail-closed behavior (important)
+    ///
+    /// This function has **asymmetric behavior** depending on whether roles are configured:
+    ///
+    /// - **No roles at all** (`definitions`, `users`, and `default_role` all empty):
+    ///   the global `approval_mode` is used unchanged — effectively open to all users.
+    /// - **Any roles configured** (even just one definition with no users assigned):
+    ///   users who are not explicitly assigned a role AND have no `default_role` fall through
+    ///   to `DenyApprover` — they are blocked from all tools.
+    ///
+    /// This means adding the first role definition immediately changes the security
+    /// posture: previously-open access becomes deny-by-default for unassigned users.
+    /// Operators should set `default_role` to control what unassigned users can do.
     pub fn for_user(
         platform: &str,
         user_id: &str,

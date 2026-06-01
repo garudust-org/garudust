@@ -83,15 +83,17 @@ impl GatewayHandler {
     // ── RwLock helpers ───────────────────────────────────────────────────────
 
     fn read_roles(&self) -> std::sync::RwLockReadGuard<'_, RolesConfig> {
-        self.live_roles
-            .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        self.live_roles.read().unwrap_or_else(|e| {
+            tracing::warn!("live_roles RwLock was poisoned (a thread panicked while holding it); recovering with potentially stale roles data");
+            e.into_inner()
+        })
     }
 
     fn write_roles(&self) -> std::sync::RwLockWriteGuard<'_, RolesConfig> {
-        self.live_roles
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        self.live_roles.write().unwrap_or_else(|e| {
+            tracing::warn!("live_roles RwLock was poisoned (a thread panicked while holding it); recovering with potentially stale roles data");
+            e.into_inner()
+        })
     }
 
     // ── Rate limiting ────────────────────────────────────────────────────────
@@ -1053,6 +1055,9 @@ impl MessageHandler for GatewayHandler {
         let trimmed = msg.text.trim();
         if trimmed == "/new" || trimmed == "/clear" {
             self.agent.clear_session(&msg.session_key);
+            // Also remove stale image gate for this session so the DashMap does
+            // not accumulate entries indefinitely across /clear calls.
+            self.image_gates.remove(&msg.session_key);
             let reply = OutboundMessage::text("เริ่มการสนทนาใหม่แล้ว");
             let _ = self.platform.send_message(&msg.channel, reply).await;
             return Ok(());
