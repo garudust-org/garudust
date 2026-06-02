@@ -170,14 +170,15 @@ pub async fn install_tool(repo: &str, tool_name: &str, tools_dir: &Path) -> Resu
             .await?;
 
         // Verify SHA-256 if the index provides one; warn and continue if absent.
-        match entry.sha256.get(file.as_str()) {
-            Some(expected) => verify_sha256(file, &bytes, expected)
-                .with_context(|| format!("integrity check failed for tool '{}'", entry.name))?,
-            None => warn!(
+        if let Some(expected) = entry.sha256.get(file.as_str()) {
+            verify_sha256(file, &bytes, expected)
+                .with_context(|| format!("integrity check failed for tool '{}'", entry.name))?;
+        } else {
+            warn!(
                 tool = %entry.name,
                 file,
                 "hub index has no SHA-256 for this file — installing without integrity check"
-            ),
+            );
         }
 
         let dest = install_dir.join(file);
@@ -249,14 +250,15 @@ pub async fn install_skill_from_hub(repo: &str, skill_name: &str, skills_dir: &P
             .await?;
 
         // Verify SHA-256 if the index provides one; warn and continue if absent.
-        match entry.sha256.get(file.as_str()) {
-            Some(expected) => verify_sha256(file, &bytes, expected)
-                .with_context(|| format!("integrity check failed for skill '{}'", entry.name))?,
-            None => warn!(
+        if let Some(expected) = entry.sha256.get(file.as_str()) {
+            verify_sha256(file, &bytes, expected)
+                .with_context(|| format!("integrity check failed for skill '{}'", entry.name))?;
+        } else {
+            warn!(
                 skill = %entry.name,
                 file,
                 "hub index has no SHA-256 for this file — installing without integrity check"
-            ),
+            );
         }
 
         let dest = install_dir.join(file);
