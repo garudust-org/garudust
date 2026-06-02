@@ -33,6 +33,11 @@ const LINE_PUSH_URL: &str = "https://api.line.me/v2/bot/message/push";
 const LINE_PROFILE_URL: &str = "https://api.line.me/v2/bot/profile";
 const LINE_BOT_INFO_URL: &str = "https://api.line.me/v2/bot/info";
 const LINE_CONTENT_URL: &str = "https://api-data.line.me/v2/bot/message";
+const LINE_LOADING_URL: &str = "https://api.line.me/v2/bot/chat/loadingStart";
+/// LINE loadingStart accepts 5–60 seconds in 5-second steps. 60s comfortably
+/// covers the typical view_image round-trip (15–85s; longer than 60s simply
+/// drops the animation, which is acceptable).
+const LINE_LOADING_SECS: u32 = 60;
 /// Reply token is valid for 30 s; leave a 5 s safety margin.
 const REPLY_TTL: Duration = Duration::from_secs(25);
 const LINE_TEXT_LIMIT: usize = 5_000;
@@ -816,6 +821,50 @@ impl PlatformAdapter for LineAdapter {
             buf.push_str(&chunk);
         }
         self.do_send(channel, buf).await
+    }
+
+    /// Show LINE's native loading animation while we process an attachment.
+    /// LINE restricts this API to 1:1 chats (`chatId` must be a user ID), so we
+    /// skip groups/rooms — burning a push for "กำลังดู…" there would silently
+    /// eat the monthly quota.
+    async fn show_typing(&self, channel: &ChannelId) -> Result<(), PlatformError> {
+        let chat_id = &channel.chat_id;
+        let is_group = self.inner.group_flag.get(chat_id).is_some_and(|v| *v);
+        if is_group {
+            return Ok(());
+        }
+        let body = serde_json::json!({
+            "chatId": chat_id,
+            "loadingSeconds": LINE_LOADING_SECS,
+        });
+        // Best-effort: a 4xx here (e.g. user blocked the bot) shouldn't fail
+        // the whole image flow. Log at debug and move on.
+        match self
+            .inner
+            .client
+            .post(LINE_LOADING_URL)
+            .header(
+                "Authorization",
+                format!("Bearer {}", self.inner.channel_token),
+            )
+            .json(&body)
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => Ok(()),
+            Ok(resp) => {
+                tracing::debug!(
+                    chat_id,
+                    status = %resp.status(),
+                    "LINE: loadingStart non-2xx — skipping indicator"
+                );
+                Ok(())
+            }
+            Err(e) => {
+                tracing::debug!(chat_id, error = %e, "LINE: loadingStart network error");
+                Ok(())
+            }
+        }
     }
 }
 

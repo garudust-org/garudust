@@ -39,6 +39,15 @@ pub trait PlatformAdapter: Send + Sync + 'static {
         channel: &ChannelId,
         stream: Pin<Box<dyn Stream<Item = String> + Send>>,
     ) -> Result<(), PlatformError>;
+
+    /// Show a transient "thinking…" indicator while the gateway is still
+    /// processing the user's last message. Best-effort: adapters that have no
+    /// equivalent surface simply do nothing. The handler invokes this when an
+    /// image arrives so the user sees feedback during the multi-second
+    /// view_image round-trip.
+    async fn show_typing(&self, _channel: &ChannelId) -> Result<(), PlatformError> {
+        Ok(())
+    }
 }
 
 #[async_trait]

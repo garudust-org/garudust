@@ -652,11 +652,19 @@ impl GatewayHandler {
         session_key: &str,
         seq_start: usize,
         user_name: &str,
+        channel: &garudust_core::types::ChannelId,
     ) {
         // Held for the whole analysis so a follow-up text question on the
         // same session blocks until every description is in history.
         let gate = self.image_gate(session_key);
         let _gate_guard = gate.lock().await;
+
+        // Show a typing indicator (e.g. LINE's loading animation) so the user
+        // sees the bot is working — view_image takes 15–85s and the silence
+        // looks like a hang. Best-effort; failures are swallowed by the impl.
+        if !attachments.is_empty() {
+            let _ = self.platform.show_typing(channel).await;
+        }
 
         let view_image_installed = self.agent.has_tool("view_image");
         let read_qr_installed = self.agent.has_tool("read_qr");
@@ -983,7 +991,7 @@ impl MessageHandler for GatewayHandler {
                     |a| a.path.clone(),
                 )
                 .await;
-                self.process_images(&imgs, &msg.session_key, 0, &msg.user_name)
+                self.process_images(&imgs, &msg.session_key, 0, &msg.user_name, &msg.channel)
                     .await;
             }
             if !msg.doc_attachments.is_empty() {
@@ -1098,7 +1106,7 @@ impl MessageHandler for GatewayHandler {
                 |a| a.path.clone(),
             )
             .await;
-            self.process_images(&imgs, &msg.session_key, 0, &msg.user_name)
+            self.process_images(&imgs, &msg.session_key, 0, &msg.user_name, &msg.channel)
                 .await;
         }
         // Doc attachments alongside text: inject into history only (the user's
