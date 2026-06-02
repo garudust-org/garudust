@@ -654,10 +654,11 @@ impl GatewayHandler {
         user_name: &str,
         channel: &garudust_core::types::ChannelId,
     ) {
-        // Held for the whole analysis so a follow-up text question on the
-        // same session blocks until every description is in history.
-        let gate = self.image_gate(session_key);
-        let _gate_guard = gate.lock().await;
+        // The per-session image gate is acquired by the caller (`handle`) before
+        // its first await and held across this call, so a follow-up text question
+        // on the same session blocks until every description is in history. We do
+        // not re-lock here — the gate is not re-entrant and doing so would
+        // deadlock.
 
         // Show a typing indicator (e.g. LINE's loading animation) so the user
         // sees the bot is working — view_image takes 15–85s and the silence
@@ -885,6 +886,27 @@ impl MessageHandler for GatewayHandler {
                 msg.channel.platform, msg.channel.chat_id, msg.user_id
             );
         }
+
+        // Acquire the per-session image gate up-front — synchronously creating
+        // the entry and taking the lock before any `.await` below — whenever this
+        // event carries image attachments. LINE (and other adapters) deliver the
+        // image and a follow-up text question as separate, concurrently-spawned
+        // events (see line.rs) with no ordering guarantee. Previously the gate
+        // was only created inside `process_images`, *after* an `await` on
+        // `filter_oversized`; a sibling text task could reach the wait-for-gate
+        // check further down before that gate existed, find nothing to wait on,
+        // dispatch to the agent while history still held only the
+        // "[กำลังวิเคราะห์ภาพ...]" placeholder, and make the model wrongly reply
+        // that it cannot see the image. Taking the lock here, before the first
+        // await, shrinks that window to near-zero: a racing text task finds the
+        // entry and blocks on the lock until the description lands in history.
+        // The guard is held for the rest of this handler. Pure-text events skip
+        // this entirely so no gate is allocated for text-only sessions.
+        let _image_guard = if msg.attachments.is_empty() {
+            None
+        } else {
+            Some(self.image_gate(&msg.session_key).lock_owned().await)
+        };
 
         // Bootstrap: if roles are configured but no admin exists yet, make the
         // first DM sender admin automatically so the operator doesn't need to
