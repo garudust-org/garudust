@@ -1149,6 +1149,11 @@ pub(crate) fn resolve_key_for_provider(
     if let Some(p) = BUILTIN_PROVIDERS.iter().find(|p| p.name == provider) {
         return env_or_dotenv(p.api_key_env, dotenv);
     }
+    tracing::warn!(
+        provider,
+        "Unknown provider — falling back to OPENROUTER_API_KEY. \
+         Add it to the `providers:` table in config.yaml for explicit configuration."
+    );
     env_or_dotenv("OPENROUTER_API_KEY", dotenv)
 }
 
@@ -1191,6 +1196,10 @@ pub(crate) fn detect_provider_from_env(config: &mut AgentConfig, dotenv: &HashMa
         return;
     }
     if let Some(k) = env_or_dotenv("OPENROUTER_API_KEY", dotenv) {
+        tracing::warn!(
+            "No primary provider key found — falling back to OpenRouter (OPENROUTER_API_KEY). \
+             Set ANTHROPIC_API_KEY or another provider key to suppress this warning."
+        );
         config.api_key = Some(k);
         config.provider = "openrouter".into();
     }

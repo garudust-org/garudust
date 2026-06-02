@@ -131,7 +131,5 @@ pub trait CommandApprover: Send + Sync + 'static {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ApprovalDecision {
     Approved,
-    ApprovedAlways,
     Denied,
-    Yolo,
 }

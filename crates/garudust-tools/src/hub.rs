@@ -1,7 +1,9 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use tracing::warn;
 
 pub const DEFAULT_HUB: &str = "garudust-org/garudust-hub";
@@ -28,6 +30,11 @@ pub struct HubSkillEntry {
     pub description: String,
     pub version: String,
     pub files: Vec<String>,
+    /// SHA-256 hex digest for each file, keyed by filename.
+    /// Entries without a hash entry are downloaded but not verified (with a warning).
+    /// Backwards-compatible: old index files without this field use an empty map.
+    #[serde(default)]
+    pub sha256: HashMap<String, String>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -38,6 +45,24 @@ pub struct HubToolEntry {
     /// Files to download, relative to the tool's folder in the hub repo.
     /// Must include `tool.yaml`.
     pub files: Vec<String>,
+    /// SHA-256 hex digest for each file, keyed by filename.
+    /// Entries without a hash entry are downloaded but not verified (with a warning).
+    /// Backwards-compatible: old index files without this field use an empty map.
+    #[serde(default)]
+    pub sha256: HashMap<String, String>,
+}
+
+/// Compute SHA-256 of `bytes` and compare against `expected` hex digest.
+/// Returns an error string on mismatch, Ok(()) on match.
+fn verify_sha256(file: &str, bytes: &[u8], expected: &str) -> Result<()> {
+    let actual = hex::encode(Sha256::digest(bytes));
+    if actual != expected.to_lowercase() {
+        bail!(
+            "SHA-256 mismatch for '{file}': expected {expected}, got {actual} — \
+             aborting install (possible network tampering or corrupted download)"
+        );
+    }
+    Ok(())
 }
 
 impl HubToolEntry {
@@ -144,6 +169,17 @@ pub async fn install_tool(repo: &str, tool_name: &str, tools_dir: &Path) -> Resu
             .bytes()
             .await?;
 
+        // Verify SHA-256 if the index provides one; warn and continue if absent.
+        match entry.sha256.get(file.as_str()) {
+            Some(expected) => verify_sha256(file, &bytes, expected)
+                .with_context(|| format!("integrity check failed for tool '{}'", entry.name))?,
+            None => warn!(
+                tool = %entry.name,
+                file,
+                "hub index has no SHA-256 for this file — installing without integrity check"
+            ),
+        }
+
         let dest = install_dir.join(file);
         if let Some(parent) = dest.parent() {
             tokio::fs::create_dir_all(parent).await?;
@@ -211,6 +247,17 @@ pub async fn install_skill_from_hub(repo: &str, skill_name: &str, skills_dir: &P
             .with_context(|| format!("file not found: {url}"))?
             .bytes()
             .await?;
+
+        // Verify SHA-256 if the index provides one; warn and continue if absent.
+        match entry.sha256.get(file.as_str()) {
+            Some(expected) => verify_sha256(file, &bytes, expected)
+                .with_context(|| format!("integrity check failed for skill '{}'", entry.name))?,
+            None => warn!(
+                skill = %entry.name,
+                file,
+                "hub index has no SHA-256 for this file — installing without integrity check"
+            ),
+        }
 
         let dest = install_dir.join(file);
         if let Some(parent) = dest.parent() {
