@@ -110,6 +110,16 @@ impl RolesApprover {
             return mode_to_approver(approval_mode);
         }
 
+        // Roles are configured but no default_role: unknown users will be denied.
+        // Warn once so operators know unassigned users are blocked.
+        if roles.default_role.is_none() {
+            tracing::warn!(
+                "roles are configured but `default_role` is not set — \
+                 users without an explicit role assignment will be denied all tools. \
+                 Set `roles.default_role` to control access for unassigned users."
+            );
+        }
+
         let role_name = roles
             .lookup_role(platform, user_id, username)
             .or_else(|| roles.default_role.clone());

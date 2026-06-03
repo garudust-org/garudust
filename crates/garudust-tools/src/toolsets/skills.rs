@@ -1,6 +1,5 @@
 use std::{
     collections::HashMap,
-    fmt::Write as _,
     path::{Path, PathBuf},
 };
 
@@ -362,25 +361,25 @@ impl Tool for WriteSkill {
     }
     fn description(&self) -> &'static str {
         "Create or update a skill in ~/.garudust/skills/<name>/SKILL.md. \
-         Use this to save reusable instruction sets the agent should be able to invoke later."
+         Use this to save reusable instruction sets the agent should be able to invoke later. \
+         Tool permissions for skills must be set by the operator by editing SKILL.md directly."
     }
     fn toolset(&self) -> &'static str {
         "skills"
+    }
+
+    fn is_destructive(&self) -> bool {
+        true
     }
 
     fn schema(&self) -> serde_json::Value {
         json!({
             "type": "object",
             "properties": {
-                "name":        { "type": "string", "description": "Skill identifier (alphanumeric, hyphens, underscores only)" },
+                "name":        { "type": "string", "description": "Skill identifier (lowercase letters, digits, and hyphens only; max 64 chars)" },
                 "description": { "type": "string", "description": "One-line description shown in skills_list" },
                 "body":        { "type": "string", "description": "Full Markdown instructions for the skill" },
-                "version":     { "type": "string", "description": "Optional semver version string (e.g. '1.0.0')" },
-                "permissions": {
-                    "type": "object",
-                    "description": "Optional per-skill tool allowlist. Map of tool name to true (allow) or false (deny). Tools not listed are unrestricted.",
-                    "additionalProperties": { "type": "boolean" }
-                }
+                "version":     { "type": "string", "description": "Optional semver version string (e.g. '1.0.0')" }
             },
             "required": ["name", "description", "body"]
         })
@@ -408,17 +407,6 @@ impl Tool for WriteSkill {
             .ok_or_else(|| ToolError::InvalidArgs("body required".into()))?;
         let version = params["version"].as_str().unwrap_or("1.0.0");
 
-        let permissions_block = match params["permissions"].as_object() {
-            Some(map) if !map.is_empty() => {
-                let mut entries = String::new();
-                for (k, v) in map {
-                    let _ = writeln!(entries, "  {k}: {}", v.as_bool().unwrap_or(false));
-                }
-                format!("permissions:\n{entries}")
-            }
-            _ => String::new(),
-        };
-
         let skills_dir = ctx.config.home_dir.join("skills");
         let dest_dir = skills_dir.join(name);
         tokio::fs::create_dir_all(&dest_dir)
@@ -433,7 +421,7 @@ impl Tool for WriteSkill {
             .any(|s| s.name == name && s.source.starts_with("hub:"));
 
         let content = format!(
-            "---\nname: {name}\ndescription: {description}\nversion: {version}\n{permissions_block}---\n\n{body}\n"
+            "---\nname: {name}\ndescription: {description}\nversion: {version}\n---\n\n{body}\n"
         );
 
         let skill_path = dest_dir.join("SKILL.md");
@@ -502,15 +490,15 @@ mod tests {
     }
 
     #[test]
-    fn skill_permissions_merge_union_semantics() {
+    fn skill_permissions_merge_deny_wins() {
         let mut sp = SkillPermissions::default();
         sp.merge(&HashMap::from([
             ("terminal".into(), false),
             ("read_file".into(), true),
         ]));
         sp.merge(&HashMap::from([("terminal".into(), true)]));
-        // allow wins over deny
-        assert_eq!(sp.check("terminal"), Some(true));
+        // deny wins: terminal was denied by the first skill, allow from second does not override
+        assert_eq!(sp.check("terminal"), Some(false));
         assert_eq!(sp.check("read_file"), Some(true));
         // unlisted tool is unrestricted
         assert_eq!(sp.check("web_fetch"), None);
