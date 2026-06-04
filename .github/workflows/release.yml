@@ -177,18 +177,19 @@ jobs:
           npm ci --prefix web
           npm ci --prefix apps/desktop
 
-      # macOS: build both arches and lipo them into one universal sidecar so the
-      # universal-apple-darwin Tauri build can embed it.
-      - name: Build & stage sidecar (macOS universal)
+      # macOS: a universal Tauri build compiles each arch separately and lipos
+      # the *app* itself, so it needs a per-arch sidecar for each (not a single
+      # universal binary). Stage both.
+      - name: Build & stage sidecars (macOS universal)
         if: runner.os == 'macOS'
         run: |
           cargo build --release -p garudust-server --target aarch64-apple-darwin
           cargo build --release -p garudust-server --target x86_64-apple-darwin
           mkdir -p apps/desktop/src-tauri/binaries
-          lipo -create \
-            target/aarch64-apple-darwin/release/garudust-server \
-            target/x86_64-apple-darwin/release/garudust-server \
-            -output apps/desktop/src-tauri/binaries/garudust-server-universal-apple-darwin
+          cp target/aarch64-apple-darwin/release/garudust-server \
+             apps/desktop/src-tauri/binaries/garudust-server-aarch64-apple-darwin
+          cp target/x86_64-apple-darwin/release/garudust-server \
+             apps/desktop/src-tauri/binaries/garudust-server-x86_64-apple-darwin
 
       - name: Build & stage sidecar (single arch)
         if: runner.os != 'macOS'
