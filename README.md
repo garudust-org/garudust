@@ -127,10 +127,10 @@ bundled Chromium) that launches the agent server for you.
 
 ### ⬇ Download Garudust Desktop
 
-[**🍎 macOS**](https://github.com/garudust-org/garudust-agent/releases/download/v0.13.3/Garudust_0.13.3_universal.dmg) &nbsp;·&nbsp;
-[**🪟 Windows**](https://github.com/garudust-org/garudust-agent/releases/download/v0.13.3/Garudust_0.13.3_x64-setup.exe) &nbsp;·&nbsp;
-[**🐧 Linux (AppImage)**](https://github.com/garudust-org/garudust-agent/releases/download/v0.13.3/Garudust_0.13.3_amd64.AppImage) &nbsp;·&nbsp;
-[**📦 Debian/Ubuntu (.deb)**](https://github.com/garudust-org/garudust-agent/releases/download/v0.13.3/Garudust_0.13.3_amd64.deb)
+[**🍎 macOS**](https://github.com/garudust-org/garudust-agent/releases/latest/download/Garudust-macOS-universal.dmg) &nbsp;·&nbsp;
+[**🪟 Windows**](https://github.com/garudust-org/garudust-agent/releases/latest/download/Garudust-Windows-x64-setup.exe) &nbsp;·&nbsp;
+[**🐧 Linux (AppImage)**](https://github.com/garudust-org/garudust-agent/releases/latest/download/Garudust-Linux-x86_64.AppImage) &nbsp;·&nbsp;
+[**📦 Debian/Ubuntu (.deb)**](https://github.com/garudust-org/garudust-agent/releases/latest/download/Garudust-Linux-x86_64.deb)
 
 <sub>macOS is a universal build (Intel + Apple Silicon). Other archs / versions: [all releases](https://github.com/garudust-org/garudust-agent/releases/latest)</sub>
 

@@ -216,9 +216,17 @@ jobs:
         run: |
           mkdir -p installers
           BUNDLE="apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle"
-          find "$BUNDLE" -type f \
-            \( -name '*.dmg' -o -name '*.exe' -o -name '*.AppImage' -o -name '*.deb' \) \
-            -exec cp {} installers/ \;
+          # Rename to version-less, stable names so the README can link to
+          # /releases/latest/download/<name> permanently (no per-release edits).
+          while IFS= read -r f; do
+            case "$f" in
+              *.dmg)      cp "$f" "installers/Garudust-macOS-universal.dmg" ;;
+              *.exe)      cp "$f" "installers/Garudust-Windows-x64-setup.exe" ;;
+              *.AppImage) cp "$f" "installers/Garudust-Linux-x86_64.AppImage" ;;
+              *.deb)      cp "$f" "installers/Garudust-Linux-x86_64.deb" ;;
+            esac
+          done < <(find "$BUNDLE" -type f \
+            \( -name '*.dmg' -o -name '*.exe' -o -name '*.AppImage' -o -name '*.deb' \))
           ls -la installers
 
       - name: Upload installers
