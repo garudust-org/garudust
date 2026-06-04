@@ -121,8 +121,8 @@ npm --prefix web run dev         # → open http://localhost:5173
 ```
 
 **Run the desktop app** — a [Tauri](https://tauri.app) window (~10 MB, no bundled
-Chromium) that launches the server for you. Prebuilt installers — **macOS `.dmg`,
-Windows `.exe`, Linux `.AppImage` / `.deb`** — are attached to every
+Chromium) that launches the server for you. Prebuilt installers — **macOS `.dmg`
+(universal), Windows `.exe`, Linux `.AppImage` / `.deb`** — are attached to every
 [GitHub Release](https://github.com/garudust-org/garudust-agent/releases/latest).
 
 To run from source (setup details in [`apps/desktop/README.md`](apps/desktop/README.md)):

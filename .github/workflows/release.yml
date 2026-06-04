@@ -129,14 +129,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - target: aarch64-apple-darwin
-            os: macos-latest
-          - target: x86_64-apple-darwin
-            os: macos-13
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-22.04
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
+          # One universal macOS DMG (Intel + Apple Silicon) built on an Apple
+          # Silicon runner — avoids the scarce/deprecated macos-13 Intel runner.
+          - os: macos-latest
+            target: universal-apple-darwin
+            rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            rust_targets: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            rust_targets: x86_64-pc-windows-msvc
 
     steps:
       - uses: actions/checkout@v6
@@ -144,7 +147,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ matrix.rust_targets }}
 
       - name: Cache cargo
         uses: actions/cache@v5
@@ -174,12 +177,24 @@ jobs:
           npm ci --prefix web
           npm ci --prefix apps/desktop
 
-      - name: Build gateway (sidecar)
-        run: cargo build --release -p garudust-server --target ${{ matrix.target }}
+      # macOS: build both arches and lipo them into one universal sidecar so the
+      # universal-apple-darwin Tauri build can embed it.
+      - name: Build & stage sidecar (macOS universal)
+        if: runner.os == 'macOS'
+        run: |
+          cargo build --release -p garudust-server --target aarch64-apple-darwin
+          cargo build --release -p garudust-server --target x86_64-apple-darwin
+          mkdir -p apps/desktop/src-tauri/binaries
+          lipo -create \
+            target/aarch64-apple-darwin/release/garudust-server \
+            target/x86_64-apple-darwin/release/garudust-server \
+            -output apps/desktop/src-tauri/binaries/garudust-server-universal-apple-darwin
 
-      - name: Stage sidecar binary
+      - name: Build & stage sidecar (single arch)
+        if: runner.os != 'macOS'
         shell: bash
         run: |
+          cargo build --release -p garudust-server --target ${{ matrix.target }}
           mkdir -p apps/desktop/src-tauri/binaries
           EXT=""
           if [ "${{ runner.os }}" = "Windows" ]; then EXT=".exe"; fi
