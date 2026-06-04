@@ -9,6 +9,8 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.13.3] — 2026-06-04
+
 ### Added
 
 - **Web dashboard + desktop app** — a React/Vite/Tailwind SPA (`web/`) that talks

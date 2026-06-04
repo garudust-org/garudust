@@ -36,7 +36,7 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <div className="mt-auto px-2 text-xs text-neutral-600">v0.13.2</div>
+        <div className="mt-auto px-2 text-xs text-neutral-600">v0.13.3</div>
       </aside>
 
       <main className="flex-1 overflow-hidden">
