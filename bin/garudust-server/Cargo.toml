@@ -15,6 +15,12 @@ categories   = ["command-line-utilities", "web-programming::http-server"]
 name = "garudust-server"
 path = "src/main.rs"
 
+[features]
+default = []
+# Embed and serve the web dashboard SPA. Forwards to the gateway's `web-ui`
+# feature; build with `--features web-ui` after `npm run build` in `web/`.
+web-ui = ["garudust-gateway/web-ui"]
+
 [dependencies]
 garudust-core      = { path = "../../crates/garudust-core",      version = "0.13.1" }
 garudust-agent     = { path = "../../crates/garudust-agent",     version = "0.13.1" }
