@@ -120,19 +120,30 @@ npm --prefix web install         # terminal 2: first time only
 npm --prefix web run dev         # → open http://localhost:5173
 ```
 
-**Run the desktop app** — a [Tauri](https://tauri.app) window (~10 MB, no bundled
-Chromium) that launches the server for you. Prebuilt installers — **macOS `.dmg`
-(universal), Windows `.exe`, Linux `.AppImage` / `.deb`** — are attached to every
-[GitHub Release](https://github.com/garudust-org/garudust-agent/releases/latest).
+**Install the desktop app** — a [Tauri](https://tauri.app) window (~10 MB, no
+bundled Chromium) that launches the agent server for you. Download the installer
+for your OS from the [latest release](https://github.com/garudust-org/garudust-agent/releases/latest):
 
-To run from source (setup details in [`apps/desktop/README.md`](apps/desktop/README.md)):
+| OS | File | Install |
+|----|------|---------|
+| macOS (Intel + Apple Silicon) | `Garudust_*_universal.dmg` | open the `.dmg`, drag **Garudust** to Applications |
+| Windows 10/11 | `Garudust_*_x64-setup.exe` | run the installer |
+| Linux (any distro) | `Garudust_*_amd64.AppImage` | `chmod +x *.AppImage && ./Garudust_*.AppImage` |
+| Debian / Ubuntu | `Garudust_*_amd64.deb` | `sudo dpkg -i Garudust_*.deb` |
+
+> The builds are not yet code-signed, so on first launch macOS Gatekeeper
+> (right-click → **Open**) and Windows SmartScreen (**More info → Run anyway**)
+> will warn — this is expected for unsigned apps.
+
+On first run, set your LLM key on the **Secrets** page (or in `~/.garudust/.env`).
+Secrets stay server-side: the Secrets page is masked + write-only, and the desktop
+app talks to the bundled server on `127.0.0.1` only.
+
+Building from source? See [`apps/desktop/README.md`](apps/desktop/README.md):
 
 ```bash
 npm --prefix apps/desktop run dev   # → opens the desktop window
 ```
-
-Secrets stay server-side: the Secrets page is masked + write-only, and the desktop
-app talks to the server on `127.0.0.1` only.
 
 ---
 
