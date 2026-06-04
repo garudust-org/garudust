@@ -1,13 +1,16 @@
 import { useState } from "react";
 import ChatPage from "./pages/ChatPage";
+import StatusPage from "./pages/StatusPage";
+import ConfigPage from "./pages/ConfigPage";
+import EnvPage from "./pages/EnvPage";
 
 type Page = "chat" | "status" | "config" | "env";
 
-const NAV: { id: Page; label: string; ready: boolean }[] = [
-  { id: "chat", label: "Chat", ready: true },
-  { id: "status", label: "Status", ready: false },
-  { id: "config", label: "Config", ready: false },
-  { id: "env", label: "Env", ready: false },
+const NAV: { id: Page; label: string }[] = [
+  { id: "chat", label: "Chat" },
+  { id: "status", label: "Status" },
+  { id: "config", label: "Config" },
+  { id: "env", label: "Secrets" },
 ];
 
 export default function App() {
@@ -16,26 +19,20 @@ export default function App() {
   return (
     <div className="flex h-full">
       <aside className="flex w-52 flex-col border-r border-neutral-800 bg-neutral-950 p-3">
-        <div className="mb-6 px-2 pt-2 text-lg font-semibold tracking-tight">
-          🪶 Garudust
-        </div>
+        <div className="mb-6 px-2 pt-2 text-lg font-semibold tracking-tight">🪶 Garudust</div>
         <nav className="flex flex-col gap-1">
           {NAV.map((item) => (
             <button
               key={item.id}
-              onClick={() => item.ready && setPage(item.id)}
-              disabled={!item.ready}
+              onClick={() => setPage(item.id)}
               className={
                 "rounded-lg px-3 py-2 text-left text-sm " +
                 (page === item.id
                   ? "bg-neutral-800 text-neutral-50"
-                  : item.ready
-                    ? "text-neutral-300 hover:bg-neutral-900"
-                    : "cursor-not-allowed text-neutral-600")
+                  : "text-neutral-300 hover:bg-neutral-900")
               }
             >
               {item.label}
-              {!item.ready && <span className="ml-1 text-[10px] uppercase">soon</span>}
             </button>
           ))}
         </nav>
@@ -43,11 +40,20 @@ export default function App() {
       </aside>
 
       <main className="flex-1 overflow-hidden">
-        {page === "chat" ? (
-          <ChatPage />
-        ) : (
-          <div className="flex h-full items-center justify-center text-neutral-500">
-            {page} page — coming in a later phase
+        {page === "chat" && <ChatPage />}
+        {page === "status" && (
+          <div className="h-full overflow-y-auto">
+            <StatusPage />
+          </div>
+        )}
+        {page === "config" && (
+          <div className="h-full overflow-y-auto">
+            <ConfigPage />
+          </div>
+        )}
+        {page === "env" && (
+          <div className="h-full overflow-y-auto">
+            <EnvPage />
           </div>
         )}
       </main>

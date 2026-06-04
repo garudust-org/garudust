@@ -1,7 +1,35 @@
-// Typed gateway client. Everything talks to garudust-server over its standard
-// HTTP/WS API using *relative* URLs, so the exact same build runs in a browser
-// (served by the gateway or via the Vite dev proxy) and inside a future Tauri
-// shell pointed at a localhost sidecar.
+// Typed gateway client. In the browser/web build the SPA is served by the
+// gateway itself, so requests use *relative* URLs. Inside the Tauri desktop
+// shell the SPA is served from the app's own asset protocol, so the shell
+// injects `window.__GARUDUST_GATEWAY__` (the localhost sidecar origin) and we
+// prefix every request with it. One code path, both deployments.
+
+declare global {
+  interface Window {
+    __GARUDUST_GATEWAY__?: string;
+  }
+}
+
+// Origin like "http://127.0.0.1:38123" in Tauri, or "" (relative) on the web.
+let baseUrl = (typeof window !== "undefined" && window.__GARUDUST_GATEWAY__) || "";
+export function setBaseUrl(url: string) {
+  baseUrl = url.replace(/\/$/, "");
+}
+export function getBaseUrl(): string {
+  return baseUrl;
+}
+
+function httpUrl(path: string): string {
+  return `${baseUrl}${path}`;
+}
+
+function wsUrl(path: string): string {
+  if (baseUrl) {
+    return baseUrl.replace(/^http/, "ws") + path;
+  }
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  return `${proto}://${location.host}${path}`;
+}
 
 export interface ChatResponse {
   output: string;
@@ -16,6 +44,11 @@ export interface EnvEntry {
   masked: string;
 }
 
+export interface HealthResponse {
+  status: string;
+  checks: { db: string; platforms: Record<string, string> };
+}
+
 /** Optional Bearer token (set when the gateway has GARUDUST_API_KEY). */
 let authToken: string | null = null;
 export function setAuthToken(token: string | null) {
@@ -28,14 +61,20 @@ function authHeaders(extra?: HeadersInit): HeadersInit {
   return h;
 }
 
+export async function getHealth(): Promise<HealthResponse> {
+  const r = await fetch(httpUrl("/health"));
+  if (!r.ok && r.status !== 503) throw new Error(`GET /health failed: ${r.status}`);
+  return r.json();
+}
+
 export async function getConfig(): Promise<Record<string, unknown>> {
-  const r = await fetch("/api/config", { headers: authHeaders() });
+  const r = await fetch(httpUrl("/api/config"), { headers: authHeaders() });
   if (!r.ok) throw new Error(`GET /api/config failed: ${r.status}`);
   return r.json();
 }
 
 export async function putConfig(config: Record<string, unknown>): Promise<void> {
-  const r = await fetch("/api/config", {
+  const r = await fetch(httpUrl("/api/config"), {
     method: "PUT",
     headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(config),
@@ -44,13 +83,13 @@ export async function putConfig(config: Record<string, unknown>): Promise<void> 
 }
 
 export async function getEnv(): Promise<EnvEntry[]> {
-  const r = await fetch("/api/env", { headers: authHeaders() });
+  const r = await fetch(httpUrl("/api/env"), { headers: authHeaders() });
   if (!r.ok) throw new Error(`GET /api/env failed: ${r.status}`);
   return r.json();
 }
 
 export async function setEnv(key: string, value: string): Promise<void> {
-  const r = await fetch("/api/env", {
+  const r = await fetch(httpUrl("/api/env"), {
     method: "PUT",
     headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ key, value }),
@@ -79,9 +118,7 @@ export function chatStream(
   handlers: ChatStreamHandlers,
   opts: ChatStreamOptions = {},
 ): () => void {
-  const proto = location.protocol === "https:" ? "wss" : "ws";
-  const url = `${proto}://${location.host}/chat/ws`;
-  const ws = new WebSocket(url);
+  const ws = new WebSocket(wsUrl("/chat/ws"));
 
   ws.onopen = () => {
     ws.send(
