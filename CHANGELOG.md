@@ -24,8 +24,10 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   embedded into `garudust-server` via `rust-embed` and served with SPA fallback —
   preserving the single self-contained binary. A Tauri 2 desktop shell
   (`apps/desktop`) wraps the same SPA and spawns `garudust-server` as a
-  loopback-only sidecar (chosen over Electron to keep the app small); a
-  `Desktop` CI workflow builds DMG/NSIS/AppImage/deb installers.
+  loopback-only sidecar (chosen over Electron to keep the app small). The release
+  workflow now builds desktop installers — macOS `.dmg`, Windows `.exe`, Linux
+  `.AppImage` / `.deb` — and attaches them to each GitHub Release alongside the
+  CLI binaries; app icons are committed (generated from `assets/icon.png`).
 
 - **One-line installers** — `scripts/install.sh` (macOS & Linux, all archs incl.
   ARM / Raspberry Pi / WSL) and `scripts/install.ps1` (Windows). Both detect the

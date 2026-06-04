@@ -1,12 +1,9 @@
-name: Desktop
+name: Desktop (manual)
 
-# Builds the Tauri desktop installers (DMG / NSIS / AppImage / deb). Run on
-# demand or when a version tag is pushed. The web SPA is built by Tauri's
-# beforeBuildCommand; the gateway is built and staged as a sidecar first.
+# Ad-hoc desktop installer build for testing, uploaded as workflow artifacts.
+# Tagged releases build + attach installers via release.yml instead.
 on:
   workflow_dispatch:
-  push:
-    tags: ["v*"]
 
 jobs:
   build:
@@ -61,9 +58,6 @@ jobs:
           if [ "${{ runner.os }}" = "Windows" ]; then EXT=".exe"; fi
           cp "target/${{ matrix.target }}/release/garudust-server${EXT}" \
              "apps/desktop/src-tauri/binaries/garudust-server-${{ matrix.target }}${EXT}"
-
-      - name: Generate app icons
-        run: npm run --prefix apps/desktop tauri icon ../../assets/logo-agent.jpg
 
       - name: Build desktop app
         uses: tauri-apps/tauri-action@v0
