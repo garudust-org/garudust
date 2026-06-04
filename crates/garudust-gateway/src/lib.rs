@@ -13,6 +13,11 @@
 //! | `GET`  | `/ws` | WebSocket bi-directional chat |
 //! | `GET`  | `/health` | Health check |
 //! | `GET`  | `/metrics` | Prometheus-compatible metrics |
+//! | `GET`/`PUT` | `/api/config` | Read / replace `config.yaml` (non-secret) |
+//! | `GET`/`PUT` | `/api/env` | List masked secret keys / set a secret (write-only) |
+//!
+//! With the `web-ui` feature, the embedded dashboard SPA is served on all other
+//! paths (see [`static_assets`]).
 //!
 //! # Example
 //!
@@ -28,6 +33,8 @@
 //! }
 //! ```
 
+pub mod config_api;
+pub mod env_api;
 pub mod handler;
 pub mod handler_tests;
 pub mod interactive;
@@ -35,6 +42,8 @@ pub mod metrics;
 pub mod router;
 pub mod sessions;
 pub mod state;
+#[cfg(feature = "web-ui")]
+pub mod static_assets;
 
 pub use handler::GatewayHandler;
 pub use metrics::Metrics;

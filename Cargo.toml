@@ -11,6 +11,9 @@ members = [
     "bin/garudust",
     "bin/garudust-server",
 ]
+# The Tauri desktop shell is its own workspace (apps/desktop/src-tauri) so its
+# heavy GUI dependencies stay out of the core `cargo build/test --workspace`.
+exclude = ["apps/desktop/src-tauri"]
 resolver = "2"
 
 [profile.release]

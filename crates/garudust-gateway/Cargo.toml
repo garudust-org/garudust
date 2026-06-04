@@ -20,6 +20,7 @@ axum               = { workspace = true }
 tower              = { workspace = true }
 serde              = { workspace = true }
 serde_json         = { workspace = true }
+serde_yaml         = { workspace = true }
 tokio              = { workspace = true }
 tokio-stream       = { workspace = true }
 tracing            = { workspace = true }
@@ -32,6 +33,16 @@ tower_governor     = { workspace = true }
 hmac               = { workspace = true }
 sha2               = { workspace = true }
 dashmap            = { workspace = true }
+# Optional: embed the built web dashboard (web/dist) into the binary so a single
+# `garudust-server` ships the UI with no separate static-asset directory.
+rust-embed         = { version = "8", optional = true }
+
+[features]
+default = []
+# Serve and embed the web dashboard SPA from web/dist. Requires `web/dist` to
+# exist at build time (run `npm run build` in `web/` first). Off by default so
+# headless builds stay lean.
+web-ui = ["dep:rust-embed"]
 
 [dev-dependencies]
 tower              = { version = "0.5", features = ["util"] }

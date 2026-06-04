@@ -11,6 +11,22 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Web dashboard + desktop app** — a React/Vite/Tailwind SPA (`web/`) that talks
+  to the existing gateway over its HTTP/WS API, so one UI build runs both in a
+  browser and inside a desktop shell. It has a streaming chat pane (over
+  `/chat/ws`), plus Status, Config, and Secrets pages. The gateway gained
+  `GET`/`PUT /api/config` (read/replace `config.yaml`; saving hot-reloads the
+  agent) and `GET`/`PUT /api/env` (list secret keys with constant-width masking;
+  write-only set). Secrets never cross the wire: config secret fields are
+  `#[serde(skip)]`, env values are masked, and env writes reject line breaks
+  (`.env` injection guard). All `/api/*` routes sit behind the existing
+  Bearer-token gate. With the optional `web-ui` Cargo feature, the built SPA is
+  embedded into `garudust-server` via `rust-embed` and served with SPA fallback —
+  preserving the single self-contained binary. A Tauri 2 desktop shell
+  (`apps/desktop`) wraps the same SPA and spawns `garudust-server` as a
+  loopback-only sidecar (chosen over Electron to keep the app small); a
+  `Desktop` CI workflow builds DMG/NSIS/AppImage/deb installers.
+
 - **One-line installers** — `scripts/install.sh` (macOS & Linux, all archs incl.
   ARM / Raspberry Pi / WSL) and `scripts/install.ps1` (Windows). Both detect the
   OS/arch, resolve the latest release, verify the SHA-256 checksum, and install

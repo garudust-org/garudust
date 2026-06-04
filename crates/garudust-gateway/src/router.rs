@@ -288,6 +288,19 @@ pub fn create_router(state: AppState) -> Router {
         .route("/chat/ws", get(chat_ws))
         .route_layer(middleware::from_fn_with_state(state.clone(), require_auth));
 
+    // /api/* dashboard endpoints — same Bearer token gate as /chat*. These read
+    // and write config.yaml / .env, so they must never be open when a key is set.
+    let api = Router::new()
+        .route(
+            "/api/config",
+            get(crate::config_api::get_config).put(crate::config_api::put_config),
+        )
+        .route(
+            "/api/env",
+            get(crate::env_api::get_env).put(crate::env_api::put_env),
+        )
+        .route_layer(middleware::from_fn_with_state(state.clone(), require_auth));
+
     // /metrics is protected by the same Bearer token when a key is configured;
     // /health is always open so load balancers and health probes still work.
     let metrics_route = Router::new().route("/metrics", get(metrics));
@@ -297,10 +310,19 @@ pub fn create_router(state: AppState) -> Router {
         metrics_route
     };
 
-    let mut router = Router::new()
+    let base = Router::new()
         .route("/health", get(health))
         .merge(metrics_route)
         .merge(protected)
+        .merge(api);
+
+    // With the `web-ui` feature, serve the embedded SPA on any unmatched path so
+    // client-side routes resolve. The handler takes no state, so attach it before
+    // `with_state` collapses the router type.
+    #[cfg(feature = "web-ui")]
+    let base = base.fallback(crate::static_assets::static_handler);
+
+    let mut router = base
         .layer(ConcurrencyLimitLayer::new(concurrency_limit))
         .with_state(state);
 
@@ -401,12 +423,16 @@ mod tests {
             }
         }
 
-        let config = Arc::new(AgentConfig::default());
+        let tmp = std::env::temp_dir().join(format!("garudust-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        // Point home_dir at the temp dir so config_api / env_api read and write
+        // there instead of the real ~/.garudust during tests.
+        let mut config_inner = AgentConfig::default();
+        config_inner.home_dir = tmp.clone();
+        let config = Arc::new(config_inner);
         let transport = Arc::new(EchoTransport);
         let tools = Arc::new(ToolRegistry::new());
         let memory = Arc::new(NopMemory);
-        let tmp = std::env::temp_dir().join(format!("garudust-test-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&tmp).unwrap();
         let db = Arc::new(SessionDb::open(&tmp).unwrap());
         let agent = Arc::new(
             Agent::new(transport, tools, memory, config.clone()).with_session_db(db.clone()),
@@ -514,5 +540,86 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn api_config_get_returns_model() {
+        let router = create_router(test_state());
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .uri("/api/config")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 200);
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["model"].is_string());
+        // Secret fields are #[serde(skip)] — must never appear.
+        assert!(json.get("api_key").is_none());
+    }
+
+    #[tokio::test]
+    async fn api_config_blocked_without_token_when_key_set() {
+        let router = create_router(test_state_with_key("secret"));
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .uri("/api/config")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 401);
+    }
+
+    #[tokio::test]
+    async fn api_env_get_masks_secret_end_to_end() {
+        let state = test_state();
+        let home = state.config.home_dir.clone();
+        std::fs::write(
+            home.join(".env"),
+            "ANTHROPIC_API_KEY=sk-ant-topsecret9999\n",
+        )
+        .unwrap();
+
+        let router = create_router(state);
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .uri("/api/env")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 200);
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let text = String::from_utf8(body.to_vec()).unwrap();
+        assert!(text.contains("ANTHROPIC_API_KEY"));
+        // The raw secret must never cross the wire.
+        assert!(!text.contains("topsecret"));
+        assert!(text.contains("9999"));
+    }
+
+    #[tokio::test]
+    async fn api_env_put_rejects_invalid_key() {
+        let router = create_router(test_state());
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/api/env")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"key":"bad key","value":"x"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 400);
     }
 }
