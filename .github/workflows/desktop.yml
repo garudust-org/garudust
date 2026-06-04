@@ -82,7 +82,7 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         with:
           projectPath: apps/desktop
-          args: --target ${{ matrix.target }}
+          args: --target ${{ matrix.target }} --verbose
 
       - name: Upload installers
         uses: actions/upload-artifact@v4
