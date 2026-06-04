@@ -23,10 +23,9 @@ the network. It is killed when the window closes.
 ```bash
 # one-time
 npm install --prefix apps/desktop
-
-# build the gateway and stage it as the sidecar
-cargo build --release -p garudust-server
-npm run --prefix apps/desktop stage-sidecar
+# generate icons (see the Icons note below) — required before the first run
+cargo build --release -p garudust-server   # build the gateway…
+npm run --prefix apps/desktop stage-sidecar # …and stage it as the sidecar
 
 # run (Vite dev server + Tauri window with hot reload)
 npm run --prefix apps/desktop dev
@@ -40,9 +39,16 @@ npm run --prefix apps/desktop stage-sidecar
 npm run --prefix apps/desktop build   # → src-tauri/target/release/bundle/{dmg,nsis,appimage,deb}
 ```
 
-> **Icons:** first build requires app icons. Generate them once from the logo:
-> `npm run --prefix apps/desktop tauri icon ../../assets/logo-agent.jpg`
-> (writes `src-tauri/icons/`).
+> **Icons:** the first `dev` or `build` requires app icons (the Tauri build
+> script validates them). Generate them once from a **square** PNG — note
+> `tauri icon` rejects non-square sources, so `logo-agent.jpg` must be squared
+> first:
+>
+> ```bash
+> # macOS: make a 1024×1024 PNG, then generate all icon sizes
+> sips -s format png -z 1024 1024 ../../assets/logo-agent.jpg --out /tmp/icon.png
+> npm run tauri icon /tmp/icon.png   # writes src-tauri/icons/ (gitignored)
+> ```
 
 ## Notes
 

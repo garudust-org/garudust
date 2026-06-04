@@ -110,33 +110,26 @@ garudust skill validate [<path>]   # validate SKILL.md frontmatter
 
 ## Web dashboard & desktop app
 
-The same React UI ships three ways, all speaking `garudust-server`'s HTTP/WS API
-— a streaming chat pane plus Status, Config, and Secrets pages.
+The same React UI — a streaming chat pane plus Status, Config, and Secrets pages.
 
-**Web dashboard** — embed the built SPA into the binary with the `web-ui` feature
-and it is served at `/`, alongside the API:
+**Run the web app**
 
 ```bash
-npm --prefix web ci && npm --prefix web run build   # build the SPA
-cargo build --release -p garudust-server --features web-ui
-garudust-server --port 3000                         # open http://localhost:3000
+garudust-server --port 3000      # terminal 1: start the agent server
+npm --prefix web install         # terminal 2: first time only
+npm --prefix web run dev         # → open http://localhost:5173
 ```
 
-**Desktop app** — a [Tauri](https://tauri.app) shell (OS webview + Rust, no bundled
-Chromium — so it stays ~10 MB, not Electron's ~120 MB) wraps the same UI and runs
-`garudust-server` as a loopback-only sidecar. Build DMG / EXE / AppImage / deb:
+**Run the desktop app** — a [Tauri](https://tauri.app) window (~10 MB, no bundled
+Chromium) that launches the server for you. Setup and installer builds (DMG / EXE /
+AppImage / deb) are in [`apps/desktop/README.md`](apps/desktop/README.md):
 
 ```bash
-cargo build --release -p garudust-server
-npm run --prefix apps/desktop stage-sidecar
-npm run --prefix apps/desktop tauri icon ../../assets/logo-agent.jpg
-npm run --prefix apps/desktop build                 # → installers under apps/desktop/src-tauri/target
+npm --prefix apps/desktop run dev   # → opens the desktop window
 ```
 
-See [`apps/desktop/README.md`](apps/desktop/README.md) for development details.
-
-Secrets stay server-side: config secret fields are never serialized, the Secrets
-page is masked + write-only, and the desktop sidecar binds `127.0.0.1` only.
+Secrets stay server-side: the Secrets page is masked + write-only, and the desktop
+app talks to the server on `127.0.0.1` only.
 
 ---
 
