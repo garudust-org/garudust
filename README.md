@@ -18,7 +18,7 @@
 
 **Your AI agent. Your server. Your rules.**
 
-A self-improving AI agent runtime written in Rust — ~10 MB binary, no runtime dependencies. Chat in the terminal, reply across 7 platforms, or expose a REST + WebSocket API. Connect any MCP server, swap LLM providers with one env var. No telemetry. No lock-in.
+A self-improving AI agent runtime written in Rust — ~10 MB binary, no runtime dependencies. Chat in the terminal, reply across 7 platforms, open the web dashboard, run the desktop app, or expose a REST + WebSocket API. Connect any MCP server, swap LLM providers with one env var. No telemetry. No lock-in.
 
 <div align="center">
   <img src="assets/demo.svg" alt="Garudust demo"/>
@@ -71,7 +71,7 @@ Or set your key directly in `~/.garudust/.env` (e.g. `ANTHROPIC_API_KEY=sk-ant-.
 garudust                           # interactive TUI
 garudust "summarise git log"       # one-shot task
 garudust --hint fast "check this"  # route to a cheaper model
-garudust-server --port 3000        # headless REST + WebSocket server
+garudust-server --port 3000        # headless REST + WebSocket server (+ web dashboard, see below)
 docker compose up -d
 
 # Management subcommands
@@ -108,6 +108,38 @@ garudust skill validate [<path>]   # validate SKILL.md frontmatter
 
 ---
 
+## Web dashboard & desktop app
+
+The same React UI ships three ways, all speaking `garudust-server`'s HTTP/WS API
+— a streaming chat pane plus Status, Config, and Secrets pages.
+
+**Web dashboard** — embed the built SPA into the binary with the `web-ui` feature
+and it is served at `/`, alongside the API:
+
+```bash
+npm --prefix web ci && npm --prefix web run build   # build the SPA
+cargo build --release -p garudust-server --features web-ui
+garudust-server --port 3000                         # open http://localhost:3000
+```
+
+**Desktop app** — a [Tauri](https://tauri.app) shell (OS webview + Rust, no bundled
+Chromium — so it stays ~10 MB, not Electron's ~120 MB) wraps the same UI and runs
+`garudust-server` as a loopback-only sidecar. Build DMG / EXE / AppImage / deb:
+
+```bash
+cargo build --release -p garudust-server
+npm run --prefix apps/desktop stage-sidecar
+npm run --prefix apps/desktop tauri icon ../../assets/logo-agent.jpg
+npm run --prefix apps/desktop build                 # → installers under apps/desktop/src-tauri/target
+```
+
+See [`apps/desktop/README.md`](apps/desktop/README.md) for development details.
+
+Secrets stay server-side: config secret fields are never serialized, the Secrets
+page is masked + write-only, and the desktop sidecar binds `127.0.0.1` only.
+
+---
+
 ## Features
 
 🪶 **Tiny footprint** — ~10 MB statically linked binary, < 20 ms cold start, zero runtime dependencies. Runs on a Raspberry Pi without Docker.
@@ -123,6 +155,8 @@ garudust skill validate [<path>]   # validate SKILL.md frontmatter
 🔒 **Secure by design** — three sandbox modes for the terminal tool: direct host, Docker container, or SSH remote host. Hardline blocks on the most destructive commands regardless of sandbox. Approval modes (`auto` / `smart` / `deny`) gate destructive operations. Secrets are redacted from all tool output before the model sees them.
 
 🌐 **Headless API** — `garudust-server` exposes `/chat`, `/stream`, and a WebSocket endpoint — embed in any app or script. Cron-scheduled autonomous tasks run without a user present.
+
+🖥️ **Web dashboard & desktop app** — one React UI (chat + status + config + secrets) served straight from the binary (`web-ui` feature) or wrapped as a tiny Tauri desktop app (DMG / EXE / AppImage / deb). Secrets stay masked and server-side.
 
 ---
 
