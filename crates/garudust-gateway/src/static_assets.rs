@@ -13,9 +13,13 @@ use rust_embed::RustEmbed;
 
 // Path is relative to this crate's Cargo.toml (crates/garudust-gateway), so
 // `../../web/dist` resolves to the workspace-root `web/dist`. rust-embed joins
-// it onto CARGO_MANIFEST_DIR at compile time.
+// it onto CARGO_MANIFEST_DIR at compile time. `allow_missing` lets the crate
+// build even when the frontend has not been built yet (empty bundle → the
+// handler serves a 404); CI runs `npm run build` in `web/` before a release
+// `--features web-ui` build so real assets are embedded.
 #[derive(RustEmbed)]
 #[folder = "../../web/dist"]
+#[allow_missing = true]
 struct Assets;
 
 /// Guess a content type from a file extension. Covers the asset kinds a Vite
@@ -62,4 +66,25 @@ pub async fn static_handler(uri: Uri) -> Response {
         return resp;
     }
     (StatusCode::NOT_FOUND, "web dashboard not built").into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::content_type;
+
+    #[test]
+    fn content_type_maps_common_assets() {
+        assert_eq!(content_type("index.html"), "text/html; charset=utf-8");
+        assert_eq!(
+            content_type("assets/index-abc.js"),
+            "text/javascript; charset=utf-8"
+        );
+        assert_eq!(
+            content_type("assets/index-abc.css"),
+            "text/css; charset=utf-8"
+        );
+        assert_eq!(content_type("logo.svg"), "image/svg+xml");
+        assert_eq!(content_type("font.woff2"), "font/woff2");
+        assert_eq!(content_type("noext"), "application/octet-stream");
+    }
 }
