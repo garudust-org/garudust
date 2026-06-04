@@ -2,3 +2,6 @@ node_modules/
 src-tauri/target/
 src-tauri/binaries/
 src-tauri/gen/
+# App icons are generated from the logo (`npm run tauri icon ...`) by devs and
+# by the Desktop CI workflow — not committed.
+src-tauri/icons/
