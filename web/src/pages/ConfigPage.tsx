@@ -57,13 +57,20 @@ const inputCls =
 export default function ConfigPage() {
   const [config, setConfig] = useState<Record<string, unknown> | null>(null);
   const [envKeys, setEnvKeys] = useState<Set<string>>(new Set());
+  // Routing edited as ordered rows (object keys are awkward to rename live);
+  // synced back into config.routing on every change.
+  const [routingRows, setRoutingRows] = useState<{ hint: string; target: string }[]>([]);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     getConfig()
-      .then(setConfig)
+      .then((c) => {
+        setConfig(c);
+        const r = (c.routing as Record<string, string>) ?? {};
+        setRoutingRows(Object.entries(r).map(([hint, target]) => ({ hint, target })));
+      })
       .catch((e) => setError(String(e)));
     // Used to tell the user whether the selected provider's key is set.
     getEnv()
@@ -85,6 +92,22 @@ export default function ConfigPage() {
       if (def) next.model = def;
       return next;
     });
+  }
+
+  // Rebuild config.routing from the edited rows (drop blank hints; last wins).
+  function commitRoutingRows(rows: { hint: string; target: string }[]) {
+    setRoutingRows(rows);
+    const obj: Record<string, string> = {};
+    for (const { hint, target } of rows) {
+      const h = hint.trim();
+      if (h) obj[h] = target.trim();
+    }
+    set("routing", obj);
+  }
+
+  function updateRoutingRow(i: number, field: "hint" | "target", value: string) {
+    const rows = routingRows.map((r, j) => (j === i ? { ...r, [field]: value } : r));
+    commitRoutingRows(rows);
   }
 
   // Merge into the nested `security` object without dropping its other fields.
@@ -202,6 +225,44 @@ export default function ConfigPage() {
             />
           </Field>
         ))}
+
+        <div className="flex flex-col gap-2">
+          <span className="text-sm text-neutral-400">Routing (model hints)</span>
+          <p className="text-xs text-neutral-500">
+            Each hint maps to <code>provider/model</code>. They appear in the chat Model picker
+            so you can switch models per message.
+          </p>
+          {routingRows.map((row, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <input
+                className={`w-32 ${inputCls}`}
+                placeholder="fast"
+                value={row.hint}
+                onChange={(e) => updateRoutingRow(i, "hint", e.target.value)}
+              />
+              <span className="text-neutral-600">→</span>
+              <input
+                className={`flex-1 ${inputCls}`}
+                placeholder="groq/llama-3.3-70b-versatile"
+                value={row.target}
+                onChange={(e) => updateRoutingRow(i, "target", e.target.value)}
+              />
+              <button
+                className="rounded-lg border border-neutral-700 px-2 py-2 text-xs text-neutral-400 hover:border-red-700 hover:text-red-400"
+                onClick={() => commitRoutingRows(routingRows.filter((_, j) => j !== i))}
+                title="Remove"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+          <button
+            className="w-fit rounded-lg border border-neutral-700 px-3 py-1.5 text-xs text-neutral-300 hover:border-amber-500"
+            onClick={() => commitRoutingRows([...routingRows, { hint: "", target: "" }])}
+          >
+            + Add hint
+          </button>
+        </div>
       </div>
 
       <div className="mt-6 flex items-center gap-3">
