@@ -27,7 +27,30 @@ use tower_governor::{governor::GovernorConfigBuilder, GovernorLayer};
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
 
+use axum::http::{header, HeaderValue, Method};
+use tower_http::cors::{AllowOrigin, CorsLayer};
+
 use crate::state::AppState;
+
+/// CORS for the desktop (Tauri) webview. Its page is served from
+/// `tauri://localhost` (macOS/Linux) or `http(s)://tauri.localhost` (Windows),
+/// so requests to the localhost gateway are cross-origin and the webview blocks
+/// the response unless the server opts in. Only the Tauri origins are allowed —
+/// an arbitrary website cannot read a user's localhost gateway. The web
+/// deployment is same-origin and unaffected.
+fn cors_layer() -> CorsLayer {
+    CorsLayer::new()
+        .allow_origin(AllowOrigin::predicate(|origin: &HeaderValue, _| {
+            let o = origin.as_bytes();
+            // macOS/Linux use the `tauri://` scheme; Windows uses the
+            // `tauri.localhost` host over http(s).
+            o.starts_with(b"tauri://")
+                || o == b"http://tauri.localhost"
+                || o == b"https://tauri.localhost"
+        }))
+        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::OPTIONS])
+        .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE])
+}
 
 /// Constant-time API key comparison via HMAC-SHA256.
 ///
@@ -323,6 +346,7 @@ pub fn create_router(state: AppState) -> Router {
     let base = base.fallback(crate::static_assets::static_handler);
 
     let mut router = base
+        .layer(cors_layer())
         .layer(ConcurrencyLimitLayer::new(concurrency_limit))
         .with_state(state);
 
@@ -604,6 +628,47 @@ mod tests {
         // The raw secret must never cross the wire.
         assert!(!text.contains("topsecret"));
         assert!(text.contains("9999"));
+    }
+
+    #[tokio::test]
+    async fn cors_allows_tauri_origin() {
+        let router = create_router(test_state());
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .uri("/health")
+                    .header("Origin", "tauri://localhost")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            response
+                .headers()
+                .get("access-control-allow-origin")
+                .map(|v| v.to_str().unwrap().to_string()),
+            Some("tauri://localhost".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn cors_denies_arbitrary_origin() {
+        let router = create_router(test_state());
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .uri("/health")
+                    .header("Origin", "https://evil.example.com")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(response
+            .headers()
+            .get("access-control-allow-origin")
+            .is_none());
     }
 
     #[tokio::test]

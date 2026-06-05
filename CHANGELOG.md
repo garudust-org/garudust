@@ -9,6 +9,18 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.13.4] — 2026-06-05
+
+### Fixed
+
+- **Desktop app: Config/Secrets pages failed with `TypeError: Load failed`** —
+  the Tauri webview (`tauri://localhost`) calls the bundled gateway on
+  `http://127.0.0.1:<port>`, a cross-origin request the webview blocked because
+  the gateway sent no CORS headers (chat worked because WebSocket is exempt). The
+  gateway now returns CORS headers for Tauri webview origins (`tauri://` scheme
+  and `tauri.localhost`) only — arbitrary websites still cannot reach a user's
+  localhost gateway, and the same-origin web deployment is unaffected.
+
 ## [0.13.3] — 2026-06-04
 
 ### Added
