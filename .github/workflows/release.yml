@@ -205,17 +205,23 @@ jobs:
           cp "target/${{ matrix.target }}/release/garudust-server${EXT}" \
              "apps/desktop/src-tauri/binaries/garudust-server-${{ matrix.target }}${EXT}"
 
+      # Only expose Apple signing env when the cert secret is actually set —
+      # passing empty APPLE_* vars makes tauri-action attempt (and fail) signing.
+      # When absent, the build is unsigned (Gatekeeper warning on first launch).
+      - name: Set up Apple signing
+        if: ${{ runner.os == 'macOS' && secrets.APPLE_CERTIFICATE != '' }}
+        run: |
+          {
+            echo "APPLE_CERTIFICATE=${{ secrets.APPLE_CERTIFICATE }}"
+            echo "APPLE_CERTIFICATE_PASSWORD=${{ secrets.APPLE_CERTIFICATE_PASSWORD }}"
+            echo "APPLE_SIGNING_IDENTITY=${{ secrets.APPLE_SIGNING_IDENTITY }}"
+            echo "APPLE_ID=${{ secrets.APPLE_ID }}"
+            echo "APPLE_PASSWORD=${{ secrets.APPLE_PASSWORD }}"
+            echo "APPLE_TEAM_ID=${{ secrets.APPLE_TEAM_ID }}"
+          } >> "$GITHUB_ENV"
+
       - name: Build desktop app
         uses: tauri-apps/tauri-action@v0
-        env:
-          # macOS signing + notarization — used only if these repo secrets are
-          # set; otherwise the build is unsigned (users see a Gatekeeper warning).
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           projectPath: apps/desktop
           args: --target ${{ matrix.target }}
