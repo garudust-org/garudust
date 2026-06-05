@@ -32,21 +32,41 @@ use tower_http::cors::{AllowOrigin, CorsLayer};
 
 use crate::state::AppState;
 
-/// CORS for the desktop (Tauri) webview. Its page is served from
-/// `tauri://localhost` (macOS/Linux) or `http(s)://tauri.localhost` (Windows),
-/// so requests to the localhost gateway are cross-origin and the webview blocks
-/// the response unless the server opts in. Only the Tauri origins are allowed —
-/// an arbitrary website cannot read a user's localhost gateway. The web
-/// deployment is same-origin and unaffected.
+/// True for origins the desktop UI uses to reach the localhost gateway:
+/// the built Tauri app's `tauri://` scheme and `tauri.localhost` host, plus
+/// `localhost` / `127.0.0.1` on any port (the Vite dev server in `tauri dev`,
+/// and local browser testing). An arbitrary website (e.g. `https://evil.com`)
+/// is *not* allowed, so it cannot read a user's localhost gateway.
+fn is_allowed_origin(origin: &[u8]) -> bool {
+    let Ok(s) = std::str::from_utf8(origin) else {
+        return false;
+    };
+    if let Some(rest) = s.strip_prefix("tauri://") {
+        // tauri://<anything> — the built desktop app.
+        return !rest.is_empty();
+    }
+    let Some(host_port) = s
+        .strip_prefix("http://")
+        .or_else(|| s.strip_prefix("https://"))
+    else {
+        return false;
+    };
+    // Origins have no path, but strip defensively, then drop the port.
+    let host = host_port.split('/').next().unwrap_or(host_port);
+    let host = host.split(':').next().unwrap_or(host);
+    matches!(host, "localhost" | "127.0.0.1" | "tauri.localhost")
+}
+
+/// CORS so the desktop webview can call the bundled gateway. In a built app the
+/// page origin is `tauri://localhost`; under `tauri dev` it is the Vite dev
+/// server (`http://localhost:5173`) — both are cross-origin to the gateway on
+/// `http://127.0.0.1:<port>`, so the webview blocks responses without these
+/// headers. Only localhost/tauri origins are allowed (see [`is_allowed_origin`]);
+/// the same-origin web deployment is unaffected.
 fn cors_layer() -> CorsLayer {
     CorsLayer::new()
         .allow_origin(AllowOrigin::predicate(|origin: &HeaderValue, _| {
-            let o = origin.as_bytes();
-            // macOS/Linux use the `tauri://` scheme; Windows uses the
-            // `tauri.localhost` host over http(s).
-            o.starts_with(b"tauri://")
-                || o == b"http://tauri.localhost"
-                || o == b"https://tauri.localhost"
+            is_allowed_origin(origin.as_bytes())
         }))
         .allow_methods([Method::GET, Method::POST, Method::PUT, Method::OPTIONS])
         .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE])
@@ -628,6 +648,45 @@ mod tests {
         // The raw secret must never cross the wire.
         assert!(!text.contains("topsecret"));
         assert!(text.contains("9999"));
+    }
+
+    #[test]
+    fn is_allowed_origin_matches_local_and_tauri_only() {
+        use super::is_allowed_origin;
+        // Allowed: tauri scheme, tauri.localhost, localhost/127.0.0.1 any port.
+        assert!(is_allowed_origin(b"tauri://localhost"));
+        assert!(is_allowed_origin(b"http://tauri.localhost"));
+        assert!(is_allowed_origin(b"https://tauri.localhost"));
+        assert!(is_allowed_origin(b"http://localhost:5173")); // Vite dev (tauri dev)
+        assert!(is_allowed_origin(b"http://127.0.0.1:53153")); // sidecar host
+        assert!(is_allowed_origin(b"http://localhost"));
+        // Denied: arbitrary sites and look-alikes.
+        assert!(!is_allowed_origin(b"https://evil.example.com"));
+        assert!(!is_allowed_origin(b"http://localhost.evil.com"));
+        assert!(!is_allowed_origin(b"tauri://"));
+        assert!(!is_allowed_origin(b"http://notlocalhost"));
+    }
+
+    #[tokio::test]
+    async fn cors_allows_dev_localhost_origin() {
+        let router = create_router(test_state());
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .uri("/health")
+                    .header("Origin", "http://localhost:5173")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            response
+                .headers()
+                .get("access-control-allow-origin")
+                .map(|v| v.to_str().unwrap().to_string()),
+            Some("http://localhost:5173".to_string())
+        );
     }
 
     #[tokio::test]
