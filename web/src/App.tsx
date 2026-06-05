@@ -3,6 +3,7 @@ import ChatPage from "./pages/ChatPage";
 import StatusPage from "./pages/StatusPage";
 import ConfigPage from "./pages/ConfigPage";
 import EnvPage from "./pages/EnvPage";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 type Page = "chat" | "status" | "config" | "env";
 
@@ -40,22 +41,26 @@ export default function App() {
       </aside>
 
       <main className="flex-1 overflow-hidden">
-        {page === "chat" && <ChatPage />}
-        {page === "status" && (
-          <div className="h-full overflow-y-auto">
-            <StatusPage />
-          </div>
-        )}
-        {page === "config" && (
-          <div className="h-full overflow-y-auto">
-            <ConfigPage />
-          </div>
-        )}
-        {page === "env" && (
-          <div className="h-full overflow-y-auto">
-            <EnvPage />
-          </div>
-        )}
+        {/* key={page} remounts the boundary on navigation so a crashed page
+            recovers when you switch away and back. */}
+        <ErrorBoundary key={page}>
+          {page === "chat" && <ChatPage />}
+          {page === "status" && (
+            <div className="h-full overflow-y-auto">
+              <StatusPage />
+            </div>
+          )}
+          {page === "config" && (
+            <div className="h-full overflow-y-auto">
+              <ConfigPage />
+            </div>
+          )}
+          {page === "env" && (
+            <div className="h-full overflow-y-auto">
+              <EnvPage />
+            </div>
+          )}
+        </ErrorBoundary>
       </main>
     </div>
   );

@@ -24,6 +24,9 @@ export default function StatusPage() {
   }, []);
 
   const ok = health?.status === "ok";
+  // `platforms` is omitted from /health JSON when no adapters run (serde
+  // skip_serializing_if), so default to {} — indexing undefined would crash the page.
+  const platforms = Object.entries(health?.checks.platforms ?? {});
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-8">
@@ -45,11 +48,11 @@ export default function StatusPage() {
         <Card label="Provider">{String(config?.provider ?? "…")}</Card>
       </div>
 
-      {health && Object.keys(health.checks.platforms).length > 0 && (
+      {platforms.length > 0 && (
         <div className="mt-6">
           <h2 className="mb-2 text-sm font-medium text-neutral-400">Platforms</h2>
           <div className="grid grid-cols-2 gap-3">
-            {Object.entries(health.checks.platforms).map(([name, st]) => (
+            {platforms.map(([name, st]) => (
               <Card key={name} label={name}>
                 <span className={st === "ok" ? "text-emerald-400" : "text-red-400"}>{st}</span>
               </Card>

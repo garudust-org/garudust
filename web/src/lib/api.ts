@@ -46,7 +46,8 @@ export interface EnvEntry {
 
 export interface HealthResponse {
   status: string;
-  checks: { db: string; platforms: Record<string, string> };
+  // `platforms` is omitted when no platform adapters are running.
+  checks: { db: string; platforms?: Record<string, string> };
 }
 
 /** Optional Bearer token (set when the gateway has GARUDUST_API_KEY). */
