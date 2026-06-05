@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
-import { chatStream } from "../lib/api";
+import { chatStream, getConfig } from "../lib/api";
 
 interface Msg {
   role: "user" | "assistant";
@@ -16,7 +16,21 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Runtime model selection: "" = default model, otherwise a routing-hint name
+  // (config.routing maps hint → "provider/model"). Sent as `hint` per message.
+  const [routing, setRouting] = useState<Record<string, string>>({});
+  const [defaultModel, setDefaultModel] = useState("");
+  const [hint, setHint] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    getConfig()
+      .then((c) => {
+        setRouting((c.routing as Record<string, string>) ?? {});
+        setDefaultModel((c.model as string) ?? "");
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -50,7 +64,7 @@ export default function ChatPage() {
           setStreaming(false);
         },
       },
-      { sessionKey: SESSION_KEY },
+      { sessionKey: SESSION_KEY, hint: hint || undefined },
     );
   }
 
@@ -104,6 +118,27 @@ export default function ChatPage() {
       </div>
 
       <div className="border-t border-neutral-800 bg-neutral-950/80 px-4 py-3">
+        <div className="mx-auto mb-2 flex max-w-3xl items-center gap-2">
+          <span className="text-xs text-neutral-500">Model</span>
+          <select
+            className="rounded-lg border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs outline-none focus:border-amber-500"
+            value={hint}
+            onChange={(e) => setHint(e.target.value)}
+            title="Pick a routing hint from config.routing, or use the default model"
+          >
+            <option value="">Default{defaultModel ? ` · ${defaultModel}` : ""}</option>
+            {Object.entries(routing).map(([name, target]) => (
+              <option key={name} value={name}>
+                {name} · {target}
+              </option>
+            ))}
+          </select>
+          {Object.keys(routing).length === 0 && (
+            <span className="text-xs text-neutral-600">
+              (add a <code>routing:</code> table in Config to switch models)
+            </span>
+          )}
+        </div>
         <div className="mx-auto flex max-w-3xl items-end gap-2">
           <textarea
             className="flex-1 resize-none rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm outline-none focus:border-amber-500"
