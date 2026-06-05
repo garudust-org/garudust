@@ -112,6 +112,10 @@ garudust skill validate [<path>]   # validate SKILL.md frontmatter
 
 The same React UI — a streaming chat pane plus Status, Config, and Secrets pages.
 
+<div align="center">
+  <img src="assets/desktop.png" alt="Garudust desktop app" width="760"/>
+</div>
+
 **Run the web app**
 
 ```bash
