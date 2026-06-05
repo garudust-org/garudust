@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getEnv, setEnv, type EnvEntry } from "../lib/api";
+import { deleteEnv, getEnv, setEnv, type EnvEntry } from "../lib/api";
 
 // Common secret keys offered as quick picks; any valid KEY can still be typed.
 const COMMON_KEYS = [
@@ -101,7 +101,24 @@ export default function EnvPage() {
         {entries.map((e) => (
           <div key={e.key} className="flex items-center justify-between px-4 py-2.5">
             <span className="font-mono text-sm">{e.key}</span>
-            <span className="font-mono text-sm text-neutral-500">{e.masked}</span>
+            <div className="flex items-center gap-3">
+              <span className="font-mono text-sm text-neutral-500">{e.masked}</span>
+              <button
+                className="rounded-md border border-neutral-700 px-2 py-1 text-xs text-neutral-400 hover:border-red-700 hover:text-red-400"
+                title={`Remove ${e.key}`}
+                onClick={async () => {
+                  if (!confirm(`Remove ${e.key}?`)) return;
+                  try {
+                    await deleteEnv(e.key);
+                    await refresh();
+                  } catch (err) {
+                    setError(String(err));
+                  }
+                }}
+              >
+                ✕
+              </button>
+            </div>
           </div>
         ))}
       </div>

@@ -35,7 +35,7 @@ fn main() {
             let (mut rx, child) = app
                 .shell()
                 .sidecar("garudust-server")?
-                .args(["--port", &port.to_string()])
+                .args(["--host", "127.0.0.1", "--port", &port.to_string()])
                 .spawn()?;
             app.state::<Sidecar>().0.lock().unwrap().replace(child);
 

@@ -46,8 +46,20 @@ npm run --prefix apps/desktop build   # → src-tauri/target/release/bundle/{dmg
 > source `assets/icon.png`. To rebrand, replace that source (1024×1024 PNG) and
 > regenerate: `npm run tauri icon ../../assets/icon.png`.
 
+## Code signing (optional)
+
+Builds are unsigned by default, so macOS Gatekeeper and Windows SmartScreen warn
+on first launch. To ship signed + notarized macOS builds, add these repo secrets
+— the release workflow passes them to `tauri-action` automatically (absent =
+unsigned, no failure):
+
+`APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`,
+`APPLE_ID`, `APPLE_PASSWORD` (app-specific password), `APPLE_TEAM_ID`.
+
 ## Notes
 
 - The desktop sidecar uses the plain `garudust-server` (no `web-ui` feature) —
-  Tauri serves the SPA, the gateway only serves the API.
-- `src-tauri/binaries/` and `src-tauri/gen/` are build artifacts (gitignored).
+  Tauri serves the SPA, the gateway only serves the API. It binds `127.0.0.1`
+  (the shell passes `--host 127.0.0.1`) so it is never exposed to the network.
+- `src-tauri/binaries/` and `src-tauri/gen/` are build artifacts (gitignored);
+  `src-tauri/icons/` is committed.

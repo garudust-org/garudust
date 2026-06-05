@@ -1407,6 +1407,31 @@ impl AgentConfig {
 
         std::fs::write(&env_path, lines.join("\n") + "\n")
     }
+
+    /// Remove a KEY=... line from ~/.garudust/.env. No-op if the file or key is
+    /// absent. Returns true if a line was removed.
+    pub fn delete_env_var(home_dir: &Path, key: &str) -> std::io::Result<bool> {
+        let env_path = home_dir.join(".env");
+        if !env_path.exists() {
+            return Ok(false);
+        }
+        let existing = std::fs::read_to_string(&env_path)?;
+        let prefix = format!("{key}=");
+        let kept: Vec<&str> = existing
+            .lines()
+            .filter(|l| !l.trim_start().starts_with(&prefix))
+            .collect();
+        let removed = kept.len() != existing.lines().count();
+        if removed {
+            let body = if kept.is_empty() {
+                String::new()
+            } else {
+                kept.join("\n") + "\n"
+            };
+            std::fs::write(&env_path, body)?;
+        }
+        Ok(removed)
+    }
 }
 
 // ── Sub-configs ──────────────────────────────────────────────────────────────

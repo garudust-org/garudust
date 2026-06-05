@@ -98,6 +98,15 @@ export async function setEnv(key: string, value: string): Promise<void> {
   if (!r.ok) throw new Error(`PUT /api/env failed: ${r.status} ${await r.text()}`);
 }
 
+export async function deleteEnv(key: string): Promise<void> {
+  const r = await fetch(httpUrl("/api/env"), {
+    method: "DELETE",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ key }),
+  });
+  if (!r.ok) throw new Error(`DELETE /api/env failed: ${r.status} ${await r.text()}`);
+}
+
 export interface ChatStreamHandlers {
   onDelta: (text: string) => void;
   onDone: () => void;

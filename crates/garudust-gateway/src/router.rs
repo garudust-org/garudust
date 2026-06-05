@@ -68,7 +68,13 @@ fn cors_layer() -> CorsLayer {
         .allow_origin(AllowOrigin::predicate(|origin: &HeaderValue, _| {
             is_allowed_origin(origin.as_bytes())
         }))
-        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::OPTIONS])
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
         .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE])
 }
 
@@ -340,7 +346,9 @@ pub fn create_router(state: AppState) -> Router {
         )
         .route(
             "/api/env",
-            get(crate::env_api::get_env).put(crate::env_api::put_env),
+            get(crate::env_api::get_env)
+                .put(crate::env_api::put_env)
+                .delete(crate::env_api::delete_env),
         )
         .route_layer(middleware::from_fn_with_state(state.clone(), require_auth));
 

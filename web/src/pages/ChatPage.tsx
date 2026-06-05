@@ -7,15 +7,15 @@ interface Msg {
   content: string;
 }
 
-// One session key per page load gives conversation continuity across turns
-// (the gateway threads history by session_key).
-const SESSION_KEY = crypto.randomUUID();
-
 export default function ChatPage() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A session key threads history on the gateway; "New chat" rotates it.
+  const [sessionKey, setSessionKey] = useState(() => crypto.randomUUID());
+  // Disposer for the active stream, so "Stop" can close the socket.
+  const disposeRef = useRef<(() => void) | null>(null);
   // Runtime model selection: "" = default model, otherwise a routing-hint name
   // (config.routing maps hint → "provider/model"). Sent as `hint` per message.
   const [routing, setRouting] = useState<Record<string, string>>({});
@@ -54,7 +54,7 @@ export default function ChatPage() {
         return next;
       });
 
-    chatStream(
+    disposeRef.current = chatStream(
       text,
       {
         onDelta: appendToAssistant,
@@ -64,8 +64,21 @@ export default function ChatPage() {
           setStreaming(false);
         },
       },
-      { sessionKey: SESSION_KEY, hint: hint || undefined },
+      { sessionKey, hint: hint || undefined },
     );
+  }
+
+  function stop() {
+    disposeRef.current?.();
+    disposeRef.current = null;
+    setStreaming(false);
+  }
+
+  function newSession() {
+    stop();
+    setMessages([]);
+    setError(null);
+    setSessionKey(crypto.randomUUID());
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -138,6 +151,13 @@ export default function ChatPage() {
               (add a <code>routing:</code> table in Config to switch models)
             </span>
           )}
+          <button
+            className="ml-auto rounded-lg border border-neutral-700 px-3 py-1 text-xs text-neutral-300 hover:border-amber-500"
+            onClick={newSession}
+            title="Clear the conversation and start a fresh session"
+          >
+            New chat
+          </button>
         </div>
         <div className="mx-auto flex max-w-3xl items-end gap-2">
           <textarea
@@ -149,13 +169,22 @@ export default function ChatPage() {
             onKeyDown={onKeyDown}
             disabled={streaming}
           />
-          <button
-            className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-medium text-neutral-950 disabled:opacity-40"
-            onClick={send}
-            disabled={streaming || !input.trim()}
-          >
-            {streaming ? "…" : "Send"}
-          </button>
+          {streaming ? (
+            <button
+              className="rounded-xl border border-neutral-600 px-4 py-2 text-sm font-medium text-neutral-200 hover:border-red-600 hover:text-red-400"
+              onClick={stop}
+            >
+              Stop
+            </button>
+          ) : (
+            <button
+              className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-medium text-neutral-950 disabled:opacity-40"
+              onClick={send}
+              disabled={!input.trim()}
+            >
+              Send
+            </button>
+          )}
         </div>
       </div>
     </div>

@@ -9,6 +9,31 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.13.6] — 2026-06-05
+
+### Security
+
+- **Desktop sidecar now binds `127.0.0.1`, not `0.0.0.0`** — `garudust-server`
+  gained a `--host` flag / `GARUDUST_HOST` env (default `0.0.0.0`, unchanged for
+  servers), and the desktop shell passes `--host 127.0.0.1`. Previously the
+  desktop app's bundled, auth-less gateway listened on all interfaces, so anyone
+  on the same network could reach `/chat` (drive the agent + tools), read masked
+  `/api/env`, or change `/api/config` — CORS only blocked browsers, not direct
+  clients.
+
+### Added
+
+- **Runtime model switching** — a Model picker above the chat input lists the
+  `routing` hints (each `hint · provider/model`) plus the default, sent as the
+  per-message `hint`; and a routing editor on the Config page adds/removes those
+  hints in the UI. **New chat** (rotate session) and **Stop** (cancel a running
+  stream) buttons. The Secrets page can now delete keys (`DELETE /api/env`).
+- **Connection state** — the app shows a "Connecting…" splash until the gateway
+  is reachable and a "Lost connection" banner if it drops, instead of failing
+  each action silently.
+- **macOS signing/notarization wiring** — the release workflow passes Apple
+  signing secrets to `tauri-action` when present (unsigned otherwise).
+
 ## [0.13.5] — 2026-06-05
 
 ### Fixed

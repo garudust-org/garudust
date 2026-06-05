@@ -42,6 +42,12 @@ struct Cli {
     #[arg(long)]
     port: Option<u16>,
 
+    /// Address to bind the HTTP gateway. Defaults to `0.0.0.0` (all interfaces).
+    /// The desktop app passes `127.0.0.1` so its local sidecar is not exposed to
+    /// the network.
+    #[arg(long, env = "GARUDUST_HOST", default_value = "0.0.0.0")]
+    host: String,
+
     /// Override model. Falls back to `model` in config.yaml or `GARUDUST_MODEL`
     /// in `~/.garudust/.env`.
     #[arg(long)]
@@ -841,7 +847,7 @@ async fn main() -> Result<()> {
         platform_adapters: platform_adapters.clone(),
     };
     let router = create_router(state);
-    let addr = format!("0.0.0.0:{port}");
+    let addr = format!("{}:{port}", cli.host);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     tracing::info!("garudust-server listening on {addr}");
 

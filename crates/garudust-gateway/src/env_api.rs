@@ -126,6 +126,25 @@ pub async fn put_env(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Body for `DELETE /api/env`.
+#[derive(Debug, Deserialize)]
+pub struct DeleteEnvRequest {
+    pub key: String,
+}
+
+/// `DELETE /api/env` — remove a secret from `.env`.
+pub async fn delete_env(
+    State(state): State<AppState>,
+    Json(req): Json<DeleteEnvRequest>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    if !valid_env_key(&req.key) {
+        return Err((StatusCode::BAD_REQUEST, "invalid key".to_string()));
+    }
+    AgentConfig::delete_env_var(&state.config.home_dir, &req.key)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -188,5 +207,22 @@ mod tests {
     fn read_entries_missing_file_is_empty() {
         let dir = tempfile::tempdir().unwrap();
         assert!(read_env_entries(dir.path()).is_empty());
+    }
+
+    #[test]
+    fn delete_removes_only_the_named_key() {
+        let dir = tempfile::tempdir().unwrap();
+        AgentConfig::set_env_var(dir.path(), "FOO", "bar").unwrap();
+        AgentConfig::set_env_var(dir.path(), "BAZ", "qux").unwrap();
+
+        assert!(AgentConfig::delete_env_var(dir.path(), "FOO").unwrap());
+        let keys: Vec<String> = read_env_entries(dir.path())
+            .into_iter()
+            .map(|e| e.key)
+            .collect();
+        assert!(!keys.contains(&"FOO".to_string()));
+        assert!(keys.contains(&"BAZ".to_string()));
+        // Deleting an absent key is a no-op.
+        assert!(!AgentConfig::delete_env_var(dir.path(), "FOO").unwrap());
     }
 }
