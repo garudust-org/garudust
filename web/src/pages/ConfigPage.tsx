@@ -1,12 +1,11 @@
 import { useEffect, useState } from "react";
-import { getConfig, putConfig } from "../lib/api";
+import { getConfig, getEnv, putConfig } from "../lib/api";
 
 // The most frequently edited fields get inputs. The full config object is
 // preserved and round-tripped, so fields not surfaced here are never lost on
 // save — and saving hot-reloads the running agent (the server watches
-// config.yaml).
+// config.yaml). `model` and `provider` are rendered separately (linked).
 const STRING_FIELDS: { key: string; label: string }[] = [
-  { key: "model", label: "Model" },
   { key: "base_url", label: "Base URL" },
   { key: "reflection_model", label: "Reflection model" },
 ];
@@ -17,13 +16,38 @@ const NUMBER_FIELDS: { key: string; label: string }[] = [
   { key: "max_history_pairs", label: "Max history pairs" },
 ];
 
-// Known built-in providers (you can still type a custom one). Order: common first.
-const PROVIDERS = [
-  "anthropic", "openai", "gemini", "groq", "mistral", "deepseek", "ollama",
-  "openrouter", "vllm", "bedrock", "xai", "together", "fireworks", "cerebras",
-  "perplexity", "cohere", "nvidia", "alibaba", "doubao", "zhipu", "moonshot",
-  "baidu", "thaillm", "codex",
-];
+// Per-provider metadata. `keyEnv` mirrors the backend (BUILTIN_PROVIDERS +
+// special transports) and drives the "which secret to set" hint. `model` is a
+// sensible editable default applied when you switch providers — empty means
+// "don't touch the current model" (e.g. self-hosted vllm/ollama). Models drift,
+// so these are starting points, not validated lists.
+const PROVIDER_META: Record<string, { keyEnv: string; model: string }> = {
+  anthropic: { keyEnv: "ANTHROPIC_API_KEY", model: "claude-sonnet-4-6" },
+  openai: { keyEnv: "OPENAI_API_KEY", model: "gpt-4o" },
+  gemini: { keyEnv: "GEMINI_API_KEY", model: "gemini-2.0-flash" },
+  groq: { keyEnv: "GROQ_API_KEY", model: "llama-3.3-70b-versatile" },
+  mistral: { keyEnv: "MISTRAL_API_KEY", model: "mistral-large-latest" },
+  deepseek: { keyEnv: "DEEPSEEK_API_KEY", model: "deepseek-chat" },
+  ollama: { keyEnv: "", model: "llama3.2" },
+  openrouter: { keyEnv: "OPENROUTER_API_KEY", model: "anthropic/claude-sonnet-4-6" },
+  vllm: { keyEnv: "VLLM_API_KEY", model: "" },
+  bedrock: { keyEnv: "AWS_ACCESS_KEY_ID", model: "anthropic.claude-3-5-sonnet-20241022-v2:0" },
+  xai: { keyEnv: "XAI_API_KEY", model: "grok-2-latest" },
+  together: { keyEnv: "TOGETHER_API_KEY", model: "meta-llama/Llama-3.3-70B-Instruct-Turbo" },
+  fireworks: { keyEnv: "FIREWORKS_API_KEY", model: "accounts/fireworks/models/llama-v3p3-70b-instruct" },
+  cerebras: { keyEnv: "CEREBRAS_API_KEY", model: "llama-3.3-70b" },
+  perplexity: { keyEnv: "PERPLEXITY_API_KEY", model: "sonar" },
+  cohere: { keyEnv: "COHERE_API_KEY", model: "command-r-plus" },
+  nvidia: { keyEnv: "NVIDIA_API_KEY", model: "meta/llama-3.3-70b-instruct" },
+  alibaba: { keyEnv: "DASHSCOPE_API_KEY", model: "qwen-max" },
+  doubao: { keyEnv: "ARK_API_KEY", model: "" },
+  zhipu: { keyEnv: "ZHIPU_API_KEY", model: "glm-4-plus" },
+  moonshot: { keyEnv: "MOONSHOT_API_KEY", model: "moonshot-v1-8k" },
+  baidu: { keyEnv: "QIANFAN_API_KEY", model: "" },
+  thaillm: { keyEnv: "THAILLM_API_KEY", model: "" },
+  codex: { keyEnv: "", model: "" },
+};
+const PROVIDERS = Object.keys(PROVIDER_META);
 const APPROVAL_MODES = ["auto", "smart", "deny", "interactive"];
 const SANDBOX_MODES = ["none", "docker", "ssh"];
 
@@ -32,6 +56,7 @@ const inputCls =
 
 export default function ConfigPage() {
   const [config, setConfig] = useState<Record<string, unknown> | null>(null);
+  const [envKeys, setEnvKeys] = useState<Set<string>>(new Set());
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -40,10 +65,26 @@ export default function ConfigPage() {
     getConfig()
       .then(setConfig)
       .catch((e) => setError(String(e)));
+    // Used to tell the user whether the selected provider's key is set.
+    getEnv()
+      .then((entries) => setEnvKeys(new Set(entries.map((e) => e.key))))
+      .catch(() => {});
   }, []);
 
   function set(key: string, value: unknown) {
     setConfig((c) => (c ? { ...c, [key]: value } : c));
+  }
+
+  // Switching provider applies that provider's default model (when known), so
+  // you don't end up with a model string that only worked for the old provider.
+  function changeProvider(p: string) {
+    setConfig((c) => {
+      if (!c) return c;
+      const next: Record<string, unknown> = { ...c, provider: p };
+      const def = PROVIDER_META[p]?.model;
+      if (def) next.model = def;
+      return next;
+    });
   }
 
   // Merge into the nested `security` object without dropping its other fields.
@@ -90,7 +131,7 @@ export default function ConfigPage() {
           <select
             className={`w-56 ${inputCls}`}
             value={provider}
-            onChange={(e) => set("provider", e.target.value)}
+            onChange={(e) => changeProvider(e.target.value)}
           >
             {/* keep a custom provider (e.g. a named profile) selectable */}
             {provider && !PROVIDERS.includes(provider) && (
@@ -102,6 +143,15 @@ export default function ConfigPage() {
               </option>
             ))}
           </select>
+        </Field>
+
+        <Field label="Model">
+          <input
+            className={`w-full ${inputCls}`}
+            value={(config.model as string) ?? ""}
+            onChange={(e) => set("model", e.target.value)}
+          />
+          <KeyHint provider={provider} envKeys={envKeys} />
         </Field>
 
         {STRING_FIELDS.map((f) => (
@@ -175,5 +225,24 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span className="text-sm text-neutral-400">{label}</span>
       {children}
     </label>
+  );
+}
+
+// Tells the user which secret the chosen provider needs and whether it's set.
+function KeyHint({ provider, envKeys }: { provider: string; envKeys: Set<string> }) {
+  const meta = PROVIDER_META[provider];
+  if (!meta) return null; // custom provider — unknown requirements
+  if (!meta.keyEnv) {
+    return <span className="text-xs text-neutral-500">Local provider — no API key needed.</span>;
+  }
+  const isSet = envKeys.has(meta.keyEnv);
+  return isSet ? (
+    <span className="text-xs text-emerald-500">
+      ✓ <code>{meta.keyEnv}</code> is set
+    </span>
+  ) : (
+    <span className="text-xs text-amber-500">
+      ⚠ needs <code>{meta.keyEnv}</code> — set it on the Secrets page
+    </span>
   );
 }
