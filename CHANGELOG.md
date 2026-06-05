@@ -9,6 +9,29 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.13.5] — 2026-06-05
+
+### Fixed
+
+- **Desktop dev (`tauri dev`) hit the same CORS block** — the Vite dev server
+  serves the UI from `http://localhost:5173`, not `tauri://localhost`, so the
+  0.13.4 allowlist did not cover it. CORS now also allows `localhost` /
+  `127.0.0.1` on any port; arbitrary sites stay denied.
+- **Status page went black when no platform adapters run** — `/health` omits
+  `checks.platforms` in that case, and the page indexed the missing object and
+  crashed the whole window. It now defaults to an empty map, and every page is
+  wrapped in an error boundary so a render error shows a message instead of a
+  black screen.
+
+### Added
+
+- **Config page: dropdowns and provider-aware models** — Provider, approval mode
+  (`auto`/`smart`/`deny`/`interactive`), and terminal sandbox (`none`/`docker`/
+  `ssh`) are now selects instead of free text. Choosing a provider fills a
+  sensible default model for it (editable; left untouched for self-hosted
+  vllm/ollama), and a hint under Model shows which secret the provider needs and
+  whether it is already set.
+
 ## [0.13.4] — 2026-06-05
 
 ### Fixed
