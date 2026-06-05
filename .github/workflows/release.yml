@@ -125,6 +125,10 @@ jobs:
   desktop:
     name: Desktop installer (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
+    # `secrets` can't be used in `if:`, so surface "is signing configured?" as an
+    # env flag the signing step can branch on.
+    env:
+      HAS_APPLE_SIGNING: ${{ secrets.APPLE_CERTIFICATE != '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -209,7 +213,7 @@ jobs:
       # passing empty APPLE_* vars makes tauri-action attempt (and fail) signing.
       # When absent, the build is unsigned (Gatekeeper warning on first launch).
       - name: Set up Apple signing
-        if: ${{ runner.os == 'macOS' && secrets.APPLE_CERTIFICATE != '' }}
+        if: runner.os == 'macOS' && env.HAS_APPLE_SIGNING == 'true'
         run: |
           {
             echo "APPLE_CERTIFICATE=${{ secrets.APPLE_CERTIFICATE }}"
