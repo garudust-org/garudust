@@ -79,6 +79,7 @@ export default function ConfigPage() {
   }
 
   const security = (config.security as Record<string, unknown>) ?? {};
+  const provider = (config.provider as string) ?? "";
 
   return (
     <div className="mx-auto max-w-2xl px-6 py-8">
@@ -86,17 +87,21 @@ export default function ConfigPage() {
 
       <div className="flex flex-col gap-4">
         <Field label="Provider">
-          <input
-            list="known-providers"
-            className={`w-full ${inputCls}`}
-            value={(config.provider as string) ?? ""}
+          <select
+            className={`w-56 ${inputCls}`}
+            value={provider}
             onChange={(e) => set("provider", e.target.value)}
-          />
-          <datalist id="known-providers">
+          >
+            {/* keep a custom provider (e.g. a named profile) selectable */}
+            {provider && !PROVIDERS.includes(provider) && (
+              <option value={provider}>{provider} (custom)</option>
+            )}
             {PROVIDERS.map((p) => (
-              <option key={p} value={p} />
+              <option key={p} value={p}>
+                {p}
+              </option>
             ))}
-          </datalist>
+          </select>
         </Field>
 
         {STRING_FIELDS.map((f) => (
