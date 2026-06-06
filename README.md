@@ -124,8 +124,8 @@ garudust-server --port 3000      # terminal 1: start the agent server
 cd web && trunk serve            # terminal 2 → open http://localhost:8080
 ```
 
-**Install the desktop app** — a [Tauri](https://tauri.app) window (~10 MB, no
-bundled Chromium) that launches the agent server for you.
+**Install the desktop app** — a pure-Rust native ([egui](https://github.com/emilk/egui))
+app with the agent embedded in-process (no webview, no separate server).
 
 <div align="center">
 
@@ -152,14 +152,12 @@ bundled Chromium) that launches the agent server for you.
 > will warn — expected for unsigned apps.
 
 On first run, set your LLM key on the **Secrets** page (or in `~/.garudust/.env`).
-Secrets stay server-side: the Secrets page is masked + write-only, and the desktop
-app talks to the bundled server on `127.0.0.1` only.
+The Secrets page is masked + write-only; the agent runs inside the app itself.
 
-Building from source? See [`apps/desktop/README.md`](apps/desktop/README.md):
+Building from source? See [`apps/desktop-native/README.md`](apps/desktop-native/README.md):
 
 ```bash
-cargo install tauri-cli trunk --locked       # one-time
-cd apps/desktop && cargo tauri dev           # → opens the desktop window
+cargo run -p garudust-desktop-native --release   # → opens the desktop window
 ```
 
 ---
@@ -180,7 +178,7 @@ cd apps/desktop && cargo tauri dev           # → opens the desktop window
 
 🌐 **Headless API** — `garudust-server` exposes `/chat`, `/stream`, and a WebSocket endpoint — embed in any app or script. Cron-scheduled autonomous tasks run without a user present.
 
-🖥️ **Web dashboard & desktop app** — one Rust/Leptos (WASM) UI (chat + status + config + secrets) served straight from the binary (`web-ui` feature) or wrapped as a tiny Tauri desktop app (DMG / EXE / AppImage / deb). No JS/TS; secrets stay masked and server-side.
+🖥️ **Web dashboard & native desktop app** — a Rust/Leptos (WASM) dashboard served straight from the binary (`web-ui` feature) for the browser, plus a pure-Rust native [egui](https://github.com/emilk/egui) desktop app with the agent embedded in-process (DMG / EXE / AppImage / deb). No JS/TS; secrets stay masked and server-side.
 
 ---
 

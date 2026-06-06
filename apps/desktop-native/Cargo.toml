@@ -36,3 +36,12 @@ garudust-memory    = { path = "../../crates/garudust-memory" }
 strip = true
 opt-level = 3
 lto = "thin"
+
+# cargo-packager — builds .dmg / .exe / .AppImage / .deb from this binary.
+# Install:  cargo install cargo-packager --locked
+# Package:  cargo packager --release   (run in this directory)
+[package.metadata.packager]
+product-name = "Garudust"
+identifier = "ai.garudust.desktop"
+icons = ["icons/icon.icns", "icons/icon.ico", "icons/128x128.png", "icons/32x32.png"]
+out-dir = "dist"

@@ -125,16 +125,11 @@ jobs:
   desktop:
     name: Desktop installer (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
-    # `secrets` can't be used in `if:`, so surface "is signing configured?" as an
-    # env flag the signing step can branch on.
-    env:
-      HAS_APPLE_SIGNING: ${{ secrets.APPLE_CERTIFICATE != '' }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          # One universal macOS DMG (Intel + Apple Silicon) built on an Apple
-          # Silicon runner — avoids the scarce/deprecated macos-13 Intel runner.
+          # Universal macOS app (Intel + Apple Silicon) on an Apple Silicon runner.
           - os: macos-latest
             target: universal-apple-darwin
             rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
@@ -160,81 +155,48 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-            target
-          key: desktop-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+            apps/desktop-native/target
+          key: desktop-${{ matrix.target }}-${{ hashFiles('apps/desktop-native/Cargo.lock') }}
           restore-keys: desktop-${{ matrix.target }}-
 
-      - name: Install Linux WebKit dependencies
+      - name: Install Linux build/packaging deps
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev \
-            librsvg2-dev patchelf
+          sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev \
+            libxcb-xfixes0-dev libxkbcommon-dev libssl-dev libgtk-3-dev \
+            librsvg2-dev libfuse2
 
-      - name: Add WASM target
-        run: rustup target add wasm32-unknown-unknown
+      - name: Install cargo-packager
+        run: cargo install cargo-packager --locked
 
-      - name: Install trunk
-        run: cargo install trunk --locked
-
-      - name: Build Leptos SPA
-        run: cd web && trunk build --release
-
-      # macOS universal needs all three sidecars: a per-arch binary for each
-      # arch's app compile, plus a lipo'd universal binary for the final bundle.
-      - name: Build & stage sidecars (macOS universal)
+      # macOS: build both arches, lipo into one universal binary, package it.
+      - name: Package (macOS universal)
         if: runner.os == 'macOS'
+        working-directory: apps/desktop-native
         run: |
-          cargo build --release -p garudust-server --target aarch64-apple-darwin
-          cargo build --release -p garudust-server --target x86_64-apple-darwin
-          mkdir -p apps/desktop/src-tauri/binaries
-          cd apps/desktop/src-tauri/binaries
-          BASE=../../../../target
-          cp "$BASE/aarch64-apple-darwin/release/garudust-server" garudust-server-aarch64-apple-darwin
-          cp "$BASE/x86_64-apple-darwin/release/garudust-server"  garudust-server-x86_64-apple-darwin
+          cargo build --release --target aarch64-apple-darwin
+          cargo build --release --target x86_64-apple-darwin
+          mkdir -p target/universal-apple-darwin/release
           lipo -create \
-            garudust-server-aarch64-apple-darwin \
-            garudust-server-x86_64-apple-darwin \
-            -output garudust-server-universal-apple-darwin
+            target/aarch64-apple-darwin/release/garudust-desktop-native \
+            target/x86_64-apple-darwin/release/garudust-desktop-native \
+            -output target/universal-apple-darwin/release/garudust-desktop-native
+          cargo packager --release --target universal-apple-darwin
 
-      - name: Build & stage sidecar (single arch)
+      - name: Package (Linux / Windows)
         if: runner.os != 'macOS'
+        working-directory: apps/desktop-native
         shell: bash
         run: |
-          cargo build --release -p garudust-server --target ${{ matrix.target }}
-          mkdir -p apps/desktop/src-tauri/binaries
-          EXT=""
-          if [ "${{ runner.os }}" = "Windows" ]; then EXT=".exe"; fi
-          cp "target/${{ matrix.target }}/release/garudust-server${EXT}" \
-             "apps/desktop/src-tauri/binaries/garudust-server-${{ matrix.target }}${EXT}"
-
-      # Only expose Apple signing env when the cert secret is actually set —
-      # passing empty APPLE_* vars makes tauri-action attempt (and fail) signing.
-      # When absent, the build is unsigned (Gatekeeper warning on first launch).
-      - name: Set up Apple signing
-        if: runner.os == 'macOS' && env.HAS_APPLE_SIGNING == 'true'
-        run: |
-          {
-            echo "APPLE_CERTIFICATE=${{ secrets.APPLE_CERTIFICATE }}"
-            echo "APPLE_CERTIFICATE_PASSWORD=${{ secrets.APPLE_CERTIFICATE_PASSWORD }}"
-            echo "APPLE_SIGNING_IDENTITY=${{ secrets.APPLE_SIGNING_IDENTITY }}"
-            echo "APPLE_ID=${{ secrets.APPLE_ID }}"
-            echo "APPLE_PASSWORD=${{ secrets.APPLE_PASSWORD }}"
-            echo "APPLE_TEAM_ID=${{ secrets.APPLE_TEAM_ID }}"
-          } >> "$GITHUB_ENV"
-
-      - name: Build desktop app
-        uses: tauri-apps/tauri-action@v0
-        with:
-          projectPath: apps/desktop
-          args: --target ${{ matrix.target }}
+          cargo build --release
+          cargo packager --release
 
       - name: Collect installers
         shell: bash
         run: |
           mkdir -p installers
-          BUNDLE="apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle"
-          # Rename to version-less, stable names so the README can link to
+          # Rename to version-less, stable names so the README links to
           # /releases/latest/download/<name> permanently (no per-release edits).
           while IFS= read -r f; do
             case "$f" in
@@ -243,7 +205,7 @@ jobs:
               *.AppImage) cp "$f" "installers/Garudust-Linux-x86_64.AppImage" ;;
               *.deb)      cp "$f" "installers/Garudust-Linux-x86_64.deb" ;;
             esac
-          done < <(find "$BUNDLE" -type f \
+          done < <(find apps/desktop-native/dist -type f \
             \( -name '*.dmg' -o -name '*.exe' -o -name '*.AppImage' -o -name '*.deb' \))
           ls -la installers
 

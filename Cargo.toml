@@ -13,7 +13,7 @@ members = [
 ]
 # The Tauri desktop shell and Leptos web app are separate workspaces so their
 # heavy/WASM dependencies stay out of the core `cargo build/test --workspace`.
-exclude = ["apps/desktop/src-tauri", "web", "apps/desktop-native"]
+exclude = ["web", "apps/desktop-native"]
 resolver = "2"
 
 [profile.release]

@@ -20,6 +20,15 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   across launches. Runs alongside the browser/Tauri dashboard (Leptos) — pick
   native for speed, web for browser access.
 
+### Removed
+
+- **Tauri desktop shell (`apps/desktop`)** — superseded by the native egui app.
+  The desktop is now `apps/desktop-native` (native, agent embedded); the browser
+  dashboard is still the Leptos SPA served by `garudust-server --features web-ui`.
+  Release installers (`.dmg` / `.exe` / `.AppImage` / `.deb`) are now built with
+  [`cargo-packager`](https://github.com/crabnebula-dev/cargo-packager) from the
+  native binary (no webview/sidecar); download links are unchanged.
+
 ### Changed
 
 - **Web/desktop UI rewritten in Rust (Leptos → WASM); JavaScript/TypeScript and
