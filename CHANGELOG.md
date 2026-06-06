@@ -9,6 +9,17 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Native desktop app (`apps/desktop-native`)** — a pure-Rust [egui](https://github.com/emilk/egui)
+  GUI with the agent embedded in-process (no webview, WASM, JS, HTTP sidecar, or
+  npm). Launches instantly, talks to the agent by direct calls, and reads/writes
+  `config.yaml` / `.env` directly. Feature parity with the web dashboard (Chat
+  with model picker + Stop, Status, Config with routing editor + key hints,
+  masked Secrets with delete) plus Dark/Light theme and 3 font sizes persisted
+  across launches. Runs alongside the browser/Tauri dashboard (Leptos) — pick
+  native for speed, web for browser access.
+
 ### Changed
 
 - **Web/desktop UI rewritten in Rust (Leptos → WASM); JavaScript/TypeScript and

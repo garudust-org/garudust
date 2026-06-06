@@ -146,3 +146,34 @@ jobs:
 
       - name: Build gateway with embedded SPA
         run: cargo build -p garudust-server --features web-ui
+
+  desktop-native:
+    name: Desktop (native egui)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install egui build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev \
+            libxcb-xfixes0-dev libxkbcommon-dev libssl-dev
+
+      - name: Cache cargo registry & build
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            apps/desktop-native/target
+          key: ${{ runner.os }}-cargo-egui-${{ hashFiles('apps/desktop-native/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-egui-
+
+      - name: Build native app
+        run: cargo build --manifest-path apps/desktop-native/Cargo.toml
