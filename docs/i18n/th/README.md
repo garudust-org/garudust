@@ -94,17 +94,6 @@ garudust skill update [<name>]     # อัปเดต skill (ละชื่�
 garudust skill validate [<path>]   # ตรวจสอบ frontmatter ของ SKILL.md
 ```
 
-<div align="center">
-  <img src="../../../assets/demo-tui.png" alt="Garudust TUI" width="700"/>
-</div>
-
-| ปุ่ม | การทำงาน |
-|------|----------|
-| `Enter` | ส่งข้อความ |
-| `↑ ↓` | เลื่อนประวัติ |
-| `/new` | เริ่ม session ใหม่ |
-| `/model <name>` | เปลี่ยน model |
-| `Ctrl+C` | ออกจากโปรแกรม |
 
 ---
 

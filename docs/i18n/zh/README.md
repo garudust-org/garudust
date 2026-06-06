@@ -94,17 +94,6 @@ garudust skill update [<name>]       # 更新技能（省略名称 = 全部更�
 garudust skill validate [<path>]     # 校验 SKILL.md frontmatter
 ```
 
-<div align="center">
-  <img src="../../../assets/demo-tui.png" alt="Garudust TUI" width="700"/>
-</div>
-
-| 按键 | 操作 |
-|------|------|
-| `Enter` | 发送消息 |
-| `↑ ↓` | 滚动历史 |
-| `/new` | 新会话 |
-| `/model <name>` | 切换模型 |
-| `Ctrl+C` | 退出 |
 
 ---
 
