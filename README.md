@@ -94,18 +94,6 @@ garudust skill update [<name>]     # update one skill (omit to update all)
 garudust skill validate [<path>]   # validate SKILL.md frontmatter
 ```
 
-<div align="center">
-  <img src="assets/demo-tui.png" alt="Garudust TUI" width="700"/>
-</div>
-
-| Key | Action |
-|-----|--------|
-| `Enter` | Send message |
-| `↑ ↓` | Scroll history |
-| `/new` | New session |
-| `/model <name>` | Switch model |
-| `Ctrl+C` | Quit |
-
 ---
 
 ## Web dashboard & desktop app
