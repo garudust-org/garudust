@@ -110,18 +110,18 @@ garudust skill validate [<path>]   # validate SKILL.md frontmatter
 
 ## Web dashboard & desktop app
 
-The same React UI — a streaming chat pane plus Status, Config, and Secrets pages.
+One UI written in **Rust ([Leptos](https://leptos.dev) → WASM)** — a streaming chat
+pane plus Status, Config, and Secrets pages. No JavaScript/TypeScript.
 
 <div align="center">
   <img src="assets/desktop.png" alt="Garudust desktop app" width="760"/>
 </div>
 
-**Run the web app**
+**Run the web app** (needs `cargo install trunk` + `rustup target add wasm32-unknown-unknown`)
 
 ```bash
 garudust-server --port 3000      # terminal 1: start the agent server
-npm --prefix web install         # terminal 2: first time only
-npm --prefix web run dev         # → open http://localhost:5173
+cd web && trunk serve            # terminal 2 → open http://localhost:8080
 ```
 
 **Install the desktop app** — a [Tauri](https://tauri.app) window (~10 MB, no
@@ -158,7 +158,8 @@ app talks to the bundled server on `127.0.0.1` only.
 Building from source? See [`apps/desktop/README.md`](apps/desktop/README.md):
 
 ```bash
-npm --prefix apps/desktop run dev   # → opens the desktop window
+cargo install tauri-cli trunk --locked       # one-time
+cd apps/desktop && cargo tauri dev           # → opens the desktop window
 ```
 
 ---
@@ -179,7 +180,7 @@ npm --prefix apps/desktop run dev   # → opens the desktop window
 
 🌐 **Headless API** — `garudust-server` exposes `/chat`, `/stream`, and a WebSocket endpoint — embed in any app or script. Cron-scheduled autonomous tasks run without a user present.
 
-🖥️ **Web dashboard & desktop app** — one React UI (chat + status + config + secrets) served straight from the binary (`web-ui` feature) or wrapped as a tiny Tauri desktop app (DMG / EXE / AppImage / deb). Secrets stay masked and server-side.
+🖥️ **Web dashboard & desktop app** — one Rust/Leptos (WASM) UI (chat + status + config + secrets) served straight from the binary (`web-ui` feature) or wrapped as a tiny Tauri desktop app (DMG / EXE / AppImage / deb). No JS/TS; secrets stay masked and server-side.
 
 ---
 

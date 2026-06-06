@@ -1,0 +1,12 @@
+[build]
+# Output to the same `dist/` the Tauri config already points at.
+target = "index.html"
+
+[watch]
+# Don't re-trigger on the dist folder itself.
+ignore = ["dist"]
+
+# To regenerate assets/style.css after UI changes, install the Tailwind
+# standalone binary (no npm required) and run:
+#   tailwindcss -i style.css -o assets/style.css --minify
+# Download: https://github.com/tailwindlabs/tailwindcss/releases/latest

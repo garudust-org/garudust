@@ -9,6 +9,17 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Web/desktop UI rewritten in Rust (Leptos → WASM); JavaScript/TypeScript and
+  npm removed.** The dashboard (`web/`) is now a Leptos app built with Trunk
+  instead of React/Vite, and the desktop app builds with the Rust `cargo tauri`
+  CLI + a shell sidecar-staging script instead of npm. The UI and features are
+  unchanged (chat with runtime model picker, Status, Config with routing editor,
+  masked Secrets). The only non-Rust artifacts shipped are the auto-generated
+  wasm-bindgen glue and the Tailwind CSS. CI builds the SPA with `trunk` and the
+  `web` crate is its own cargo workspace (kept out of the core workspace).
+
 ## [0.13.6] — 2026-06-05
 
 ### Security

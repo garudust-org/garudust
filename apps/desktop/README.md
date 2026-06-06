@@ -1,14 +1,17 @@
 # Garudust Desktop
 
-A thin [Tauri 2](https://tauri.app) shell that wraps the web dashboard (`../../web`)
-and runs `garudust-server` as a local sidecar. Chosen over Electron to keep the
-app small (OS webview, no bundled Chromium/Node) in line with Garudust's
-single-small-binary philosophy.
+A thin [Tauri 2](https://tauri.app) shell that wraps the web dashboard (`../../web`,
+a Rust/Leptos WASM app) and runs `garudust-server` as a local sidecar. Chosen
+over Electron to keep the app small (OS webview, no bundled Chromium/Node) in
+line with Garudust's single-small-binary philosophy.
+
+**No Node/npm** — the UI is Rust (Leptos → WASM, built with Trunk) and the build
+uses the Rust `cargo tauri` CLI.
 
 ## How it works
 
 ```
-Tauri window  ──loads──▶  web/dist SPA (bundled by Tauri)
+Tauri window  ──loads──▶  web/dist  (Leptos WASM SPA, bundled by Tauri)
      │
      └─ on launch: spawns garudust-server on 127.0.0.1:<free port>,
         injects window.__GARUDUST_GATEWAY__ = "http://127.0.0.1:<port>"
@@ -18,16 +21,22 @@ Tauri window  ──loads──▶  web/dist SPA (bundled by Tauri)
 The sidecar binds loopback only, so the desktop app never exposes the agent to
 the network. It is killed when the window closes.
 
+## Prerequisites (one-time)
+
+```bash
+rustup target add wasm32-unknown-unknown
+cargo install trunk --locked        # builds the Leptos SPA
+cargo install tauri-cli --locked    # the `cargo tauri` command
+```
+
 ## Develop
 
 ```bash
-# one-time
-npm install --prefix apps/desktop
 cargo build --release -p garudust-server   # build the gateway…
-npm run --prefix apps/desktop stage-sidecar # …and stage it as the sidecar
+apps/desktop/scripts/stage-sidecar.sh      # …and stage it as the sidecar
 
-# run (Vite dev server + Tauri window with hot reload)
-npm run --prefix apps/desktop dev
+# run (Trunk dev server + Tauri window, hot-reloads on .rs changes)
+cd apps/desktop && cargo tauri dev
 ```
 
 ## Build installers
@@ -38,13 +47,13 @@ tags). To build locally:
 
 ```bash
 cargo build --release -p garudust-server
-npm run --prefix apps/desktop stage-sidecar
-npm run --prefix apps/desktop build   # → src-tauri/target/release/bundle/{dmg,nsis,appimage,deb}
+apps/desktop/scripts/stage-sidecar.sh
+cd apps/desktop && cargo tauri build   # → src-tauri/target/release/bundle/{dmg,nsis,appimage,deb}
 ```
 
 > **Icons:** committed under `src-tauri/icons/`, generated from the square
 > source `assets/icon.png`. To rebrand, replace that source (1024×1024 PNG) and
-> regenerate: `npm run tauri icon ../../assets/icon.png`.
+> regenerate: `cargo tauri icon ../../assets/icon.png`.
 
 ## Code signing (optional)
 

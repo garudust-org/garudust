@@ -28,6 +28,8 @@ fn content_type(path: &str) -> &'static str {
     match path.rsplit('.').next() {
         Some("html") => "text/html; charset=utf-8",
         Some("js" | "mjs") => "text/javascript; charset=utf-8",
+        // WASM must be served as application/wasm for streaming instantiation.
+        Some("wasm") => "application/wasm",
         Some("css") => "text/css; charset=utf-8",
         Some("json") => "application/json",
         Some("svg") => "image/svg+xml",
@@ -84,6 +86,7 @@ mod tests {
             "text/css; charset=utf-8"
         );
         assert_eq!(content_type("logo.svg"), "image/svg+xml");
+        assert_eq!(content_type("app_bg.wasm"), "application/wasm");
         assert_eq!(content_type("font.woff2"), "font/woff2");
         assert_eq!(content_type("noext"), "application/octet-stream");
     }

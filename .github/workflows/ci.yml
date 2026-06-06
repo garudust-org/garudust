@@ -115,27 +115,16 @@ jobs:
         run: cargo audit
 
   web:
-    name: Web dashboard
+    name: Web dashboard (Leptos + Trunk)
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v6
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-
-      - name: Install deps
-        run: npm ci --prefix web
-
-      - name: Type-check & build SPA
-        run: npm run --prefix web build
-
-      - name: Install Rust toolchain
+      - name: Install Rust toolchain + wasm target
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
 
       - name: Cache cargo registry & build
         uses: actions/cache@v5
@@ -144,10 +133,16 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-            target
-          key: ${{ runner.os }}-cargo-webui-${{ hashFiles('**/Cargo.lock') }}
+            web/target
+          key: ${{ runner.os }}-cargo-leptos-${{ hashFiles('web/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-
+            ${{ runner.os }}-cargo-leptos-
+
+      - name: Install trunk
+        run: cargo install trunk --locked
+
+      - name: Build Leptos SPA
+        run: cd web && trunk build --release
 
       - name: Build gateway with embedded SPA
         run: cargo build -p garudust-server --features web-ui

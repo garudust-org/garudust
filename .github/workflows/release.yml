@@ -171,15 +171,14 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev \
             librsvg2-dev patchelf
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
+      - name: Add WASM target
+        run: rustup target add wasm32-unknown-unknown
 
-      - name: Install web + desktop deps
-        run: |
-          npm ci --prefix web
-          npm ci --prefix apps/desktop
+      - name: Install trunk
+        run: cargo install trunk --locked
+
+      - name: Build Leptos SPA
+        run: cd web && trunk build --release
 
       # macOS universal needs all three sidecars: a per-arch binary for each
       # arch's app compile, plus a lipo'd universal binary for the final bundle.

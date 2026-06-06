@@ -5,9 +5,9 @@
   "identifier": "ai.garudust.desktop",
   "build": {
     "frontendDist": "../../../web/dist",
-    "devUrl": "http://localhost:5173",
-    "beforeDevCommand": "npm --prefix ../../web run dev",
-    "beforeBuildCommand": "npm --prefix ../../web run build"
+    "devUrl": "http://localhost:8080",
+    "beforeDevCommand": "cd ../../web && trunk serve --open false",
+    "beforeBuildCommand": "cd ../../web && trunk build --release"
   },
   "app": {
     "withGlobalTauri": false,
@@ -18,7 +18,12 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["dmg", "nsis", "appimage", "deb"],
+    "targets": [
+      "dmg",
+      "nsis",
+      "appimage",
+      "deb"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -26,6 +31,8 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "externalBin": ["binaries/garudust-server"]
+    "externalBin": [
+      "binaries/garudust-server"
+    ]
   }
 }
