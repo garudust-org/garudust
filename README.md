@@ -96,24 +96,11 @@ garudust skill validate [<path>]   # validate SKILL.md frontmatter
 
 ---
 
-## Web dashboard & desktop app
+## Desktop app & web dashboard
 
-One UI written in **Rust ([Leptos](https://leptos.dev) → WASM)** — a streaming chat
-pane plus Status, Config, and Secrets pages. No JavaScript/TypeScript.
-
-<div align="center">
-  <img src="assets/desktop.png" alt="Garudust desktop app" width="760"/>
-</div>
-
-**Run the web app** (needs `cargo install trunk` + `rustup target add wasm32-unknown-unknown`)
-
-```bash
-garudust-server --port 3000      # terminal 1: start the agent server
-cd web && trunk serve            # terminal 2 → open http://localhost:8080
-```
-
-**Install the desktop app** — a pure-Rust native ([egui](https://github.com/emilk/egui))
-app with the agent embedded in-process (no webview, no separate server).
+The recommended way to use Garudust with a UI is the **native desktop app** — a
+pure-Rust ([egui](https://github.com/emilk/egui)) app with the agent embedded
+in-process (no webview, no separate server). Just download and run.
 
 <div align="center">
 
@@ -125,6 +112,8 @@ app with the agent embedded in-process (no webview, no separate server).
 [**📦 Debian/Ubuntu (.deb)**](https://github.com/garudust-org/garudust-agent/releases/latest/download/Garudust-Linux-x86_64.deb)
 
 <sub>macOS is a universal build (Intel + Apple Silicon). Other archs / versions: [all releases](https://github.com/garudust-org/garudust-agent/releases/latest)</sub>
+
+<img src="assets/desktop.png" alt="Garudust desktop app" width="760"/>
 
 </div>
 
@@ -142,10 +131,15 @@ app with the agent embedded in-process (no webview, no separate server).
 On first run, set your LLM key on the **Secrets** page (or in `~/.garudust/.env`).
 The Secrets page is masked + write-only; the agent runs inside the app itself.
 
-Building from source? See [`apps/desktop-native/README.md`](apps/desktop-native/README.md):
+Build from source: `cargo run -p garudust-desktop-native --release` (see
+[`apps/desktop-native/README.md`](apps/desktop-native/README.md)).
+
+**Prefer the browser?** The same UI (Rust/[Leptos](https://leptos.dev) → WASM) is
+served by the server with the `web-ui` feature:
 
 ```bash
-cargo run -p garudust-desktop-native --release   # → opens the desktop window
+cd web && trunk build --release          # one-time: cargo install trunk + rustup target add wasm32-unknown-unknown
+cargo run -p garudust-server --features web-ui --port 3000   # → open http://localhost:3000
 ```
 
 ---
