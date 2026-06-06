@@ -9,6 +9,8 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.13.7] — 2026-06-06
+
 ### Added
 
 - **Native desktop app (`apps/desktop-native`)** — a pure-Rust [egui](https://github.com/emilk/egui)

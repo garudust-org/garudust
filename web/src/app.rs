@@ -97,7 +97,7 @@ pub fn App() -> impl IntoView {
                             })
                             .collect_view()}
                         </nav>
-                        <div class="mt-auto px-2 text-xs text-neutral-600">"v0.13.6"</div>
+                        <div class="mt-auto px-2 text-xs text-neutral-600">"v0.13.7"</div>
                     </aside>
 
                     <main class="flex-1 overflow-hidden">

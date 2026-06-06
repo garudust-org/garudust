@@ -5,7 +5,7 @@
 
 [package]
 name = "garudust-desktop-native"
-version = "0.13.6"
+version = "0.13.7"
 description = "Garudust native desktop app (egui)"
 authors = ["Garudust"]
 license = "MIT"
