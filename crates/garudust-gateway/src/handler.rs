@@ -1239,12 +1239,20 @@ impl MessageHandler for GatewayHandler {
         // model sees only the "[analysing…]" placeholder and wrongly reports
         // it cannot read the image. `.get()` (not get-or-create) avoids
         // allocating a gate for pure-text sessions.
-        if let Some(gate) = self
-            .image_gates
-            .get(&msg.session_key)
-            .map(|g| Arc::clone(g.value()))
-        {
-            drop(gate.lock().await);
+        //
+        // Skip this entirely when *this* event carried its own images: it
+        // already holds `_image_guard` (acquired up-front) and re-locking the
+        // same non-reentrant mutex would self-deadlock, wedging the session for
+        // every later message. Its own images were already awaited synchronously
+        // via `process_images` above, so their descriptions are in history.
+        if msg.attachments.is_empty() {
+            if let Some(gate) = self
+                .image_gates
+                .get(&msg.session_key)
+                .map(|g| Arc::clone(g.value()))
+            {
+                drop(gate.lock().await);
+            }
         }
 
         // Drop blank events — platform sent a message with no text and no attachments.

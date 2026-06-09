@@ -681,4 +681,35 @@ mod tests {
             .lookup_role("mock", "first_user", None);
         assert!(role.is_none(), "group chat ไม่ควร trigger bootstrap admin");
     }
+
+    /// Regression: a message carrying BOTH text and an image attachment (e.g. a
+    /// LINE reply that quotes an image) must not self-deadlock. The handler
+    /// acquires the per-session image gate up-front, then later awaits the same
+    /// gate to wait for in-flight image analysis. Re-locking the non-reentrant
+    /// mutex from the same task wedged the session forever — the bot went silent.
+    #[tokio::test]
+    async fn text_with_image_attachment_does_not_deadlock() {
+        let tmp = tmpdir();
+        let platform = Arc::new(MockPlatform::new());
+        let mut cfg = make_config(tmp.path());
+        cfg.roles.set_user_role("mock", "alice", "admin");
+        let handler = make_handler(platform.clone(), cfg);
+
+        // A real file so filter_oversized has something to stat.
+        let img = tmp.path().join("pic.jpg");
+        tokio::fs::write(&img, b"\xff\xd8\xff\xe0fake")
+            .await
+            .unwrap();
+
+        let mut msg = dm("alice", "นี่รูปอะไร");
+        msg.attachments = vec![garudust_core::types::ImageAttachment {
+            path: img.to_string_lossy().into_owned(),
+        }];
+
+        // Before the fix this never returned (self-deadlock on the image gate).
+        tokio::time::timeout(std::time::Duration::from_secs(10), handler.handle(msg))
+            .await
+            .expect("handler deadlocked on the image gate")
+            .unwrap();
+    }
 }
