@@ -90,6 +90,10 @@ struct LineMessage {
     file_name: Option<String>,
     /// Structured mention info delivered by LINE when users tag others in groups.
     mention: Option<Mention>,
+    /// Set when this message is a reply quoting a past message. Carries only the
+    /// quoted message's ID — never its content (see `message_cache`).
+    #[serde(rename = "quotedMessageId")]
+    quoted_message_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -140,6 +144,11 @@ struct Inner {
     last_sender: DashMap<String, String>,
     /// user_id → display name (fetched lazily from profile API)
     name_cache: DashMap<String, String>,
+    /// message_id → text, so a reply that quotes a past *text* message can be
+    /// resolved. LINE never re-serves text content via API, so we must cache it
+    /// ourselves when the message first arrives. Bounded + cleared like
+    /// `name_cache`; lost on restart (quoting pre-restart text then fails).
+    message_cache: DashMap<String, String>,
     /// Bot's own LINE userId, fetched once at start via `/v2/bot/info`.
     /// Used to detect mentions of the bot from `event.message.mention.mentionees`.
     /// Empty when the fetch failed — gateway will fall back to text-contains matching.
@@ -382,6 +391,59 @@ async fn handle_webhook(
             }
             _ => {
                 text = msg.text.unwrap_or_default();
+                // Cache the *original* text (before any quoted-context prefix) so
+                // a later reply quoting this message can recover it.
+                if !text.is_empty() {
+                    state
+                        .inner
+                        .message_cache
+                        .insert(msg.id.clone(), text.clone());
+                }
+            }
+        }
+
+        // Resolve a quoted (reply) message. The webhook carries only the quoted
+        // message's ID, never its content. Text is served from our own cache
+        // (LINE has no API to re-fetch it); image/file content is recovered via
+        // the Content API using the quoted ID. Links are intentionally left in
+        // the text for the agent's web_fetch tool — not parsed here.
+        if let Some(qid) = msg.quoted_message_id.as_deref() {
+            if let Some(quoted) = state.inner.message_cache.get(qid).map(|v| v.clone()) {
+                text = with_quoted_context(&quoted, &text);
+            } else {
+                match fetch_line_content(&state.inner.client, &state.inner.channel_token, qid).await
+                {
+                    Ok((bytes, content_type)) => match content_type_to_ext(&content_type) {
+                        Some((true, ext)) => {
+                            let path = format!("/tmp/garudust_line_quoted_{qid}.{ext}");
+                            match tokio::fs::write(&path, &bytes).await {
+                                Ok(()) => attachments.push(ImageAttachment { path }),
+                                Err(e) => tracing::warn!(qid, error = %e,
+                                    "LINE: quoted image write failed"),
+                            }
+                        }
+                        Some((false, ext)) if is_supported_doc_ext(ext) => {
+                            let file_name = format!("quoted_{qid}.{ext}");
+                            let path = format!("/tmp/garudust_line_quoted_{qid}.{ext}");
+                            match tokio::fs::write(&path, &bytes).await {
+                                Ok(()) => doc_attachments.push(DocAttachment { path, file_name }),
+                                Err(e) => tracing::warn!(qid, error = %e,
+                                    "LINE: quoted file write failed"),
+                            }
+                        }
+                        _ => tracing::debug!(
+                            qid,
+                            content_type,
+                            "LINE: quoted content type unsupported — skipping"
+                        ),
+                    },
+                    Err(e) => {
+                        // 404 = quoted a text message we never cached (e.g. sent
+                        // before this process started). Surface that to the model.
+                        tracing::debug!(qid, error = %e, "LINE: quoted content unavailable");
+                        text = format!("[ผู้ใช้อ้างถึงข้อความเดิม แต่ดึงเนื้อหาไม่ได้]\n\n{text}");
+                    }
+                }
             }
         }
 
@@ -412,12 +474,13 @@ async fn handle_webhook(
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-async fn download_line_content(
+/// Fetch raw content + Content-Type for a message ID from the LINE Content API.
+/// Only image/video/audio/file messages have content; text returns 404.
+async fn fetch_line_content(
     client: &reqwest::Client,
     token: &str,
     message_id: &str,
-    dest: &str,
-) -> Result<(), PlatformError> {
+) -> Result<(Bytes, String), PlatformError> {
     let url = format!("{LINE_CONTENT_URL}/{message_id}/content");
     let resp = client
         .get(&url)
@@ -434,13 +497,67 @@ async fn download_line_content(
         )));
     }
 
+    let content_type = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
     let bytes = resp
         .bytes()
         .await
         .map_err(|e| PlatformError::Send(e.to_string()))?;
+    Ok((bytes, content_type))
+}
+
+async fn download_line_content(
+    client: &reqwest::Client,
+    token: &str,
+    message_id: &str,
+    dest: &str,
+) -> Result<(), PlatformError> {
+    let (bytes, _) = fetch_line_content(client, token, message_id).await?;
     tokio::fs::write(dest, &bytes)
         .await
         .map_err(|e| PlatformError::Send(e.to_string()))
+}
+
+/// Wrap the current message text with the quoted message's content so the model
+/// sees what the user is replying to.
+fn with_quoted_context(quoted: &str, current: &str) -> String {
+    format!("[ผู้ใช้อ้างถึงข้อความก่อนหน้า]\n{quoted}\n[จบข้อความที่อ้างถึง]\n\n{current}")
+}
+
+/// Map a Content-Type to `(is_image, extension)` for recovering quoted media.
+/// Returns `None` for types we don't handle. The webhook gives no type for a
+/// quoted message, so we infer it from the Content API response header.
+fn content_type_to_ext(content_type: &str) -> Option<(bool, &'static str)> {
+    let ct = content_type
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_lowercase();
+    Some(match ct.as_str() {
+        "image/jpeg" => (true, "jpg"),
+        "image/png" => (true, "png"),
+        "image/gif" => (true, "gif"),
+        "image/webp" => (true, "webp"),
+        "application/pdf" => (false, "pdf"),
+        "text/plain" => (false, "txt"),
+        "text/csv" => (false, "csv"),
+        "text/markdown" => (false, "md"),
+        "application/json" => (false, "json"),
+        "application/msword" => (false, "doc"),
+        "application/vnd.ms-excel" => (false, "xls"),
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => {
+            (false, "docx")
+        }
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => (false, "xlsx"),
+        // Any other image subtype (heic, bmp, …) still routes to view_image.
+        _ if ct.starts_with("image/") => (true, "img"),
+        _ => return None,
+    })
 }
 
 fn is_supported_doc_ext(ext: &str) -> bool {
@@ -633,6 +750,7 @@ impl LineAdapter {
                 group_flag: DashMap::new(),
                 last_sender: DashMap::new(),
                 name_cache: DashMap::new(),
+                message_cache: DashMap::new(),
                 bot_self_user_id: OnceLock::new(),
                 token_hash,
                 bot_id_store,
@@ -797,6 +915,9 @@ impl PlatformAdapter for LineAdapter {
                 if inner_gc.name_cache.len() > MAX_CACHE_ENTRIES {
                     inner_gc.name_cache.clear();
                 }
+                if inner_gc.message_cache.len() > MAX_CACHE_ENTRIES {
+                    inner_gc.message_cache.clear();
+                }
             }
         });
 
@@ -908,5 +1029,53 @@ mod tests {
         let result = truncate_to_line_limit(long);
         assert!(result.chars().count() <= LINE_TEXT_LIMIT);
         assert!(result.contains("LINE"));
+    }
+
+    #[test]
+    fn deserializes_quoted_message_id() {
+        let raw = r#"{"id":"m2","type":"text","text":"@bot ดูอันนี้ให้หน่อย","quotedMessageId":"m1"}"#;
+        let msg: LineMessage = serde_json::from_str(raw).unwrap();
+        assert_eq!(msg.quoted_message_id.as_deref(), Some("m1"));
+        assert_eq!(msg.text.as_deref(), Some("@bot ดูอันนี้ให้หน่อย"));
+    }
+
+    #[test]
+    fn quoted_message_id_absent_without_reply() {
+        let raw = r#"{"id":"m1","type":"text","text":"hello"}"#;
+        let msg: LineMessage = serde_json::from_str(raw).unwrap();
+        assert!(msg.quoted_message_id.is_none());
+    }
+
+    #[test]
+    fn quoted_context_wraps_both_messages() {
+        let out = with_quoted_context("https://example.com/article", "อ่านลิงก์นี้ให้หน่อย");
+        assert!(out.contains("https://example.com/article"));
+        assert!(out.contains("อ่านลิงก์นี้ให้หน่อย"));
+        // Quoted block precedes the current question.
+        assert!(out.find("example.com").unwrap() < out.find("อ่านลิงก์").unwrap());
+    }
+
+    #[test]
+    fn content_type_maps_images_to_view_image() {
+        assert_eq!(content_type_to_ext("image/jpeg"), Some((true, "jpg")));
+        assert_eq!(
+            content_type_to_ext("image/png; charset=binary"),
+            Some((true, "png"))
+        );
+        // Unknown image subtype still routes to view_image with a generic ext.
+        assert_eq!(content_type_to_ext("image/heic"), Some((true, "img")));
+    }
+
+    #[test]
+    fn content_type_maps_docs_to_supported_ext() {
+        assert_eq!(content_type_to_ext("application/pdf"), Some((false, "pdf")));
+        let (_, ext) = content_type_to_ext("text/csv").unwrap();
+        assert!(is_supported_doc_ext(ext));
+    }
+
+    #[test]
+    fn content_type_unknown_is_none() {
+        assert_eq!(content_type_to_ext("application/octet-stream"), None);
+        assert_eq!(content_type_to_ext(""), None);
     }
 }
