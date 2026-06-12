@@ -96,7 +96,9 @@ impl Tool for DelegateTasks {
          result when all have finished. Use this when the tasks are independent \
          of each other — it is significantly faster than calling delegate_task \
          one at a time. Each sub-agent gets the full tool set and its own \
-         iteration budget."
+         iteration budget. A task that fails is reported as '[FAILED: ...]' in \
+         its result block; the other tasks' results are still returned, so you \
+         can retry only the failed ones or proceed with what succeeded."
     }
 
     fn toolset(&self) -> &'static str {
@@ -164,12 +166,15 @@ impl Tool for DelegateTasks {
                 };
                 let runner = runner.clone();
                 let session_id = ctx.session_id.clone();
+                // Carry the index in both arms so a failure is reported against
+                // its task instead of being dropped. Never propagate the error
+                // here — one failing sub-agent must not discard the others.
                 async move {
                     let result = runner
                         .run_task(&full_task, &session_id)
                         .await
-                        .map_err(|e| ToolError::Execution(e.to_string()))?;
-                    Ok::<(usize, String), ToolError>((i, result))
+                        .map_err(|e| e.to_string());
+                    (i, result)
                 }
             })
             .collect();
@@ -183,19 +188,21 @@ impl Tool for DelegateTasks {
         } else {
             cap.min(sub_tasks.len())
         };
-        let results: Vec<Result<(usize, String), ToolError>> = stream::iter(futures)
+        let mut outputs: Vec<(usize, Result<String, String>)> = stream::iter(futures)
             .buffer_unordered(concurrency)
             .collect()
             .await;
-
-        let mut outputs: Vec<(usize, String)> =
-            results.into_iter().collect::<Result<Vec<_>, _>>()?;
         outputs.sort_by_key(|(i, _)| *i);
 
+        // Return partial results: successes are rendered as-is, failures are
+        // annotated in place so the parent agent can retry or carry on.
         let combined = outputs
             .into_iter()
             .enumerate()
-            .map(|(i, (_, out))| format!("## Task {} result\n\n{out}", i + 1))
+            .map(|(n, (_, res))| match res {
+                Ok(out) => format!("## Task {} result\n\n{out}", n + 1),
+                Err(e) => format!("## Task {} result\n\n[FAILED: {e}]", n + 1),
+            })
             .collect::<Vec<_>>()
             .join("\n\n---\n\n");
 
@@ -233,6 +240,19 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(20)).await;
             self.current.fetch_sub(1, Ordering::SeqCst);
             Ok("ok".into())
+        }
+    }
+
+    /// Fails any task whose text contains "BOOM"; succeeds otherwise.
+    struct FlakyRunner;
+    #[async_trait]
+    impl SubAgentRunner for FlakyRunner {
+        async fn run_task(&self, task: &str, _session_id: &str) -> Result<String, AgentError> {
+            if task.contains("BOOM") {
+                Err(AgentError::BudgetExhausted(7))
+            } else {
+                Ok(format!("done:{task}"))
+            }
         }
     }
 
@@ -327,6 +347,28 @@ mod tests {
             5,
             "0 means unlimited fan-out"
         );
+    }
+
+    #[tokio::test]
+    async fn one_failure_keeps_other_results() {
+        let ctx = ctx_with(4, Arc::new(FlakyRunner));
+        let params = json!({
+            "tasks": [
+                { "task": "alpha" },
+                { "task": "BOOM" },
+                { "task": "gamma" },
+            ]
+        });
+
+        // The whole call still succeeds despite the failing sub-agent.
+        let out = DelegateTasks.execute(params, &ctx).await.unwrap();
+
+        // Successful tasks keep their output, in order.
+        assert!(out.content.contains("done:alpha"));
+        assert!(out.content.contains("done:gamma"));
+        // The failure is annotated in place, not dropped.
+        assert!(out.content.contains("Task 2 result"));
+        assert!(out.content.contains("[FAILED:"));
     }
 
     #[test]
