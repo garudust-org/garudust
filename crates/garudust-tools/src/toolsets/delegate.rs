@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use futures::future;
+use futures::stream::{self, StreamExt};
 use garudust_core::{
     error::ToolError,
     tool::{Tool, ToolContext},
@@ -150,6 +150,9 @@ impl Tool for DelegateTasks {
             .as_ref()
             .ok_or_else(|| ToolError::Execution("sub-agent runner not available".into()))?;
 
+        // Build futures eagerly into a Vec so each owns its cloned inputs — a lazy
+        // iterator borrowing `sub_tasks` trips a higher-ranked lifetime error under
+        // buffer_unordered.
         let futures: Vec<_> = sub_tasks
             .iter()
             .enumerate()
@@ -171,7 +174,19 @@ impl Tool for DelegateTasks {
             })
             .collect();
 
-        let results = future::join_all(futures).await;
+        // Bound the fan-out width: at most `max_concurrent_sub_agents` sub-agents
+        // run at once, the rest queue. `0` (or fewer tasks than the cap) means
+        // run them all concurrently — identical to the old join_all behaviour.
+        let cap = ctx.config.max_concurrent_sub_agents;
+        let concurrency = if cap == 0 {
+            sub_tasks.len()
+        } else {
+            cap.min(sub_tasks.len())
+        };
+        let results: Vec<Result<(usize, String), ToolError>> = stream::iter(futures)
+            .buffer_unordered(concurrency)
+            .collect()
+            .await;
 
         let mut outputs: Vec<(usize, String)> =
             results.into_iter().collect::<Result<Vec<_>, _>>()?;
@@ -190,7 +205,129 @@ impl Tool for DelegateTasks {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use garudust_core::{
+        budget::IterationBudget,
+        config::AgentConfig,
+        error::AgentError,
+        memory::MemoryStore,
+        tool::{ApprovalDecision, CommandApprover, SubAgentRunner, ToolContext},
+    };
+
     use super::*;
+
+    /// Records how many sub-agents run concurrently so a test can assert the cap.
+    struct CountingRunner {
+        current: AtomicUsize,
+        max_seen: Arc<AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl SubAgentRunner for CountingRunner {
+        async fn run_task(&self, _task: &str, _session_id: &str) -> Result<String, AgentError> {
+            let now = self.current.fetch_add(1, Ordering::SeqCst) + 1;
+            self.max_seen.fetch_max(now, Ordering::SeqCst);
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            self.current.fetch_sub(1, Ordering::SeqCst);
+            Ok("ok".into())
+        }
+    }
+
+    struct DenyAll;
+    #[async_trait]
+    impl CommandApprover for DenyAll {
+        async fn approve(&self, _: &str, _: &str, _: &str) -> ApprovalDecision {
+            ApprovalDecision::Denied
+        }
+    }
+
+    struct NopMemory;
+    #[async_trait]
+    impl MemoryStore for NopMemory {
+        async fn read_memory(&self) -> Result<garudust_core::memory::MemoryContent, AgentError> {
+            Ok(garudust_core::memory::MemoryContent::default())
+        }
+        async fn write_memory(
+            &self,
+            _: &garudust_core::memory::MemoryContent,
+        ) -> Result<(), AgentError> {
+            Ok(())
+        }
+        async fn read_user_profile(&self) -> Result<String, AgentError> {
+            Ok(String::new())
+        }
+        async fn write_user_profile(&self, _: &str) -> Result<(), AgentError> {
+            Ok(())
+        }
+    }
+
+    fn ctx_with(cap: usize, runner: Arc<dyn SubAgentRunner>) -> ToolContext {
+        let mut config = AgentConfig::default();
+        config.max_concurrent_sub_agents = cap;
+        ToolContext {
+            session_id: "s".into(),
+            conv_key: String::new(),
+            user_id: String::new(),
+            agent_id: "a".into(),
+            iteration: 0,
+            budget: Arc::new(IterationBudget::new(10)),
+            memory: Arc::new(NopMemory),
+            config: Arc::new(config),
+            approver: Arc::new(DenyAll),
+            sub_agent: Some(runner),
+            skill_permissions: Arc::new(tokio::sync::RwLock::new(
+                garudust_core::tool::SkillPermissions::default(),
+            )),
+            required_tools: Arc::new(tokio::sync::RwLock::new(Vec::new())),
+        }
+    }
+
+    fn tasks(n: usize) -> Value {
+        let items: Vec<Value> = (0..n).map(|i| json!({ "task": format!("t{i}") })).collect();
+        json!({ "tasks": items })
+    }
+
+    #[tokio::test]
+    async fn cap_bounds_concurrent_sub_agents() {
+        let max_seen = Arc::new(AtomicUsize::new(0));
+        let runner = Arc::new(CountingRunner {
+            current: AtomicUsize::new(0),
+            max_seen: max_seen.clone(),
+        });
+        let ctx = ctx_with(2, runner);
+
+        let out = DelegateTasks.execute(tasks(6), &ctx).await.unwrap();
+
+        assert!(
+            max_seen.load(Ordering::SeqCst) <= 2,
+            "fan-out exceeded the cap"
+        );
+        assert!(
+            out.content.contains("Task 6 result"),
+            "all tasks must complete"
+        );
+    }
+
+    #[tokio::test]
+    async fn cap_zero_runs_all_at_once() {
+        let max_seen = Arc::new(AtomicUsize::new(0));
+        let runner = Arc::new(CountingRunner {
+            current: AtomicUsize::new(0),
+            max_seen: max_seen.clone(),
+        });
+        let ctx = ctx_with(0, runner);
+
+        DelegateTasks.execute(tasks(5), &ctx).await.unwrap();
+
+        assert_eq!(
+            max_seen.load(Ordering::SeqCst),
+            5,
+            "0 means unlimited fan-out"
+        );
+    }
 
     #[test]
     fn schema_requires_tasks_array() {

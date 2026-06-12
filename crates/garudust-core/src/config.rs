@@ -270,6 +270,13 @@ pub struct AgentConfig {
     /// Default: 1 (sub-agents may not re-delegate).
     #[serde(default = "default_max_delegation_depth")]
     pub max_delegation_depth: u32,
+    /// Max sub-agents `delegate_tasks` runs concurrently. Excess tasks queue and
+    /// start as running ones finish — all tasks still complete, but the fan-out
+    /// width is bounded so a single delegation can't blow past provider rate
+    /// limits (or, for local LLMs, exhaust GPU/RAM). `0` = unlimited.
+    /// Default: 4.
+    #[serde(default = "default_max_concurrent_sub_agents")]
+    pub max_concurrent_sub_agents: usize,
     #[serde(default)]
     pub tool_delay_ms: u64,
     #[serde(default = "default_provider")]
@@ -467,6 +474,9 @@ fn default_max_iterations() -> u32 {
 }
 fn default_max_delegation_depth() -> u32 {
     1
+}
+fn default_max_concurrent_sub_agents() -> usize {
+    4
 }
 fn default_nudge_interval() -> u32 {
     5
@@ -1072,6 +1082,7 @@ impl Default for AgentConfig {
             max_iterations: 90,
             sub_agent_max_iterations: None,
             max_delegation_depth: 1,
+            max_concurrent_sub_agents: default_max_concurrent_sub_agents(),
             tool_delay_ms: 0,
             provider: DEFAULT_PROVIDER.into(),
             base_url: None,

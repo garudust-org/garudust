@@ -93,6 +93,11 @@ providers:
 # Maximum delegation depth (agent → sub-agent chain). Default: 1.
 # max_delegation_depth: 1
 
+# Max sub-agents delegate_tasks runs at once; excess tasks queue (all still
+# complete). Bounds fan-out so one delegation can't blow past provider rate
+# limits or, for local LLMs, exhaust GPU/RAM. 0 = unlimited. Default: 4.
+# max_concurrent_sub_agents: 4
+
 # Delay in ms between consecutive tool calls (rate-limit courtesy). Default: 0.
 # tool_delay_ms: 0
 
