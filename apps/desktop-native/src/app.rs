@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use eframe::egui;
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 
@@ -22,6 +24,14 @@ struct Msg {
 const FONT_ZOOM: [f32; 3] = [1.0, 1.25, 1.5];
 const FONT_LABELS: [&str; 3] = ["S", "M", "L"];
 
+// First-run example prompts shown on the empty chat screen.
+const EXAMPLES: [&str; 4] = [
+    "สรุป git log ล่าสุดของโปรเจกต์นี้",
+    "ค้นเว็บ: ข่าว AI agent ล่าสุด",
+    "อ่านไฟล์ README.md แล้วสรุปให้หน่อย",
+    "ช่วยเขียนสคริปต์ backup โฟลเดอร์",
+];
+
 pub struct App {
     page: Page,
     backend: Backend,
@@ -36,6 +46,10 @@ pub struct App {
     input: String,
     messages: Vec<Msg>,
     streaming: bool,
+    /// When the current request was sent — drives the elapsed-time readout.
+    send_at: Option<Instant>,
+    /// Name of the tool the agent is currently running, if any.
+    active_tool: Option<String>,
     hint: String,
     routing: Vec<(String, String)>,
     default_model: String,
@@ -69,6 +83,8 @@ impl App {
             input: String::new(),
             messages: Vec::new(),
             streaming: false,
+            send_at: None,
+            active_tool: None,
             hint: String::new(),
             routing,
             default_model,
@@ -102,6 +118,8 @@ impl App {
             content: String::new(),
         });
         self.streaming = true;
+        self.send_at = Some(Instant::now());
+        self.active_tool = None;
         let hint = if self.hint.is_empty() {
             None
         } else {
@@ -125,11 +143,18 @@ impl eframe::App for App {
         while let Ok(evt) = self.backend.evt_rx.try_recv() {
             match evt {
                 Evt::Delta(d) => {
+                    // First token of the answer means the tool round is over.
+                    self.active_tool = None;
                     if let Some(last) = self.messages.last_mut() {
                         last.content.push_str(&d);
                     }
                 }
-                Evt::Done => self.streaming = false,
+                Evt::Tool(name) => self.active_tool = Some(name),
+                Evt::Done => {
+                    self.streaming = false;
+                    self.send_at = None;
+                    self.active_tool = None;
+                }
                 Evt::Error(e) => {
                     if let Some(last) = self.messages.last_mut() {
                         if last.content.is_empty() {
@@ -137,6 +162,8 @@ impl eframe::App for App {
                         }
                     }
                     self.streaming = false;
+                    self.send_at = None;
+                    self.active_tool = None;
                 }
             }
         }
@@ -253,19 +280,25 @@ impl App {
                         let _ = self.backend.cmd_tx.send(Cmd::Stop);
                         self.messages.clear();
                         self.streaming = false;
+                        self.send_at = None;
+                        self.active_tool = None;
                     }
                 });
             });
-            // Text + send/stop
+            // Text + send/stop. Multiline so prompts can span lines; Enter sends,
+            // Shift+Enter inserts a newline. The newline that the multiline widget
+            // inserts on a plain Enter is harmless — send() trims and clears it.
             ui.horizontal(|ui| {
                 let btn_w = 64.0;
                 let resp = ui.add_enabled(
                     !self.streaming,
-                    egui::TextEdit::singleline(&mut self.input)
-                        .hint_text("Message Garudust…")
+                    egui::TextEdit::multiline(&mut self.input)
+                        .hint_text("Message Garudust…  (Enter ส่ง · Shift+Enter ขึ้นบรรทัด)")
+                        .desired_rows(1)
                         .desired_width(ui.available_width() - btn_w),
                 );
-                let enter = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                let enter = resp.has_focus()
+                    && ui.input(|i| i.key_pressed(egui::Key::Enter) && !i.modifiers.shift);
                 if self.streaming {
                     if ui.button("Stop").clicked() {
                         let _ = self.backend.cmd_tx.send(Cmd::Stop);
@@ -278,17 +311,61 @@ impl App {
             ui.add_space(4.0);
         });
 
+        // Example prompt chosen on the empty screen; applied after the closure
+        // to avoid borrowing `self.input` while `self` is borrowed by the panel.
+        let mut chosen: Option<String> = None;
         egui::CentralPanel::default().show(ctx, |ui| {
+            if self.messages.is_empty() {
+                ui.vertical_centered(|ui| {
+                    ui.add_space(48.0);
+                    ui.heading("เริ่มสนทนากับ Garudust");
+                    ui.label(egui::RichText::new("เลือกตัวอย่างด้านล่าง หรือพิมพ์ข้อความเอง").weak());
+                    ui.add_space(16.0);
+                    for ex in EXAMPLES {
+                        if ui.button(ex).clicked() {
+                            chosen = Some(ex.to_string());
+                        }
+                        ui.add_space(4.0);
+                    }
+                });
+                return;
+            }
             egui::ScrollArea::vertical()
                 .auto_shrink([false, false])
                 .stick_to_bottom(true)
                 .show(ui, |ui| {
-                    for m in &self.messages {
-                        bubble(ui, &mut self.md_cache, m.is_user, &m.content, self.dark);
+                    let last = self.messages.len().saturating_sub(1);
+                    for (idx, m) in self.messages.iter().enumerate() {
+                        // The trailing assistant bubble shows a live working
+                        // indicator until its first token arrives.
+                        let working = if !m.is_user
+                            && m.content.is_empty()
+                            && self.streaming
+                            && idx == last
+                        {
+                            let secs = self.send_at.map_or(0, |t| t.elapsed().as_secs());
+                            Some(match &self.active_tool {
+                                Some(name) => format!("🔧 {name}…  ({secs}s)"),
+                                None => format!("กำลังคิด…  ({secs}s)"),
+                            })
+                        } else {
+                            None
+                        };
+                        bubble(
+                            ui,
+                            &mut self.md_cache,
+                            m.is_user,
+                            &m.content,
+                            self.dark,
+                            working,
+                        );
                         ui.add_space(6.0);
                     }
                 });
         });
+        if let Some(text) = chosen {
+            self.input = text;
+        }
     }
 
     fn ui_status(&mut self, ctx: &egui::Context) {
@@ -593,6 +670,7 @@ fn bubble(
     is_user: bool,
     content: &str,
     dark: bool,
+    working: Option<String>,
 ) {
     let layout = if is_user {
         egui::Layout::right_to_left(egui::Align::TOP)
@@ -615,10 +693,20 @@ fn bubble(
                 ui.set_max_width(ui.available_width() * 0.8);
                 if is_user {
                     ui.colored_label(egui::Color32::BLACK, content);
+                } else if let Some(label) = working {
+                    ui.horizontal(|ui| {
+                        ui.add(egui::Spinner::new().size(14.0));
+                        ui.label(egui::RichText::new(label).weak());
+                    });
                 } else if content.is_empty() {
                     ui.label("…");
                 } else {
                     CommonMarkViewer::new().show(ui, cache, content);
+                    // Copy the raw markdown of this reply.
+                    if ui.small_button("📋").on_hover_text("คัดลอกข้อความ").clicked()
+                    {
+                        ui.output_mut(|o| o.copied_text = content.to_owned());
+                    }
                 }
             });
     });

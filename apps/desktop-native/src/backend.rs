@@ -19,6 +19,8 @@ pub enum Cmd {
 
 pub enum Evt {
     Delta(String),
+    /// Name of a tool the agent just dispatched — drives the "working" indicator.
+    Tool(String),
     Done,
     Error(String),
 }
@@ -81,18 +83,31 @@ impl Backend {
                                         ctx_fwd.request_repaint();
                                     }
                                 });
+                                // Forward tool-dispatch names so the UI can show
+                                // what the agent is doing during a tool round.
+                                let (tool_tx, mut tool_rx) =
+                                    tokio::sync::mpsc::unbounded_channel::<String>();
+                                let evt_tool = evt.clone();
+                                let ctx_tool = ctx2.clone();
+                                let tfwd = tokio::spawn(async move {
+                                    while let Some(name) = tool_rx.recv().await {
+                                        let _ = evt_tool.send(Evt::Tool(name));
+                                        ctx_tool.request_repaint();
+                                    }
+                                });
                                 let res = a
                                     .run_streaming(
                                         &text,
                                         ap,
                                         "egui",
                                         chunk_tx,
-                                        None,
+                                        Some(tool_tx),
                                         hint.as_deref(),
                                         Some(&s),
                                     )
                                     .await;
                                 let _ = fwd.await;
+                                let _ = tfwd.await;
                                 match res {
                                     Ok(_) => {
                                         let _ = evt.send(Evt::Done);
