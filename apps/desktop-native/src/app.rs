@@ -18,6 +18,8 @@ enum Page {
 struct Msg {
     is_user: bool,
     content: String,
+    /// Footer for an assistant reply, e.g. token usage + elapsed time.
+    meta: Option<String>,
 }
 
 // Zoom factors for the 3 font-size levels (scales the whole UI).
@@ -112,10 +114,12 @@ impl App {
         self.messages.push(Msg {
             is_user: true,
             content: text.clone(),
+            meta: None,
         });
         self.messages.push(Msg {
             is_user: false,
             content: String::new(),
+            meta: None,
         });
         self.streaming = true;
         self.send_at = Some(Instant::now());
@@ -142,6 +146,20 @@ impl eframe::App for App {
         // Drain backend events.
         while let Ok(evt) = self.backend.evt_rx.try_recv() {
             match evt {
+                Evt::History(pairs) => {
+                    for (user, assistant) in pairs {
+                        self.messages.push(Msg {
+                            is_user: true,
+                            content: user,
+                            meta: None,
+                        });
+                        self.messages.push(Msg {
+                            is_user: false,
+                            content: assistant,
+                            meta: None,
+                        });
+                    }
+                }
                 Evt::Delta(d) => {
                     // First token of the answer means the tool round is over.
                     self.active_tool = None;
@@ -150,7 +168,19 @@ impl eframe::App for App {
                     }
                 }
                 Evt::Tool(name) => self.active_tool = Some(name),
-                Evt::Done => {
+                Evt::Done(usage) => {
+                    if let Some(u) = usage {
+                        let secs = self.send_at.map_or(0.0, |t| t.elapsed().as_secs_f32());
+                        let total = u.input + u.output;
+                        if let Some(last) = self.messages.last_mut() {
+                            if !last.is_user {
+                                last.meta = Some(format!(
+                                    "{total} tokens (↑{} ↓{}) · {secs:.1}s",
+                                    u.input, u.output
+                                ));
+                            }
+                        }
+                    }
                     self.streaming = false;
                     self.send_at = None;
                     self.active_tool = None;
@@ -277,7 +307,9 @@ impl App {
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.button("New chat").clicked() {
-                        let _ = self.backend.cmd_tx.send(Cmd::Stop);
+                        // Wipes the persisted conversation too, since the desktop
+                        // uses one stable session key.
+                        let _ = self.backend.cmd_tx.send(Cmd::NewChat);
                         self.messages.clear();
                         self.streaming = false;
                         self.send_at = None;
@@ -359,6 +391,9 @@ impl App {
                             self.dark,
                             working,
                         );
+                        if let Some(meta) = &m.meta {
+                            ui.label(egui::RichText::new(meta).small().weak());
+                        }
                         ui.add_space(6.0);
                     }
                 });

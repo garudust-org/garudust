@@ -404,6 +404,19 @@ impl Agent {
         self.goal_store.clear(session_key).await;
     }
 
+    /// Prior (user, assistant) conversation pairs for a session — warm cache
+    /// first, disk fallback on miss. Lets an embedding app (e.g. the desktop)
+    /// repopulate the chat view on launch from the same store the agent uses.
+    pub fn history_pairs(&self, session_key: &str) -> Vec<(String, String)> {
+        if let Some(entry) = self.conversation_history.get(session_key) {
+            entry.iter().cloned().collect()
+        } else {
+            load_conv_from_disk(&self.config.home_dir, session_key)
+                .into_iter()
+                .collect()
+        }
+    }
+
     /// Inject a (user, assistant) pair directly into conversation history without
     /// running the agent. Used by GatewayHandler to silently store image descriptions.
     pub fn inject_history(&self, session_key: &str, user_msg: &str, assistant_msg: &str) {

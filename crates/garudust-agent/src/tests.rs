@@ -794,3 +794,37 @@ async fn run_loop_triggers_compression_when_threshold_exceeded() {
         "on_pre_compress hook must fire when context exceeds threshold"
     );
 }
+
+#[test]
+fn history_pairs_round_trips_through_disk() {
+    // Isolate home_dir so we read/write only this test's conversation file.
+    let tmp = std::env::temp_dir().join(format!("garudust-history-test-{}", std::process::id()));
+    let config = Arc::new(AgentConfig {
+        home_dir: tmp.clone(),
+        ..AgentConfig::default()
+    });
+    let key = "egui-desktop";
+
+    let agent = make_agent_with_config("noop", config.clone());
+    assert!(
+        agent.history_pairs(key).is_empty(),
+        "fresh session has no history"
+    );
+
+    agent.inject_history(key, "hello", "hi there");
+    assert_eq!(
+        agent.history_pairs(key),
+        vec![("hello".to_string(), "hi there".to_string())]
+    );
+
+    // A new agent over the same home_dir reads it back from disk — this is what
+    // makes the desktop restore its chat after a restart.
+    let reopened = make_agent_with_config("noop", config);
+    assert_eq!(
+        reopened.history_pairs(key),
+        vec![("hello".to_string(), "hi there".to_string())],
+        "history must survive a fresh agent (restart)"
+    );
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}

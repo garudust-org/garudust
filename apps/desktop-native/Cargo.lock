@@ -1871,7 +1871,6 @@ dependencies = [
  "garudust-transport",
  "image",
  "tokio",
- "uuid",
 ]
 
 [[package]]

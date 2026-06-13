@@ -11,17 +11,35 @@ use garudust_memory::{FileMemoryStore, SessionDb};
 use garudust_tools::{register_standard_tools, ToolRegistry};
 use garudust_transport::build_transport;
 
+/// Stable session key for the desktop, so the agent carries context across
+/// launches and the chat view can be restored. `New chat` clears it.
+const SESSION: &str = "egui-desktop";
+
 pub enum Cmd {
-    Chat { text: String, hint: Option<String> },
+    Chat {
+        text: String,
+        hint: Option<String>,
+    },
     Stop,
+    /// Abort any in-flight turn and wipe the persisted conversation.
+    NewChat,
     Reload,
 }
 
+/// Token usage for one completed turn.
+pub struct Usage {
+    pub input: u32,
+    pub output: u32,
+}
+
 pub enum Evt {
+    /// Prior (user, assistant) pairs, sent once at startup to restore the view.
+    History(Vec<(String, String)>),
     Delta(String),
     /// Name of a tool the agent just dispatched — drives the "working" indicator.
     Tool(String),
-    Done,
+    /// Turn finished. Carries usage on a normal completion; `None` when stopped.
+    Done(Option<Usage>),
     Error(String),
 }
 
@@ -50,9 +68,15 @@ impl Backend {
             rt.block_on(async move {
                 let mut agent = build_agent();
                 let approver = Arc::new(ConstitutionalApprover);
-                let session = uuid::Uuid::new_v4().to_string();
                 // Abort handle for the in-flight chat, so Stop can cancel it.
                 let mut current: Option<tokio::task::AbortHandle> = None;
+
+                // Restore the prior conversation into the UI on launch.
+                let prior = agent.history_pairs(SESSION);
+                if !prior.is_empty() {
+                    let _ = evt_tx.send(Evt::History(prior));
+                    ctx.request_repaint();
+                }
 
                 while let Some(cmd) = cmd_rx.recv().await {
                     match cmd {
@@ -61,14 +85,20 @@ impl Backend {
                             if let Some(h) = current.take() {
                                 h.abort();
                             }
-                            let _ = evt_tx.send(Evt::Done);
+                            let _ = evt_tx.send(Evt::Done(None));
                             ctx.request_repaint();
+                        }
+                        Cmd::NewChat => {
+                            if let Some(h) = current.take() {
+                                h.abort();
+                            }
+                            agent.clear_session(SESSION);
                         }
                         Cmd::Chat { text, hint } => {
                             // Run in a spawned task so the loop stays free to receive Stop.
                             let a = agent.clone();
                             let ap = approver.clone();
-                            let s = session.clone();
+                            let s = SESSION.to_string();
                             let evt = evt_tx.clone();
                             let ctx2 = ctx.clone();
                             let task = tokio::spawn(async move {
@@ -109,8 +139,11 @@ impl Backend {
                                 let _ = fwd.await;
                                 let _ = tfwd.await;
                                 match res {
-                                    Ok(_) => {
-                                        let _ = evt.send(Evt::Done);
+                                    Ok(r) => {
+                                        let _ = evt.send(Evt::Done(Some(Usage {
+                                            input: r.usage.input_tokens,
+                                            output: r.usage.output_tokens,
+                                        })));
                                     }
                                     Err(e) => {
                                         let _ = evt.send(Evt::Error(e.to_string()));
