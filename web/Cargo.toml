@@ -4,7 +4,7 @@
 
 [package]
 name    = "garudust-web"
-version = "0.13.7"
+version = "0.13.8"
 edition = "2021"
 
 [[bin]]

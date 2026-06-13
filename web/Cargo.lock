@@ -412,7 +412,7 @@ dependencies = [
 
 [[package]]
 name = "garudust-web"
-version = "0.13.7"
+version = "0.13.8"
 dependencies = [
  "console_error_panic_hook",
  "futures",

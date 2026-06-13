@@ -9,6 +9,37 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.13.8] — 2026-06-13
+
+### Added
+
+- **LINE reply (quoted message) support** — when a user replies-quotes a past
+  message and @mentions the bot in a group, the quoted content is surfaced to
+  the agent: cached text is read inline, image/file content is recovered via the
+  Content API (routed to `view_image` / RAG), and links ride along in the text
+  for the agent's `web_fetch` tool. Text is served from an in-memory cache since
+  LINE has no API to re-fetch a quoted text message.
+- **Desktop chat UX** — a working indicator (spinner + the tool currently
+  running + elapsed seconds) so the app no longer looks frozen during tool
+  rounds; a copy button on replies; multiline input (Enter sends, Shift+Enter
+  inserts a newline); first-run example prompts; a per-reply token-usage + timing
+  footer; and the conversation is now restored across restarts (the desktop uses
+  a stable session key, so the agent also keeps context — "New chat" clears it).
+
+### Changed
+
+- **`delegate_tasks` bounds its fan-out** — new `max_concurrent_sub_agents`
+  (default 4, `0` = unlimited) caps how many sub-agents run at once. Excess tasks
+  queue and still complete, so a single delegation can't blow past provider rate
+  limits or, for local LLMs, exhaust GPU/RAM.
+
+### Fixed
+
+- **`delegate_tasks` returns partial results** — a single failing sub-agent no
+  longer short-circuits the whole call and discards the successful results;
+  failures are annotated as `[FAILED: …]` in place so the agent can retry only
+  what failed.
+
 ## [0.13.7] — 2026-06-06
 
 ### Added

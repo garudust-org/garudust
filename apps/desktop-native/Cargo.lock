@@ -1822,7 +1822,7 @@ dependencies = [
 
 [[package]]
 name = "garudust-agent"
-version = "0.13.7"
+version = "0.13.8"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1841,7 +1841,7 @@ dependencies = [
 
 [[package]]
 name = "garudust-core"
-version = "0.13.7"
+version = "0.13.8"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1858,7 +1858,7 @@ dependencies = [
 
 [[package]]
 name = "garudust-desktop-native"
-version = "0.13.7"
+version = "0.13.8"
 dependencies = [
  "eframe",
  "egui",
@@ -1875,7 +1875,7 @@ dependencies = [
 
 [[package]]
 name = "garudust-memory"
-version = "0.13.7"
+version = "0.13.8"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1888,7 +1888,7 @@ dependencies = [
 
 [[package]]
 name = "garudust-tools"
-version = "0.13.7"
+version = "0.13.8"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1916,7 +1916,7 @@ dependencies = [
 
 [[package]]
 name = "garudust-transport"
-version = "0.13.7"
+version = "0.13.8"
 dependencies = [
  "anyhow",
  "async-stream",
