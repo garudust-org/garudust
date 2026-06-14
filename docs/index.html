@@ -178,7 +178,8 @@
     <!-- subheading -->
     <p class="text-lg sm:text-xl text-slate-400 max-w-2xl mx-auto leading-relaxed mb-10">
       A self-hostable, self-improving agent runtime. Chat from your terminal,
-      connect to Telegram&nbsp;/&nbsp;Discord&nbsp;/&nbsp;Slack&nbsp;/&nbsp;LINE&nbsp;/&nbsp;WhatsApp, or call over HTTP —
+      open the native desktop app or web dashboard, connect to
+      Telegram&nbsp;/&nbsp;Discord&nbsp;/&nbsp;Slack&nbsp;/&nbsp;LINE&nbsp;/&nbsp;WhatsApp, or call over HTTP —
       all from a&nbsp;single&nbsp;10&nbsp;MB&nbsp;binary.
     </p>
     <!-- CTAs -->
@@ -206,7 +207,7 @@
         <div class="text-slate-500 pl-4">✓ Model: claude-sonnet-4-6</div>
         <div class="text-slate-500 pl-4">✓ Config saved to ~/.garudust/</div>
         <div class="mt-3"><span class="text-slate-500">$</span> <span class="kw">garudust</span></div>
-        <div class="text-slate-500 pl-4">Garudust 0.4.0 — type your task, Ctrl+C to quit</div>
+        <div class="text-slate-500 pl-4">Garudust 0.13.8 — type your task, Ctrl+C to quit</div>
         <div class="mt-3"><span class="text-brand-400">you</span><span class="text-slate-600">  &gt;</span> summarise last week's git log</div>
         <div class="text-brand-300 pl-4">⟳ thinking…</div>
       </div>
@@ -311,6 +312,36 @@
         <p class="text-sm text-slate-400 leading-relaxed">Every piece is an independent crate. Add a tool, platform, or transport in under 100 lines without touching anything else.</p>
       </div>
 
+      <!-- desktop & web UI -->
+      <div class="card rounded-2xl p-6">
+        <div class="icon-ring w-11 h-11 rounded-xl flex items-center justify-center mb-5">
+          <svg class="w-5 h-5 text-brand-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25"/>
+          </svg>
+        </div>
+        <h3 class="font-semibold text-white mb-2">Desktop &amp; web UI</h3>
+        <p class="text-sm text-slate-400 leading-relaxed">A pure-Rust native desktop app (egui) with the agent embedded in-process, plus a Leptos web dashboard served straight from the binary. No webview, no JavaScript.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ DESKTOP -->
+<section class="py-24 border-t border-white/5">
+  <div class="max-w-5xl mx-auto px-6">
+    <div class="text-center mb-12">
+      <p class="badge inline-block px-3 py-1 rounded-full text-xs font-semibold tracking-wide mb-4">Desktop &amp; web</p>
+      <h2 class="text-3xl sm:text-4xl font-bold text-white">A real app, not a wrapper</h2>
+      <p class="text-slate-400 mt-3 max-w-2xl mx-auto">The native desktop app embeds the agent in-process — no webview, no sidecar, no JavaScript. Live tool activity, per-reply token usage, copy buttons, and a conversation that survives restarts. The same dashboard runs in the browser via the <span class="text-slate-200 font-medium">web-ui</span> feature.</p>
+    </div>
+    <div class="card rounded-2xl p-2 sm:p-3 max-w-4xl mx-auto">
+      <img src="desktop.png" alt="Garudust native desktop app" loading="lazy"
+           class="w-full rounded-xl border border-white/5"/>
+    </div>
+    <div class="text-center mt-8">
+      <a href="https://github.com/garudust-org/garudust-agent/releases/latest" target="_blank" rel="noopener"
+         class="btn-g px-6 py-3 rounded-xl text-sm">Download for macOS · Windows · Linux →</a>
     </div>
   </div>
 </section>
