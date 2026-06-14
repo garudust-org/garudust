@@ -22,7 +22,7 @@ fn setup_fonts(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
     fonts
         .font_data
-        .insert("thai".to_owned(), egui::FontData::from_owned(bytes).into());
+        .insert("thai".to_owned(), egui::FontData::from_owned(bytes));
     for fam in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
         fonts
             .families
