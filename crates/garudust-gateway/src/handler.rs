@@ -709,7 +709,7 @@ impl GatewayHandler {
             // result in history instead of a path that no longer exists.
             let mut analysis = String::new();
             if view_image_installed {
-                analysis = self
+                let raw = self
                     .agent
                     .run_tool(
                         "view_image",
@@ -719,6 +719,17 @@ impl GatewayHandler {
                         }),
                     )
                     .await;
+                // run_tool wraps a failed tool as "[view_image failed: …]". Never
+                // persist that raw string: it can carry a provider traceback and a
+                // leaked API key (the failing URL includes ?key=…), and it makes the
+                // model wrongly reply that no image was sent. Log it and store a short
+                // user-facing note instead so the conversation degrades gracefully.
+                if raw.starts_with("[view_image failed:") {
+                    tracing::warn!(session_key, detail = %raw, "view_image failed");
+                    analysis = "[ไม่สามารถวิเคราะห์ภาพได้ชั่วคราว ลองส่งรูปใหม่อีกครั้ง]".to_string();
+                } else {
+                    analysis = raw;
+                }
             }
             // QR/barcode decoding is deterministic (zbar) rather than a
             // vision-model guess, so append any decoded payload verbatim.
