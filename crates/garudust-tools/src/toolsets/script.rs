@@ -113,6 +113,23 @@ fn read_dotenv(path: &std::path::Path) -> Vec<(String, String)> {
         .collect()
 }
 
+/// Split a `tools.<name>` slot value into `(provider_name, model_override)`.
+///
+/// Two formats are accepted:
+///   * bare provider name — `vision` → `("vision", None)`, model comes from the
+///     provider profile's `model:` field.
+///   * `provider/model` — `vision/gemini-flash-latest` →
+///     `("vision", Some("gemini-flash-latest"))`, the inline model wins.
+///
+/// Splits on the FIRST `/` only so model ids that themselves contain `/`
+/// (e.g. `nvidia/nemotron-nano-12b-v2-vl:free`) are preserved intact.
+fn parse_slot_value(slot_value: &str) -> (&str, Option<&str>) {
+    match slot_value.split_once('/') {
+        Some((provider, model)) => (provider, Some(model)),
+        None => (slot_value, None),
+    }
+}
+
 #[async_trait]
 impl Tool for ScriptTool {
     fn name(&self) -> &str {
@@ -183,24 +200,31 @@ impl Tool for ScriptTool {
             }
         }
         // Forward per-tool model overrides from config.yaml → subprocess env.
-        // Each slot value is a provider name; the agent looks it up in providers:
-        // and injects the resolved credentials. Slot names containing "fallback"
-        // inject GARUDUST_FALLBACK_* vars; all others inject GARUDUST_* (primary).
+        // A slot value is either a bare provider name (`vision`) — model taken
+        // from the provider profile's `model:` field — or a `provider/model`
+        // override (`vision/gemini-flash-latest`). The agent looks the provider
+        // up in providers: and injects the resolved credentials. Slot names
+        // containing "fallback" inject GARUDUST_FALLBACK_* vars; all others
+        // inject GARUDUST_* (primary).
         if let Some(slots) = ctx.config.tools.get(self.name()) {
-            for (slot, provider_name) in slots {
+            for (slot, slot_value) in slots {
                 let fb = slot.contains("fallback");
+                let (provider_name, model_override) = parse_slot_value(slot_value);
                 if let Some(profile) = ctx.config.providers.get(provider_name) {
-                    if let Some(model) = &profile.model {
-                        if !model.is_empty() {
-                            cmd.env(
-                                if fb {
-                                    "GARUDUST_FALLBACK_MODEL"
-                                } else {
-                                    "GARUDUST_MODEL"
-                                },
-                                model,
-                            );
-                        }
+                    // Precedence: an explicit model in the slot value wins; else
+                    // fall back to the provider profile's own `model:` field.
+                    let model = model_override
+                        .filter(|m| !m.is_empty())
+                        .or_else(|| profile.model.as_deref().filter(|m| !m.is_empty()));
+                    if let Some(model) = model {
+                        cmd.env(
+                            if fb {
+                                "GARUDUST_FALLBACK_MODEL"
+                            } else {
+                                "GARUDUST_MODEL"
+                            },
+                            model,
+                        );
                     }
                     if let Some(url) = profile.resolved_base_url() {
                         cmd.env(
@@ -330,6 +354,31 @@ mod tests {
     #[test]
     fn shell_quote_simple() {
         assert_eq!(shell_quote("hello"), "'hello'");
+    }
+
+    #[test]
+    fn parse_slot_value_bare_provider() {
+        assert_eq!(parse_slot_value("vision"), ("vision", None));
+    }
+
+    #[test]
+    fn parse_slot_value_provider_and_model() {
+        assert_eq!(
+            parse_slot_value("vision/gemini-flash-latest"),
+            ("vision", Some("gemini-flash-latest"))
+        );
+    }
+
+    #[test]
+    fn parse_slot_value_preserves_slashes_in_model_id() {
+        // Model ids that contain '/' must survive — only the first '/' splits.
+        assert_eq!(
+            parse_slot_value("vision-fallback/nvidia/nemotron-nano-12b-v2-vl:free"),
+            (
+                "vision-fallback",
+                Some("nvidia/nemotron-nano-12b-v2-vl:free")
+            )
+        );
     }
 
     #[test]
