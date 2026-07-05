@@ -62,9 +62,9 @@ impl MessageCacheStore {
         Ok(())
     }
 
-    /// Deletes rows older than `max_age_secs`. Returns the number removed.
-    pub fn prune(&self, max_age_secs: u64) -> anyhow::Result<usize> {
-        let cutoff = now_epoch() - max_age_secs as f64;
+    /// Deletes rows older than `max_age`. Returns the number removed.
+    pub fn prune(&self, max_age: Duration) -> anyhow::Result<usize> {
+        let cutoff = now_epoch() - max_age.as_secs_f64();
         let conn = self.conn.lock().unwrap();
         let removed = conn.execute(
             "DELETE FROM line_message_cache WHERE created_at < ?1",
@@ -135,7 +135,7 @@ mod tests {
             )
             .unwrap();
         }
-        let removed = store.prune(50).unwrap();
+        let removed = store.prune(Duration::from_secs(50)).unwrap();
         assert_eq!(removed, 1);
         assert_eq!(store.get("stale"), None);
         assert_eq!(store.get("fresh").as_deref(), Some("keep me"));
@@ -144,6 +144,6 @@ mod tests {
     #[test]
     fn prune_on_empty_is_noop() {
         let (store, _t) = open_tmp();
-        assert_eq!(store.prune(0).unwrap(), 0);
+        assert_eq!(store.prune(Duration::ZERO).unwrap(), 0);
     }
 }

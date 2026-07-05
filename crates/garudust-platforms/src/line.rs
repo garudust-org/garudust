@@ -1009,7 +1009,7 @@ impl PlatformAdapter for LineAdapter {
                 }
                 if ticks % MESSAGE_PRUNE_EVERY_TICKS == 1 {
                     if let Some(store) = &inner_gc.message_store {
-                        match store.prune(MESSAGE_CACHE_TTL.as_secs()) {
+                        match store.prune(MESSAGE_CACHE_TTL) {
                             Ok(n) if n > 0 => {
                                 tracing::debug!(removed = n, "LINE: pruned message cache");
                             }
