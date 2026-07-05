@@ -42,6 +42,18 @@ pub fn run(conn: &Connection) -> rusqlite::Result<()> {
             token_hash  TEXT PRIMARY KEY,
             bot_user_id TEXT NOT NULL
         );
+
+        -- Caches LINE message text by message id so a reply quoting a past
+        -- message can be resolved after a restart (LINE has no API to
+        -- re-fetch text content). Includes the bot's own outbound messages.
+        -- Rows are pruned by age from the LINE adapter's GC task.
+        CREATE TABLE IF NOT EXISTS line_message_cache (
+            message_id TEXT PRIMARY KEY,
+            text       TEXT NOT NULL,
+            created_at REAL NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_line_message_cache_created
+            ON line_message_cache (created_at);
     ",
     )?;
 

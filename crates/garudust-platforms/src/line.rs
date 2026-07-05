@@ -26,7 +26,7 @@ use garudust_core::{
     platform::{MessageHandler, PlatformAdapter},
     types::{ChannelId, DocAttachment, ImageAttachment, InboundMessage, OutboundMessage},
 };
-use garudust_memory::BotIdentityStore;
+use garudust_memory::{BotIdentityStore, MessageCacheStore};
 
 const LINE_REPLY_URL: &str = "https://api.line.me/v2/bot/message/reply";
 const LINE_PUSH_URL: &str = "https://api.line.me/v2/bot/message/push";
@@ -43,6 +43,12 @@ const REPLY_TTL: Duration = Duration::from_secs(25);
 const LINE_TEXT_LIMIT: usize = 5_000;
 /// Evict name_cache once it grows beyond this; names are cheap to re-fetch.
 const MAX_CACHE_ENTRIES: usize = 50_000;
+/// Age at which persisted message texts are pruned from state.db. Quoting a
+/// message older than this falls back to the "content unavailable" notice.
+const MESSAGE_CACHE_TTL: Duration = Duration::from_secs(30 * 24 * 60 * 60);
+/// Prune the persistent message cache once per this many GC ticks (ticks are
+/// 60 s apart → hourly). The first tick after start prunes immediately.
+const MESSAGE_PRUNE_EVERY_TICKS: u64 = 60;
 /// Max attempts to fetch /v2/bot/info at startup before giving up (lazy
 /// webhook re-fetch then takes over). Backoff doubles from 1s, capped at 16s.
 const BOT_INFO_RETRIES: u32 = 5;
@@ -120,10 +126,24 @@ struct BotInfoResp {
     user_id: String,
 }
 
+/// Success body of the reply/push APIs. Carries the ids LINE assigned to the
+/// sent messages, which we cache so users can quote the bot's own replies.
+#[derive(Deserialize)]
+struct SendResp {
+    #[serde(rename = "sentMessages", default)]
+    sent_messages: Vec<SentMessage>,
+}
+
+#[derive(Deserialize)]
+struct SentMessage {
+    id: String,
+}
+
 // ── Error type for push API results ──────────────────────────────────────────
 
 enum PushOutcome {
-    Ok,
+    /// Sent; carries the ids of the sent messages (empty if the body didn't parse).
+    Ok(Vec<String>),
     QuotaExceeded,
     Err(PlatformError),
 }
@@ -145,10 +165,14 @@ struct Inner {
     /// user_id → display name (fetched lazily from profile API)
     name_cache: DashMap<String, String>,
     /// message_id → text, so a reply that quotes a past *text* message can be
-    /// resolved. LINE never re-serves text content via API, so we must cache it
-    /// ourselves when the message first arrives. Bounded + cleared like
-    /// `name_cache`; lost on restart (quoting pre-restart text then fails).
+    /// resolved. LINE never re-serves text content via API, so we cache it
+    /// ourselves — inbound texts when they arrive, and the bot's own outbound
+    /// texts when sent (quoting the bot's reply is common). In-memory hot
+    /// layer over `message_store`; bounded + cleared like `name_cache`.
     message_cache: DashMap<String, String>,
+    /// Persistent copy of `message_cache` in state.db so quotes survive
+    /// restarts. `None` if the DB could not be opened (in-memory only then).
+    message_store: Option<MessageCacheStore>,
     /// Bot's own LINE userId, fetched once at start via `/v2/bot/info`.
     /// Used to detect mentions of the bot from `event.message.mention.mentionees`.
     /// Empty when the fetch failed — gateway will fall back to text-contains matching.
@@ -176,6 +200,30 @@ impl Inner {
                 }
             }
         }
+    }
+
+    /// Cache a message's text in memory and, when the store is available,
+    /// in state.db so a later quote of it survives a restart.
+    fn cache_message_text(&self, message_id: &str, text: &str) {
+        self.message_cache
+            .insert(message_id.to_owned(), text.to_owned());
+        if let Some(store) = &self.message_store {
+            if let Err(e) = store.put(message_id, text) {
+                tracing::warn!(message_id, error = %e, "LINE: failed to persist message text");
+            }
+        }
+    }
+
+    /// Resolve a message's text: in-memory first, then the persistent store
+    /// (re-warming the in-memory map on a hit).
+    fn lookup_message_text(&self, message_id: &str) -> Option<String> {
+        if let Some(t) = self.message_cache.get(message_id) {
+            return Some(t.clone());
+        }
+        let text = self.message_store.as_ref()?.get(message_id)?;
+        self.message_cache
+            .insert(message_id.to_owned(), text.clone());
+        Some(text)
     }
 
     /// Lazy, throttled, single-flight re-fetch of the bot userId. Used from the
@@ -394,10 +442,7 @@ async fn handle_webhook(
                 // Cache the *original* text (before any quoted-context prefix) so
                 // a later reply quoting this message can recover it.
                 if !text.is_empty() {
-                    state
-                        .inner
-                        .message_cache
-                        .insert(msg.id.clone(), text.clone());
+                    state.inner.cache_message_text(&msg.id, &text);
                 }
             }
         }
@@ -408,7 +453,7 @@ async fn handle_webhook(
         // the Content API using the quoted ID. Links are intentionally left in
         // the text for the agent's web_fetch tool — not parsed here.
         if let Some(qid) = msg.quoted_message_id.as_deref() {
-            if let Some(quoted) = state.inner.message_cache.get(qid).map(|v| v.clone()) {
+            if let Some(quoted) = state.inner.lookup_message_text(qid) {
                 text = with_quoted_context(&quoted, &text);
             } else {
                 match fetch_line_content(&state.inner.client, &state.inner.channel_token, qid).await
@@ -439,7 +484,8 @@ async fn handle_webhook(
                     },
                     Err(e) => {
                         // 404 = quoted a text message we never cached (e.g. sent
-                        // before this process started). Surface that to the model.
+                        // while the server was down, or older than the cache
+                        // TTL). Surface that to the model.
                         tracing::debug!(qid, error = %e, "LINE: quoted content unavailable");
                         text = format!("[ผู้ใช้อ้างถึงข้อความเดิม แต่ดึงเนื้อหาไม่ได้]\n\n{text}");
                     }
@@ -651,12 +697,26 @@ async fn fetch_display_name(
     }
 }
 
+/// Extract the sent-message ids from a successful reply/push response body.
+/// Best-effort: a body that doesn't parse only costs us the outbound cache
+/// entry, never the send itself.
+async fn sent_message_ids(resp: reqwest::Response) -> Vec<String> {
+    match resp.json::<SendResp>().await {
+        Ok(r) => r.sent_messages.into_iter().map(|m| m.id).collect(),
+        Err(e) => {
+            tracing::debug!(error = %e, "LINE: send response did not parse — skipping outbound cache");
+            Vec::new()
+        }
+    }
+}
+
+/// On success returns the ids LINE assigned to the sent messages.
 async fn api_reply(
     client: &reqwest::Client,
     token: &str,
     reply_token: &str,
     text: &str,
-) -> Result<(), PlatformError> {
+) -> Result<Vec<String>, PlatformError> {
     let body = serde_json::json!({
         "replyToken": reply_token,
         "messages": [{ "type": "text", "text": text }],
@@ -670,7 +730,7 @@ async fn api_reply(
         .map_err(|e| PlatformError::Send(e.to_string()))?;
 
     if resp.status().is_success() {
-        return Ok(());
+        return Ok(sent_message_ids(resp).await);
     }
     let status = resp.status();
     let err = resp.text().await.unwrap_or_default();
@@ -694,7 +754,7 @@ async fn api_push(client: &reqwest::Client, token: &str, to: &str, text: &str) -
     };
 
     if resp.status().is_success() {
-        return PushOutcome::Ok;
+        return PushOutcome::Ok(sent_message_ids(resp).await);
     }
     let status = resp.status().as_u16();
     let err = resp.text().await.unwrap_or_default();
@@ -738,6 +798,16 @@ impl LineAdapter {
                 None
             }
         };
+        let message_store = match MessageCacheStore::open(home_dir) {
+            Ok(s) => Some(s),
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "LINE: persistent message cache unavailable — quotes won't survive restarts"
+                );
+                None
+            }
+        };
         Self {
             port,
             webhook_path,
@@ -751,11 +821,20 @@ impl LineAdapter {
                 last_sender: DashMap::new(),
                 name_cache: DashMap::new(),
                 message_cache: DashMap::new(),
+                message_store,
                 bot_self_user_id: OnceLock::new(),
                 token_hash,
                 bot_id_store,
                 botinfo_gate: AsyncMutex::new(None),
             }),
+        }
+    }
+
+    /// Cache the bot's own outbound text under the ids LINE assigned to it,
+    /// so a user reply quoting the bot's message can be resolved later.
+    fn cache_sent(&self, ids: &[String], text: &str) {
+        for id in ids {
+            self.inner.cache_message_text(id, text);
         }
     }
 
@@ -782,18 +861,22 @@ impl LineAdapter {
             let (reply_token, received_at) = entry.1;
             if received_at.elapsed() < REPLY_TTL {
                 tracing::debug!(chat_id, "LINE: reply API");
-                if api_reply(
+                match api_reply(
                     &self.inner.client,
                     &self.inner.channel_token,
                     &reply_token,
                     &text,
                 )
                 .await
-                .is_ok()
                 {
-                    return Ok(());
+                    Ok(ids) => {
+                        self.cache_sent(&ids, &text);
+                        return Ok(());
+                    }
+                    Err(_) => {
+                        tracing::warn!(chat_id, "LINE: reply API failed, falling back to push");
+                    }
                 }
-                tracing::warn!(chat_id, "LINE: reply API failed, falling back to push");
             } else {
                 tracing::debug!(chat_id, "LINE: reply token expired, falling back to push");
             }
@@ -815,7 +898,10 @@ impl LineAdapter {
         )
         .await
         {
-            PushOutcome::Ok => Ok(()),
+            PushOutcome::Ok(ids) => {
+                self.cache_sent(&ids, &text);
+                Ok(())
+            }
             PushOutcome::QuotaExceeded => {
                 tracing::error!(chat_id, "LINE push quota exceeded");
                 Err(PlatformError::Send(
@@ -904,11 +990,14 @@ impl PlatformAdapter for LineAdapter {
 
         // Periodic eviction: prune expired reply tokens every 60 s; clear name
         // cache when it exceeds MAX_CACHE_ENTRIES (names are cheap to re-fetch).
+        // The persistent message cache is pruned by age, hourly.
         let inner_gc = self.inner.clone();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(60));
+            let mut ticks: u64 = 0;
             loop {
                 interval.tick().await;
+                ticks += 1;
                 inner_gc
                     .reply_store
                     .retain(|_, (_, t)| t.elapsed() < REPLY_TTL);
@@ -917,6 +1006,19 @@ impl PlatformAdapter for LineAdapter {
                 }
                 if inner_gc.message_cache.len() > MAX_CACHE_ENTRIES {
                     inner_gc.message_cache.clear();
+                }
+                if ticks % MESSAGE_PRUNE_EVERY_TICKS == 1 {
+                    if let Some(store) = &inner_gc.message_store {
+                        match store.prune(MESSAGE_CACHE_TTL.as_secs()) {
+                            Ok(n) if n > 0 => {
+                                tracing::debug!(removed = n, "LINE: pruned message cache");
+                            }
+                            Ok(_) => {}
+                            Err(e) => {
+                                tracing::warn!(error = %e, "LINE: message cache prune failed");
+                            }
+                        }
+                    }
                 }
             }
         });
@@ -1071,6 +1173,21 @@ mod tests {
         assert_eq!(content_type_to_ext("application/pdf"), Some((false, "pdf")));
         let (_, ext) = content_type_to_ext("text/csv").unwrap();
         assert!(is_supported_doc_ext(ext));
+    }
+
+    #[test]
+    fn send_resp_parses_sent_message_ids() {
+        let raw = r#"{"sentMessages":[{"id":"461230966842064897","quoteToken":"IStG5h1Tz7b..."}]}"#;
+        let resp: SendResp = serde_json::from_str(raw).unwrap();
+        let ids: Vec<String> = resp.sent_messages.into_iter().map(|m| m.id).collect();
+        assert_eq!(ids, vec!["461230966842064897".to_string()]);
+    }
+
+    #[test]
+    fn send_resp_tolerates_missing_sent_messages() {
+        // Older/other success bodies may omit the field entirely.
+        let resp: SendResp = serde_json::from_str("{}").unwrap();
+        assert!(resp.sent_messages.is_empty());
     }
 
     #[test]
