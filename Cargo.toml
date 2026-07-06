@@ -81,7 +81,7 @@ jsonschema = { version = "0.46", default-features = false }
 walkdir      = "2"
 globset      = "0.4"
 tempfile     = "3"
-lopdf        = "0.42"
+lopdf        = "0.43"
 pdf-extract  = "0.12"
 
 # File locking
